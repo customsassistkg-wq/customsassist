@@ -8,7 +8,9 @@ This is **not** a conventional software project — it's a working folder for bu
 
 - **`tnved_checker.html`** — a self-contained, single-file web app ("Проверка ТН ВЭД — КР 2025/2026") for checking Kyrgyz Republic / EAEU customs (ТН ВЭД) codes against import/export bans, licensing, certification, veterinary/phytosanitary/sanitary control, technical regulations, export control (dual-use/NKS), duty rates, and more. No build step, no package manager, no framework — pure HTML + inline `<style>` + one inline `<script>`, ~8 MB, almost entirely legal/customs reference data hard-coded as JS constants.
 - **`server/`** — a small Node/Express + PostgreSQL backend added in the "accounts/admin" phase, providing real (server-verified) login and an admin panel for creating/editing/disabling user accounts. See "Backend (`server/`)" below.
-- The rest of the repo is **source material**: official legal texts (`.md` files — tax code, Единый перечень, government resolutions, etc.) that get manually parsed and encoded into the app, and **`session.md`**, a running Russian-language changelog of what was done, why, and what's still unverified. There is no git history — `session.md` is the only record of past work, so append to it (or ask the user how they want it tracked) when you make a substantive change.
+- The rest of the repo is **source material**: official legal texts (`.md` files — tax code, Единый перечень, government resolutions, etc.) that get manually parsed and encoded into the app, and **`session.md`**, a running Russian-language changelog of what was done, why, and what's still unverified. `session.md` remains the narrative record of past work — why something was done and what is still unverified — so append to it when you make a substantive change. Since the review of 05.09.2026 the repo also has **real git history** (it previously had none): commit `eade5b8` preserves the working set as it had been staged, including 15 legal source `.md` files that by then existed only in the git index and not on disk. Those files are recoverable with `git checkout eade5b8 -- <path>` if they are ever needed again. There is still no remote, so history is local-only and is a rollback path, not a backup.
+
+**`.gitattributes` sets `* -text` and must stay that way.** `tnved_checker.html` is ~11 MB with *mixed* line endings (some large one-line data literals contain CRLF inside them), and every edit to it is an anchored exact-string replacement. Git's `core.autocrlf` would rewrite those bytes on checkout, breaking anchors and producing a whole-file phantom diff. This was caught during the review: the first attempt at committing the file silently stripped 7,466 CR bytes.
 
 Beyond `server/`, there is no other service and no CI. "Running" `tnved_checker.html` alone by double-clicking it (`file://`) no longer works end-to-end: the file now gates its UI behind a login screen that calls `/api/auth/*`, so it needs to be served over http(s) from the same origin as the backend (Nginx serving the static file + proxying `/api/*` to `server/` in production; `server/`'s own `express.static` fallback for local dev — see below). The underlying legal-data constants are still fully embedded in the page source either way (nothing moved server-side in this phase), so the login gate controls who can *use* the tool, not who can view its bundled reference data via "view source."
 
@@ -51,6 +53,17 @@ npm run dev
 
 **Schema/migrations:** there's no migration framework — `migrations/*.sql` files are applied by hand with `psql -f`, in order, once each. Add new migrations as new numbered files rather than editing an already-applied one.
 
+## Mobile wrapper (`mobile/`)
+
+A thin Capacitor shell (`kg.tnved.checker`) for Android and iOS. It ships no copy of the app: `capacitor.config.json` sets `server.url` to the production origin, so the WebView simply loads the deployed site and every `/api/*` call is same-origin. Two consequences worth remembering:
+
+- Tightening anything origin-related on the backend is safe for the app, because the WebView's `Origin` is exactly `APP_ORIGIN`. That is what made the CSRF check in `server/src/index.js` safe to make fail-closed.
+- Changing `server.url` means rebuilding and re-releasing the app, so the production origin is effectively pinned by the store listings.
+
+`privacy.html` at the repo root is deliberately *not* linked from the app (which shows its policy in a modal). It exists as a standalone, publicly reachable URL because app-store review requires one that works without logging in.
+
+Builds run in Codemagic (`mobile/codemagic.yaml`); `mobile/android/local.properties` and both `node_modules` are gitignored.
+
 ## Architecture
 
 ### One file, one pattern, repeated ~25 times
@@ -62,6 +75,14 @@ Nearly the entire script is variations on: **one `SCREAMING_SNAKE_CASE` const ho
 ### Two-tier export-control (NKS) data — a known trap
 
 `NKS` (a flat `Set` of ~1,200 bare code strings) is the list that actually drives search results (`findNKS` iterates it). `NKS_ITCAT` (an object keyed by code → `[name, section, icon]`) exists only to give `nksCat()` a nicer label when one is available, falling back to coarse chapter-based heuristics otherwise. **`NKS_ITCAT` is a subset of `NKS`.** Adding a code to only one of the two will make it either invisible in search (added to `NKS_ITCAT` only) or correctly found but poorly labeled (added to `NKS` only) — new NKS entries need both.
+
+### Legacy nomenclature: acts are transcribed verbatim, never renumbered
+
+Several databases are literal transcriptions of legal acts — `NKS` from Постановление КМ КР №63 от 10.02.2023, `ETT_UAE_DB` and `ETT_RS_DB` from the annexes to the EAEU–UAE and EAEU–Serbia agreements. The ТН ВЭД nomenclature has changed since those acts were signed: subheadings were renumbered (2845 90 900 0 became 2845 90 800 0) and split (HS2022 broke 8701 20 into 8701 21…8701 29). Because every `findX()` matches on a digit prefix, those entries were unreachable from a current code — the review of 05.09.2026 measured 140 such codes in `NKS`, 41 in `ETT_UAE_DB` and 38 in `ETT_RS_DB`, all of which made the app answer "nothing found" rather than warn.
+
+**Do not "fix" this by rewriting the codes to their current equivalents.** These are transcriptions of legal text, there is no official correlation table in the project, and a guessed mapping in a customs compliance tool is worse than a gap. Instead the file computes the gap at runtime: `legacyPrefix()` asks whether a code has any counterpart in `ETT_DB` and, if not, returns the deepest prefix that still exists (10→8→6→4 digits); `legacyMapFor()` caches one such map per database, keyed by the code exactly as that database spells it. A match found only through that fallback is flagged and the card renders an explicit "verify applicability" warning naming the act's original code and the level at which it matched.
+
+If you add another act-transcribed database, reuse `legacyMapFor()` rather than inventing a second mechanism, and think about which direction the risk runs. Over-matching is safe for export control (`NKS`) and for the Serbia exclusion list, where a miss wrongly implies "no restriction"; it is *not* safe for the UAE rate schedule, where a spurious match implies a preference the declarant may not be entitled to, so that card's wording is deliberately harsher. Keep the fallback iterating the small legacy map, never the whole database — the first draft scanned all 7,917 UAE rows on every keystroke and made search five times slower.
 
 ### Citations: `DOC_SOURCES` + `docLink()`
 
