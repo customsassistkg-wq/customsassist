@@ -1,0 +1,66 @@
+# Codemagic build config for the iOS app (Capacitor WebView wrapper around
+# https://65-109-170-170.sslip.io — update if/when a real domain replaces it,
+# see capacitor.config.json).
+#
+# This file alone does NOT make builds work — it still needs one-time setup
+# in the Codemagic web UI, done by whoever owns the Apple Developer account:
+#   1. Connect this git repo to a Codemagic app.
+#   2. Codemagic → Team settings → Integrations → App Store Connect: add an
+#      API key generated at appstoreconnect.apple.com (Users and Access →
+#      Keys), name the integration exactly "appstore" (or update `auth:`
+#      below to match whatever name is chosen).
+#   3. In App Store Connect, create the app record with bundle id
+#      kg.tnved.checker (must match capacitor.config.json / ios/App project).
+#   4. Codemagic can then auto-manage signing certificates/profiles via the
+#      API key — no manual certificate wrangling needed.
+# Until that setup is done, this workflow will fail at the signing step;
+# everything before that (npm install, pod install, web asset sync) will
+# still run and can be used to catch build breakage early.
+
+workflows:
+  ios-capacitor:
+    name: iOS Capacitor Build
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      vars:
+        XCODE_WORKSPACE: "mobile/ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+      node: latest
+      xcode: latest
+      cocoapods: default
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          cd mobile
+          npm install
+      - name: Sync Capacitor web assets into iOS project
+        script: |
+          cd mobile
+          npx cap sync ios
+      - name: Install CocoaPods dependencies
+        script: |
+          cd mobile/ios/App
+          pod install
+      - name: Set up code signing settings on Xcode project
+        script: |
+          xcode-project use-profiles
+      - name: Build ipa for distribution
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        submit_to_app_store: false

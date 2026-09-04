@@ -1,0 +1,10 @@
+{
+  "appId": "kg.tnved.checker",
+  "appName": "Проверка ТН ВЭД",
+  "webDir": "www",
+  "server": {
+    "url": "https://65-109-170-170.sslip.io",
+    "androidScheme": "https",
+    "cleartext": false
+  }
+}

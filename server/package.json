@@ -1,0 +1,21 @@
+{
+  "name": "tnved-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend API (auth + admin) for tnved_checker.html",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "create-admin": "node scripts/create-first-admin.js",
+    "refresh-class-decisions": "node scripts/refresh-class-decisions.js"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "connect-pg-simple": "^9.0.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "pg": "^8.12.0"
+  }
+}
