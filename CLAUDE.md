@@ -51,6 +51,8 @@ npm run dev
 
 **Deploy (VPS):** install Node LTS + PostgreSQL, create the DB/role and apply `migrations/0001_init.sql`, deploy `server/` and run `npm ci --omit=dev`, run `create-first-admin.js` once, run the app under a systemd unit (`ExecStart=node server/src/index.js`, `EnvironmentFile=` pointing at a production `.env`), and put Nginx in front: serve `tnved_checker.html` as static content at `/`, reverse-proxy `location /api/ { proxy_pass http://127.0.0.1:3000; }`, and terminate TLS there (Let's Encrypt via `certbot --nginx`, which needs a real domain pointed at the VPS — a bare IP can't get a cert).
 
+**Deploying a change to `tnved_checker.html` alone** (no `server/` change): back up the current file on the VPS, `scp` the new one to `tnved_checker.html.new`, compare its md5 with the local file, run `node --check` on the extracted `<script>` **on the server** (not only locally — that is what catches a corrupted transfer), then `mv` it into place and `chown tnved:tnved`. Nginx serves this file as static content, so **no `systemctl restart tnved`** — the restart is only for `server/`. Verify by `curl`ing the site and checking that the served bytes have the same md5 and contain the new text. Editing the file without this step does not count as finished work: a fix once sat in the repo for a session while the user was looking at the old page.
+
 **Schema/migrations:** there's no migration framework — `migrations/*.sql` files are applied by hand with `psql -f`, in order, once each. Add new migrations as new numbered files rather than editing an already-applied one.
 
 ## Mobile wrapper (`mobile/`)
