@@ -78,6 +78,18 @@ Nearly the entire script is variations on: **one `SCREAMING_SNAKE_CASE` const ho
 
 `render(q)` (search for `function render(q)`) is the dispatcher for the default "search by code" mode: it calls essentially every `findX(qt)` in one shot, and if every result is empty shows a "not found" card; otherwise it concatenates one `<div class="card c-...">` block per non-empty result type, in a fixed order. If nothing matches by code, `render()` itself falls back to a name-based match (`findByName`/`nameMatchesHtml`) rather than that being a separate mode. The two other search modes still wired up by `setSearchMode()` and dispatched from the single debounced `#inp` input listener are `renderSpecies` and `renderCalcSearch`; a former VIN-lookup mode (`renderVIN`/`findVIN`) and a manual "Авто" text-search mode (`renderAuto`/`findAuto`) were both removed as dead code (see session.md, 28.08.2026 and 30.08.2026 entries) — don't resurrect those names expecting them to still exist.
 
+### The result list is styled by post-processing, not by the card templates
+
+Three passes run over the finished markup of `#result` after `render()` writes it, in this order: `compactifyCards()` (collapse everything after `.tags` behind a click on the header), then `enhanceResultCards()`, which calls `buildResultSummary()` last. Doing this on the DOM rather than in the ~40 card templates is deliberate — a layout change would otherwise have to be repeated in every template — and it means **a new card template gets all of it for free, as long as it follows the existing shape** (`.rh > .ico + .rc`, then `.rn`, then `.tags`, then the details).
+
+What each pass keys on, so a new template does not silently opt out:
+
+- **The summary banner reads the cards' own `.tag` elements** — their text becomes the risk chip and their class its colour (`SUM_TAG_COLOR`). There is deliberately no "card type → risk" table to keep in sync; give a new card a tag with an existing `t-` class and it shows up in the summary correctly. The banner is skipped when there is only one card, and the jump chips take their labels from each card's `.rn`.
+- **A card is "alerting" (raised to the top of the list, red frame) if it carries a ban tag** — `t-ex`, `t-im`, `t-eec-ex`, `t-eec-im` — not if it carries class `c-ex`, which list cards use too. Already-raised cards are marked `data-ord`, so the classification-precedents card that arrives asynchronously does not re-trigger the entry animation of everything else.
+- **Anything the user must see while the card is collapsed has to be moved out of `.card-more` explicitly.** `.ett-rate` sits after `.tags` in the template, so collapsing hid the duty rate — the very number that card exists for; `enhanceResultCards()` moves it back. The same applies to any new "headline" element placed after the tags.
+- **`auditNote()` renders a `<details>`,** not a paragraph: only the status line and the date stay visible on the card. Its text runs to 2-3 kB, which is why `.card.open .card-more` allows 9000px.
+- Links found anywhere in a card are collected into a `.legal-basis` plaque above the collapsed part (deduplicated by URL, first four shown). That is one more reason to route a verified citation through `docLink()`: an `<a>` reaches the plaque, plain text does not.
+
 ### Export control (NKS): the set is a transcription of the act, at the act's own digit length
 
 Since 05.09.2026 the НКС data is derived mechanically from the current official text of the annex to Постановление КМ КР №63 (`cbd.minjust.gov.kg/160067`, edition 38652 = редакция 08.10.2025), not hand-maintained:

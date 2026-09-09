@@ -20,7 +20,7 @@
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font-family:var(--head);min-height:100vh;overflow-x:hidden}
   body::before{content:'';position:fixed;inset:0;background:radial-gradient(720px 520px at 8% -6%,rgba(94,86,214,.20),transparent 60%),radial-gradient(680px 560px at 96% 10%,rgba(224,36,94,.13),transparent 55%),radial-gradient(900px 700px at 40% 105%,rgba(10,132,255,.15),transparent 60%);pointer-events:none;z-index:0}
-  .wrap{position:relative;z-index:1;max-width:1440px;margin:0 auto;padding:32px 24px 80px}
+  .wrap{position:relative;z-index:1;max-width:1560px;margin:0 auto;padding:32px 24px 80px}
   header{margin-bottom:20px}
   .badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
   #badgesBottom{display:none}
@@ -49,7 +49,52 @@
   .card-chevron{margin-left:auto;flex-shrink:0;color:var(--muted);font-size:22px;font-weight:700;line-height:1;transition:transform .18s}
   .card.open .card-chevron{transform:rotate(180deg)}
   .card-more{max-height:0;overflow:hidden;transition:max-height .25s ease}
-  .card.open .card-more{max-height:4000px}
+  .card.open .card-more{max-height:9000px}
+  /* Сводная плашка над карточками: итог по запросу одним экраном */
+  .summary{background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:var(--radius-xl);box-shadow:var(--shadow-sm);padding:16px 18px;margin-bottom:14px;animation:sli .18s ease-out}
+  .summary.has-alert{border-color:rgba(224,52,43,.45);box-shadow:0 0 0 3px rgba(224,52,43,.10)}
+  .sum-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .sum-code{font-family:var(--head);font-size:15px;font-weight:800;letter-spacing:.01em;color:var(--text)}
+  .sum-cnt{font-size:11px;color:var(--muted)}
+  .sum-flags{display:flex;flex-wrap:wrap;gap:6px}
+  .sum-flag{font-size:11px;font-weight:700;font-family:var(--head);padding:5px 12px;border-radius:var(--radius-pill);border:1px solid transparent;white-space:nowrap}
+  .sum-flag.f-red{background:rgba(224,52,43,.14);color:var(--red);border-color:rgba(224,52,43,.40)}
+  .sum-flag.f-yellow{background:rgba(166,106,0,.12);color:var(--yellow);border-color:rgba(166,106,0,.36)}
+  .sum-flag.f-orange{background:rgba(201,112,0,.12);color:var(--orange);border-color:rgba(201,112,0,.36)}
+  .sum-flag.f-purple{background:rgba(155,63,196,.12);color:var(--purple);border-color:rgba(155,63,196,.36)}
+  .sum-flag.f-cyan{background:rgba(15,148,189,.12);color:#0A6982;border-color:rgba(15,148,189,.36)}
+  .sum-flag.f-pink{background:rgba(224,36,94,.12);color:var(--pink);border-color:rgba(224,36,94,.36)}
+  .sum-flag.f-teal{background:rgba(14,138,150,.12);color:var(--teal);border-color:rgba(14,138,150,.36)}
+  .sum-flag.f-blue{background:rgba(90,86,214,.12);color:var(--blue);border-color:rgba(90,86,214,.36)}
+  .sum-flag.f-green{background:rgba(31,163,77,.12);color:var(--green);border-color:rgba(31,163,77,.36)}
+  .sum-flag.f-rest{background:none;border-color:transparent;color:var(--muted);font-weight:600}
+  .sum-nav{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px;padding-top:11px;border-top:1px solid rgba(26,35,51,.08)}
+  .sum-jump{font-size:11px;font-family:var(--head);color:var(--muted);background:rgba(10,132,255,.06);border:1px solid rgba(10,132,255,.18);border-radius:var(--radius-pill);padding:5px 11px;cursor:pointer;transition:all .15s;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sum-jump:hover{color:var(--indigo);border-color:var(--indigo);background:rgba(10,132,255,.12)}
+  .card.card-alert{border-color:rgba(224,52,43,.5);box-shadow:0 0 0 2px rgba(224,52,43,.12),var(--shadow-md)}
+  .card.card-flash{box-shadow:0 0 0 3px rgba(10,132,255,.35),var(--shadow-md)}
+  /* Правовое основание: ссылки на акты вынесены из текста примечаний в плашку,
+     которая видна и у свёрнутой карточки */
+  .legal-basis{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;margin:0 0 12px;padding:9px 12px;background:rgba(10,132,255,.05);border:1px solid rgba(10,132,255,.16);border-radius:var(--radius-md)}
+  .legal-basis .lb-h{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);flex-shrink:0}
+  .legal-basis a{font-size:11px;line-height:1.5;color:var(--indigo);text-decoration:none;border-bottom:1px dotted rgba(10,132,255,.5)}
+  .legal-basis a:hover{border-bottom-style:solid}
+  /* Технический отчёт сверки источника — под спойлер */
+  .audit-det{margin-top:6px}
+  .audit-det>summary{cursor:pointer;list-style:none;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:4px 0}
+  .audit-det>summary::-webkit-details-marker{display:none}
+  .audit-det>summary:hover{color:var(--indigo)}
+  .audit-det>summary .ad-chev{margin-left:6px;display:inline-block;transition:transform .18s}
+  .audit-det[open]>summary .ad-chev{transform:rotate(180deg)}
+  .audit-det .audit-body{font-style:italic;color:var(--muted);line-height:1.8;padding-top:4px}
+  /* Сворачиваемые панели левой колонки */
+  .side-det>summary{cursor:pointer;list-style:none}
+  .side-det>summary::-webkit-details-marker{display:none}
+  .side-sum{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:700;color:var(--text)}
+  .side-sum .sd-chev{margin-left:auto;color:var(--muted);font-size:13px;transition:transform .18s}
+  .side-det[open] .side-sum .sd-chev{transform:rotate(180deg)}
+  .side-sum .sd-sub{display:block;font-weight:400;font-size:10px;color:var(--muted);margin-top:3px;line-height:1.4}
+  .side-det>.side-body{margin-top:15px}
   @keyframes sli{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
   .rh{display:flex;align-items:center;gap:14px;margin-bottom:14px}
   .ico{width:40px;height:40px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
@@ -376,13 +421,19 @@
       </div>
 
       <div class="side-panel">
-        <div class="side-h">Источники и даты проверки</div>
-        <div class="side-links" id="srcAudit"></div>
-        <div class="side-note">✔ сверено полностью · ◐ сверено частично · ○ в этой ревизии не проверялось. Наведите курсор, чтобы увидеть объём проверки.</div>
+        <details class="side-det">
+          <summary><div class="side-sum"><span>🟢</span><div>Актуальность баз<span class="sd-sub" id="srcAuditSum">—</span></div><span class="sd-chev">▾</span></div></summary>
+          <div class="side-body">
+            <div class="side-links" id="srcAudit"></div>
+            <div class="side-note">✔ сверено полностью · ◐ сверено частично · ○ в этой ревизии не проверялось. Наведите курсор, чтобы увидеть объём проверки.</div>
+          </div>
+        </details>
       </div>
 
       <div class="side-panel">
-        <div class="side-h">Условные обозначения</div>
+        <details class="side-det">
+          <summary><div class="side-sum"><span>🎨</span><div>Условные обозначения</div><span class="sd-chev">▾</span></div></summary>
+          <div class="side-body">
         <div class="leg-g">
           <div class="leg-i"><div class="dot" style="background:var(--red)"></div>Запрет на вывоз</div>
           <div class="leg-i"><div class="dot" style="background:var(--yellow)"></div>Запрет на ввоз</div>
@@ -394,6 +445,8 @@
           <div class="leg-i"><div class="dot" style="background:var(--orange)"></div>Обязательная сертификация</div>
           <div class="leg-i"><div class="dot" style="background:var(--pink)"></div>Ставка ввозной пошлины (ЕТТ)</div>
         </div>
+          </div>
+        </details>
       </div>
 
     </div>
@@ -418,6 +471,8 @@
         <input id="inp" class="si" type="text" placeholder="например: 3004, 7204 2931 00 950 0 или «лом металлов»" maxlength="60" autocomplete="off" spellcheck="false"/>
         <span class="sico">🔍</span>
       </div>
+
+      <div id="resultSummary" class="summary" style="display:none"></div>
 
       <button id="expandAllBtn" class="btn" type="button" style="display:none;margin:0 0 12px" onclick="toggleAllCards()">▾ Развернуть все карточки</button>
 
@@ -4549,7 +4604,10 @@ function auditNote(key){
   const a=SOURCE_AUDIT[key];
   if(!a)return '';
   const head=a.st==='ok'?'Источник сверён '+a.d:(a.st==='part'?'Источник сверён частично '+a.d:(a.d?'В ревизии '+AUDIT_REV+' не проверялось; последняя сверка — '+a.d:'В ревизии '+AUDIT_REV+' не проверялось, дата предыдущей сверки не зафиксирована'));
-  return `<div class="more-hint">${esc(head)}: ${esc(a.m)}</div>`;
+  // Отчёт о сверке — это 20+ строк технического текста, который в карточке
+  // заслонял саму норму. На виду остаётся строка со статусом и датой сверки,
+  // сам отчёт открывается по клику.
+  return `<details class="audit-det"><summary>ℹ️ ${esc(head)}<span class="ad-chev">▾</span></summary><div class="audit-body">${esc(a.m)}</div></details>`;
 }
 function renderSourceAudit(){
   const box=document.getElementById('srcAudit');
@@ -4562,6 +4620,18 @@ function renderSourceAudit(){
     const inner=`<span class="aud-m">${mark[a.st]}</span> ${esc(a.n)}<br><span>${esc(when)}</span>`;
     return a.u?`<a href="${esc(a.u)}" target="_blank" rel="noopener" title="${esc(title)}">${inner}</a>`:`<a href="#" onclick="return false" title="${esc(title)}">${inner}</a>`;
   }).join('');
+  // Свёрнутая панель должна сама говорить, на какое число сверены базы:
+  // считаем статусы и берём самую позднюю дату сверки из записей.
+  const st={ok:0,part:0,old:0};
+  let lastKey='',lastD='';
+  Object.keys(SOURCE_AUDIT).forEach(k=>{
+    const a=SOURCE_AUDIT[k];
+    if(st[a.st]!==undefined)st[a.st]++;
+    const m=/^(\d{2})\.(\d{2})\.(\d{4})$/.exec(a.d||'');
+    if(m){const key=m[3]+m[2]+m[1];if(key>lastKey){lastKey=key;lastD=a.d}}
+  });
+  const sum=document.getElementById('srcAuditSum');
+  if(sum)sum.textContent=`✔ ${st.ok} · ◐ ${st.part} · ○ ${st.old}`+(lastD?` · последняя сверка ${lastD}`:'');
 }
 
 function psnUrl(nn){return 'https://eec.eaeunion.org/upload/files/catr/psn/psn'+nn+'.pdf'}
@@ -6272,9 +6342,125 @@ function toggleAllCards(){
   btn.dataset.state=opening?'open':'closed';
 }
 
+// ═══════════════════════════════════════════
+// ЧИТАЕМОСТЬ ВЫДАЧИ: сводка, приоритет запретов, правовое основание
+// ═══════════════════════════════════════════
+// Всё ниже — пост-обработка уже готовой разметки карточек, как и
+// compactifyCards(): по одному коду render() выдаёт 7-10 карточек примерно из
+// 40 разных шаблонов, и переписывать каждый шаблон ради вёрстки нельзя.
+
+// Цвет плашки в сводке берётся из класса тега, а текст — из тега как есть:
+// тексты тегов формируются в render() и уже несут смысл, поэтому отдельной
+// таблицы «карточка → риск» (её пришлось бы синхронизировать с каждым новым
+// шаблоном) здесь нет.
+const SUM_TAG_COLOR={'t-ex':'f-red','t-eec-ex':'f-red','t-im':'f-yellow','t-eec-im':'f-yellow','t-eec-dual':'f-orange','t-srt':'f-orange','t-nks':'f-purple','t-eec-both':'f-cyan','t-eec-lic':'f-cyan','t-tr':'f-cyan','t-ett':'f-pink','t-ls':'f-teal','t-льг':'f-blue','t-usir':'f-blue','t-ok':'f-green'};
+// Порядок плашек: сначала то, из-за чего партия может не поехать.
+const SUM_FLAG_ORDER={'f-red':0,'f-yellow':1,'f-orange':2,'f-purple':3,'f-cyan':4,'f-pink':5,'f-teal':6,'f-blue':7,'f-green':8};
+// «Тревожная» карточка определяется по тегу запрета, а не по классу карточки:
+// класс c-ex носят и карточки-списки (например, результат поиска по виду).
+const ALERT_TAG_SEL='.tag.t-ex,.tag.t-im,.tag.t-eec-ex,.tag.t-eec-im';
+let resCardSeq=0;
+
+// Сводку и кнопку «развернуть все» надо гасить не только при пустом запросе,
+// но и при смене режима поиска — иначе они висят над пустой выдачей.
+function resetResultChrome(){
+  const s=document.getElementById('resultSummary');
+  if(s){s.innerHTML='';s.style.display='none'}
+  const b=document.getElementById('expandAllBtn');
+  if(b)b.style.display='none';
+}
+
+function focusResultCard(id){
+  const card=document.getElementById(id);
+  if(!card)return;
+  if(card.classList.contains('collapsible'))card.classList.add('open');
+  card.scrollIntoView({behavior:'smooth',block:'center'});
+  card.classList.add('card-flash');
+  setTimeout(()=>card.classList.remove('card-flash'),1200);
+}
+
+function enhanceResultCards(container,q){
+  if(!container||container.id!=='result')return;
+  const cards=Array.prototype.slice.call(container.querySelectorAll(':scope > .card'));
+  cards.forEach(card=>{
+    if(card.dataset.enh)return;
+    card.dataset.enh='1';
+    const more=card.querySelector(':scope > .card-more');
+    // Ставка пошлины стоит в шаблоне после .tags и потому уезжала внутрь
+    // схлопнутой части: ровно то число, за которым в карточку ЕТТ и приходят,
+    // приходилось сначала раскрывать. Возвращаем его на вид.
+    if(more){
+      const rate=more.querySelector(':scope > .ett-rate');
+      if(rate)card.insertBefore(rate,more);
+    }
+    // Правовое основание: ссылки на акты разбросаны по тексту примечаний и у
+    // свёрнутой карточки не видны вовсе. Собираем их в плашку над схлопнутой
+    // частью, ничего не убирая из самого текста — там у ссылки есть контекст.
+    const seen={},items=[];
+    card.querySelectorAll('a[href]').forEach(a=>{
+      const href=a.getAttribute('href')||'';
+      const txt=(a.textContent||'').replace(/\s+/g,' ').trim();
+      if(!/^https?:/i.test(href)||!txt||seen[href])return;
+      seen[href]=1;items.push({href:href,txt:txt});
+    });
+    if(items.length){
+      const lb=document.createElement('div');
+      lb.className='legal-basis';
+      lb.innerHTML='<span class="lb-h">📎 Правовое основание</span>'
+        +items.slice(0,4).map(i=>`<a href="${esc(i.href)}" target="_blank" rel="noopener">${esc(trunc(i.txt,64))}</a>`).join('')
+        +(items.length>4?`<span class="lb-h">+ ещё ${items.length-4}</span>`:'');
+      card.insertBefore(lb,more||null);
+    }
+  });
+  // Запреты — наверх выдачи и в красную рамку. data-ord держит уже поднятые
+  // карточки на месте: иначе поздняя (асинхронная) карточка прецедентов
+  // классификации перезапускала бы анимацию появления у всех остальных.
+  const alerts=cards.filter(c=>c.querySelector(ALERT_TAG_SEL));
+  alerts.forEach(c=>c.classList.add('card-alert'));
+  const fresh=alerts.filter(c=>!c.dataset.ord);
+  for(let i=fresh.length-1;i>=0;i--){fresh[i].dataset.ord='1';container.insertBefore(fresh[i],container.firstChild)}
+  buildResultSummary(container,q);
+}
+
+// Сводная плашка: чем кончилась проверка (плашки рисков) и что именно нашлось
+// (кнопки перехода к карточкам). При одной карточке не показывается — сводка
+// дублировала бы саму карточку.
+function buildResultSummary(container,q){
+  const box=document.getElementById('resultSummary');
+  if(!box)return;
+  const cards=Array.prototype.slice.call(container.querySelectorAll(':scope > .card'));
+  if(cards.length<2){box.innerHTML='';box.style.display='none';return}
+  const flags=[],seen={};
+  const rate=container.querySelector('.ett-rate');
+  if(rate&&rate.textContent.trim())flags.push({t:'💰 Пошлина: '+rate.textContent.replace(/\s+/g,' ').trim(),c:'f-pink',o:-1});
+  cards.forEach(card=>card.querySelectorAll('.tag').forEach(tag=>{
+    const txt=(tag.textContent||'').replace(/\s+/g,' ').trim();
+    if(!txt||seen[txt])return;
+    seen[txt]=1;
+    let c='f-blue';
+    for(let j=0;j<tag.classList.length;j++){const k=SUM_TAG_COLOR[tag.classList[j]];if(k){c=k;break}}
+    flags.push({t:trunc(txt,52),c:c,o:SUM_FLAG_ORDER[c]===undefined?9:SUM_FLAG_ORDER[c]});
+  }));
+  flags.sort((a,b)=>a.o-b.o);
+  const shown=flags.slice(0,12),rest=flags.length-shown.length;
+  const nav=cards.map(card=>{
+    if(!card.id)card.id='rescard-'+(++resCardSeq);
+    const icoEl=card.querySelector(':scope > .rh .ico');
+    const rnEl=card.querySelector(':scope > .rn')||card.querySelector(':scope > .rh .rc');
+    const label=(rnEl?rnEl.textContent:'').replace(/\s+/g,' ').trim();
+    return `<button type="button" class="sum-jump" onclick="focusResultCard('${card.id}')">${esc(icoEl?icoEl.textContent.trim():'•')} ${esc(trunc(label||'карточка',44))}</button>`;
+  }).join('');
+  const hasAlert=!!container.querySelector(ALERT_TAG_SEL);
+  box.className='summary'+(hasAlert?' has-alert':'');
+  box.style.display='';
+  box.innerHTML=`<div class="sum-h"><span class="sum-code">${hasAlert?'⚠️':'🧭'} Сводка${q?' по запросу «'+esc(trunc(q.trim(),28))+'»':''}</span><span class="sum-cnt">найдено карточек: ${cards.length}</span></div>`
+    +`<div class="sum-flags">${shown.map(f=>`<span class="sum-flag ${f.c}">${esc(f.t)}</span>`).join('')}${rest>0?`<span class="sum-flag f-rest">+ ещё ${rest}</span>`:''}</div>`
+    +`<div class="sum-nav">${nav}</div>`;
+}
+
 function render(q,boxId){
   const box=document.getElementById(boxId||'result'),qt=q.trim();
-  if(box.id==='result') setResultLayout(!!qt);
+  if(box.id==='result'){setResultLayout(!!qt);resetResultChrome()}
   if(!qt){box.innerHTML='';return}
   const bans=findBan(qt),nksList=findNKS(qt),lsList=findLS(qt),sertList=findSert(qt),medList=findMed(qt),matList=findMat(qt),art297List=findArt297(qt),art300List=findArt300(qt),art301Hit=findArt301(qt),art297PerechenList=findArt297Perechen(qt),art298List=findArt298(qt),art299List=findArt299(qt),app6VetList=findApp6Vet(qt),art297P20List=findArt297P20(qt),art297P26List=findArt297P26(qt),art297P30List=findArt297P30(qt),eecList=findEEC30(qt),wasteList=findEECWaste(qt),ettList=findETT(qt),uaeList=findETTUAE(qt),mnList=findETTMN(qt),rsList=findETTRS(qt),iranList=findETTIran(qt),vnList=findETTVN(qt),usirList=findUSIR(qt),nbndsList=findNBNDS(qt),kefHit=findKef1606(qt),adList=findAntidump(qt),triggerList=findTrigger(qt),quotaList=findQuota(qt),eecDecList=findEECDec(qt),vetList=findVET(qt),phytoList=findPHYTO(qt),sanRes=findSAN(qt),treaList=findTREAEU(qt);
   if(!bans.length&&!nksList.length&&!lsList.length&&!sertList.length&&!medList.length&&!matList.length&&!art297List.length&&!art300List.length&&!art301Hit&&!art297PerechenList.length&&!art298List.length&&!art299List.length&&!app6VetList.length&&!art297P20List.length&&!art297P26List.length&&!art297P30List.length&&!eecList.length&&!wasteList.length&&!ettList.length&&!uaeList.length&&!mnList.length&&!rsList.length&&!iranList.length&&!vnList.length&&!usirList.length&&!nbndsList.length&&!kefHit&&!adList.length&&!triggerList.length&&!quotaList.length&&!eecDecList.length&&!vetList.length&&!phytoList.length&&!sanRes.sections.length&&!sanRes.reg.length&&!sanRes.sub.length&&!treaList.length){
@@ -6734,6 +6920,7 @@ function render(q,boxId){
   html=renderWasteBlock(wasteList,qt,html);
   box.innerHTML=html;
   compactifyCards(box);
+  enhanceResultCards(box,qt);
   fetchClassDecisions(qt,boxId);
 }
 
@@ -6766,6 +6953,7 @@ async function fetchClassDecisions(qt,boxId){
   // прошёлся по остальным — досворачивается отдельно (idempotent-гвард
   // внутри compactifyCards() не даёт повторно тронуть уже свёрнутые карточки).
   compactifyCards(targetBox);
+  enhanceResultCards(targetBox,qt);
 }
 
 function renderWasteBlock(wasteList,qt,html){
@@ -7650,6 +7838,7 @@ function setSearchMode(m){
   }
   inp.value='';
   document.getElementById('result').innerHTML='';
+  resetResultChrome();
   document.getElementById('calcResult').innerHTML='';
   // В админке (как и при активном поиске по коду) правая колонка «Быстрый
   // поиск» только отнимает ширину у таблицы пользователей — прячем её так
