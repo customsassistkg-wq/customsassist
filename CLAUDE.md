@@ -99,6 +99,19 @@ What each pass keys on, so a new template does not silently opt out:
 - Transport costs belong to the customs value, so distributing them raises both duty and VAT. When distribution "by weight" is asked for but no item carries a weight, `computeBatch()` falls back to distribution by value and *says so* on the card rather than dividing equally in silence.
 - **The PDF estimate is browser print, not a JS-generated PDF.** Cyrillic in jsPDF/pdfmake needs an embedded font (hundreds of KB of base64) for one button; `printCalcEstimate()` instead fills `#calcPrintArea` and adds `printing-estimate` to `<body>`, which hides the app in the print stylesheet. The class is removed on `afterprint` **and** on a timer — Safari and old Edge do not always fire the event, and without the fallback the page stays with an invisible UI. The estimate table is sized for A4 portrait (fixed column widths, the rate moved into the name cell); check it at 760px width after changing it.
 
+### Reading a spec file: .xlsx is parsed in-page, with no library
+
+`onSpecFile` → `readXlsx`/`readCsv` → `specRowsToItems` → preview modal → `specImport`. The xlsx path uses the browser's own `DecompressionStream('deflate-raw')` plus a ~60-line ZIP central-directory reader; adding SheetJS would cost about a megabyte inside a file that is deliberately self-contained. Four traps, all covered by fixtures in the 09.09.2026 session:
+
+- **Take the local header's own filename/extra lengths**, not the central directory's, when computing where an entry's data starts — the extra field usually differs between the two, and using the wrong one lands mid-file.
+- **Find the worksheet through `xl/_rels/workbook.xml.rels`**, not by assuming `xl/worksheets/sheet1.xml`: the sheet can be named anything (the test fixture uses `lист.xml`), and archive order does not follow sheet order.
+- **Strings come in two shapes** — `t="inlineStr"` (what openpyxl writes) and `t="s"` indexing `sharedStrings.xml` (what Excel writes). Support both, and take the column number from the cell's `r` attribute ("B3" → 1): Excel omits empty cells entirely, so positional reading silently shifts every value.
+- **CSV delimiter detection must prefer `;`** — Excel in a Russian locale writes CSV that way, and a comma in such a row is a decimal separator, not a new column.
+
+Column headers are matched by meaning (`SPEC_COLS` regexes), not by position, and the name and rate always come from `ETT_DB` rather than from the file — a broker's spec carries trade names, and the duty has to be computed against the official description. Every row that cannot be used keeps a stated reason in the preview; when a code is absent from the ЕТТ, `specNotFoundHint()` looks it up in `TNVED_MAP` first and otherwise offers the nearest live codes by shared prefix, because "not found" is usually old nomenclature rather than a typo.
+
+**`findX()` returns an array — test `.length`, never truthiness.** `calcWarnings()` had `if(findAntidump(code))`, so the "antidumping measures apply to this code" warning fired for *every* code in the calculator; an empty array is truthy in JS. The same mistake reappeared in the batch requirements list and was caught only because smartphones and t-shirts came back flagged. The batch summary (`BATCH_REQS`) is built from the same `findX()` functions the search cards use, so adding a database there gives a summary line for free — but each entry must state its own predicate explicitly, and distinguish an exact hit from a prefix-only one (hazardous waste matches `2710` for petrol).
+
 ### Export control (NKS): the set is a transcription of the act, at the act's own digit length
 
 Since 05.09.2026 the НКС data is derived mechanically from the current official text of the annex to Постановление КМ КР №63 (`cbd.minjust.gov.kg/160067`, edition 38652 = редакция 08.10.2025), not hand-maintained:

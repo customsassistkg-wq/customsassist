@@ -287,6 +287,28 @@
   .batch-tbl .bsub{display:block;color:var(--muted);font-size:10px;margin-top:3px}
   .batch-del{background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;line-height:1;padding:2px 4px}
   .batch-del:hover{color:var(--red)}
+  .modal.modal-wide{max-width:900px}
+  .spec-hint{font-size:11px;color:var(--muted);line-height:1.7;margin-top:10px}
+  .spec-hint code{font-family:var(--head);background:var(--bg);padding:1px 5px;border-radius:4px;font-size:10px}
+  .spec-tbl{width:100%;border-collapse:collapse;font-size:11px}
+  .spec-tbl th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--border);white-space:nowrap}
+  .spec-tbl td{padding:6px 8px;border-bottom:1px solid rgba(26,35,51,.07);vertical-align:top}
+  .spec-tbl tr.bad td{background:rgba(224,52,43,.07)}
+  .spec-tbl tr.warn td{background:rgba(166,106,0,.07)}
+  .spec-tbl .st{font-size:10px;line-height:1.5}
+  .spec-tbl .st.ok{color:var(--green)}
+  .spec-tbl .st.bad{color:var(--red)}
+  .spec-tbl .st.warn{color:var(--yellow)}
+  .spec-scroll{max-height:46vh;overflow:auto;margin-bottom:14px;border:1px solid var(--border);border-radius:var(--radius-md)}
+  .perm-grid{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .perm-row{display:flex;gap:10px;align-items:baseline;font-size:12px;padding:8px 10px;border-radius:var(--radius-md);background:var(--bg)}
+  .perm-row .pl{font-weight:700;flex:1;min-width:0}
+  .perm-row .pc{color:var(--muted);font-size:10px;font-family:var(--head);text-align:right;flex-shrink:0;max-width:45%}
+  .perm-row.p-red .pl{color:var(--red)}
+  .perm-row.p-orange .pl{color:var(--orange)}
+  .perm-row.p-purple .pl{color:var(--purple)}
+  .perm-row.p-cyan .pl{color:#0A6982}
+  .perm-row.p-teal .pl{color:var(--teal)}
   .batch-empty{font-size:12px;color:var(--muted);line-height:1.7}
   .batch-note{font-size:10px;color:var(--muted);line-height:1.7;margin-top:12px}
   #calcPrintArea{display:none}
@@ -518,6 +540,7 @@
       <div id="speciesResult"></div>
       <div id="calcResult"></div>
       <div id="calcBatchPanel" style="display:none"></div>
+      <input type="file" id="specFile" accept=".xlsx,.csv,.txt" style="display:none" onchange="onSpecFile(this)"/>
       <div id="adminResult" style="display:none"></div>
       </div>
 
@@ -7489,7 +7512,7 @@ function calcWarnings(code){
   if(bans.length){
     warns.push({level:'red',text:'⛔ Код входит в перечень запрещённых к ввозу товаров ('+esc(bans[0].imN||'см. базу запретов')+'). Расчёт пошлины не имеет смысла — ввоз запрещён.'});
   }
-  if(findAntidump(code)){
+  if(findAntidump(code).length){
     warns.push({level:'yellow',text:'⚠️ На этот код действуют антидемпинговые/специальные меры. Дополнительная пошлина в расчёт НЕ включена — уточните отдельно по стране происхождения.'});
   }
   const cn10=norm(code).replace(/\D/g,'');
@@ -7798,14 +7821,17 @@ function renderCalcBatch(){
   if(searchMode!=='calc'){box.style.display='none';return}
   box.style.display='';
   if(!calcBatch.length){
-    box.innerHTML='<div class="calc-card"><div class="batch-title">🧺 Партия товаров</div>'
-      +'<div class="batch-empty" style="margin-top:10px">Партия пуста. Выберите код, заполните стоимость и нажмите «В партию» — так в один расчёт собирается вся спецификация: общие транспортные расходы распределятся по позициям, а сбор за таможенные операции посчитается один раз на декларацию.</div></div>';
+    box.innerHTML='<div class="calc-card"><div class="batch-head"><div class="batch-title">🧺 Партия товаров</div>'
+      +'<div class="batch-actions"><button class="btn" type="button" onclick="openSpecPicker()">📥 Загрузить спецификацию</button></div></div>'
+      +'<div class="batch-empty">Партия пуста. Выберите код, заполните стоимость и нажмите «В партию» — так в один расчёт собирается вся спецификация: общие транспортные расходы распределятся по позициям, а сбор за таможенные операции посчитается один раз на декларацию.</div>'
+      +SPEC_HINT_HTML+'</div>';
     return;
   }
   const b=computeBatch();
   let html='<div class="calc-card">';
   html+='<div class="batch-head"><div class="batch-title">🧺 Партия товаров — '+calcBatch.length+' позиц.</div>'
-    +'<div class="batch-actions"><button class="btn" type="button" onclick="printCalcEstimate()">🖨 Смета (PDF)</button>'
+    +'<div class="batch-actions"><button class="btn" type="button" onclick="openSpecPicker()">📥 Загрузить спецификацию</button>'
+    +'<button class="btn" type="button" onclick="printCalcEstimate()">🖨 Смета (PDF)</button>'
     +'<button class="btn danger" type="button" onclick="calcClearBatch()">Очистить</button></div></div>';
   html+='<div class="calc-row">';
   html+='<div class="calc-field"><label>Транспортные и сопутствующие расходы на партию</label><input type="number" id="calcFreightSum" min="0" step="0.01" placeholder="0.00" value="'+(calcFreight.sum||'')+'" oninput="onCalcFreightChange()"/></div>';
@@ -7842,10 +7868,369 @@ function renderCalcBatch(){
   html+='<div class="calc-line"><span>Сбор за таможенные операции <span style="color:var(--muted);font-size:11px">(0,4% от стоимости партии, вилка 500–250 000 сом, один раз на декларацию)</span></span><b>'+MONEY(b.fee)+' сом</b></div>';
   html+='<div class="calc-total"><span>Итого по партии</span><span>'+MONEY(b.total)+' сом</span></div>';
   html+='</div>';
+  html+='<div class="side-h" style="margin-top:22px">Разрешительные документы и ограничения по партии</div>';
+  html+=batchRequirementsHtml();
   html+='<div class="batch-note">Транспортные и сопутствующие расходы до места прибытия входят в таможенную стоимость, поэтому они увеличивают и пошлину, и НДС. Сбор считается один раз на декларацию: п.38 Инструкции к '+docLink('Пост. КМ КР №79 от 13.02.2020 (ред. от 29.06.2026)',DOC_SOURCES.instr79)+' привязывает его к действиям по помещению товаров под таможенную процедуру, и вилка 5–2500 расчётных показателей применяется к декларации, а не к строке. Если партия подаётся несколькими декларациями, сбор считается по каждой. Акциз, антидемпинговые пошлины и преференции по стране происхождения в итог не входят.</div>';
   html+='</div>';
   box.innerHTML=html;
   applyNbkrRatesToVisibleFields();
+}
+
+// ═══════════════════════════════════════════
+// ПАКЕТНАЯ ЗАГРУЗКА СПЕЦИФИКАЦИИ (Excel/CSV)
+// ═══════════════════════════════════════════
+// .xlsx — это zip с XML внутри, а распаковывать zip браузер умеет сам
+// (DecompressionStream('deflate-raw')), поэтому SheetJS и подобные библиотеки
+// не нужны: тащить в самодостаточный однофайловый HTML ещё мегабайт кода ради
+// одной кнопки было бы дороже, чем разобрать формат руками. Если браузер
+// старый и DecompressionStream в нём нет, честно просим сохранить файл как CSV.
+
+function zipEntries(buf){
+  const dv=new DataView(buf), u8=new Uint8Array(buf);
+  // Центральный каталог ищем с конца: EOCD стоит в самом хвосте файла и может
+  // иметь комментарий после себя, поэтому идём назад до сигнатуры.
+  let eocd=-1;
+  for(let i=u8.length-22;i>=0&&i>u8.length-70000;i--){
+    if(dv.getUint32(i,true)===0x06054b50){eocd=i;break}
+  }
+  if(eocd<0)throw new Error('это не zip/xlsx-файл');
+  let n=dv.getUint16(eocd+10,true), off=dv.getUint32(eocd+16,true);
+  const out={};
+  for(let k=0;k<n;k++){
+    if(dv.getUint32(off,true)!==0x02014b50)break;
+    const method=dv.getUint16(off+10,true);
+    const csize=dv.getUint32(off+20,true);
+    const fnLen=dv.getUint16(off+28,true), exLen=dv.getUint16(off+30,true), cmLen=dv.getUint16(off+32,true);
+    const lho=dv.getUint32(off+42,true);
+    const name=new TextDecoder('utf-8').decode(u8.subarray(off+46,off+46+fnLen));
+    // Длины полей в локальном заголовке своих собственных — брать их из
+    // центрального каталога нельзя, extra-поле там обычно другое.
+    const lfnLen=dv.getUint16(lho+26,true), lexLen=dv.getUint16(lho+28,true);
+    const start=lho+30+lfnLen+lexLen;
+    out[name]={method:method,data:u8.subarray(start,start+csize)};
+    off+=46+fnLen+exLen+cmLen;
+  }
+  return out;
+}
+
+async function zipRead(entries,name){
+  const e=entries[name];
+  if(!e)return null;
+  if(e.method===0)return new TextDecoder('utf-8').decode(e.data);
+  if(typeof DecompressionStream==='undefined')throw new Error('браузер не умеет распаковывать xlsx — сохраните файл в CSV');
+  const ds=new DecompressionStream('deflate-raw');
+  const blob=new Blob([e.data]);
+  const stream=blob.stream().pipeThrough(ds);
+  return await new Response(stream).text();
+}
+
+function colIndex(ref){
+  const m=/^([A-Z]+)/.exec(ref||'');
+  if(!m)return 0;
+  let n=0;
+  for(const ch of m[1])n=n*26+(ch.charCodeAt(0)-64);
+  return n-1;
+}
+
+// Возвращает лист как массив массивов строк.
+async function readXlsx(buf){
+  const entries=zipEntries(buf);
+  // Первый лист книги, а не sheet1.xml по имени: порядок файлов в архиве не
+  // обязан совпадать с порядком листов, а пользователь кладёт данные на первый.
+  let sheetPath='xl/worksheets/sheet1.xml';
+  try{
+    const wb=await zipRead(entries,'xl/workbook.xml');
+    const rels=await zipRead(entries,'xl/_rels/workbook.xml.rels');
+    if(wb&&rels){
+      const dom=new DOMParser().parseFromString(wb,'application/xml');
+      const sh=dom.getElementsByTagName('sheet')[0];
+      const rid=sh&&(sh.getAttribute('r:id')||sh.getAttribute('id'));
+      if(rid){
+        const rdom=new DOMParser().parseFromString(rels,'application/xml');
+        for(const r of rdom.getElementsByTagName('Relationship')){
+          if(r.getAttribute('Id')===rid){
+            let t=r.getAttribute('Target')||'';
+            t=t.replace(/^\/?xl\//,'').replace(/^\.\//,'');
+            sheetPath='xl/'+t;
+          }
+        }
+      }
+    }
+  }catch(e){}
+  let sheetXml=await zipRead(entries,sheetPath);
+  if(!sheetXml){
+    const any=Object.keys(entries).filter(k=>/^xl\/worksheets\/.*\.xml$/.test(k)).sort()[0];
+    if(!any)throw new Error('в файле нет листов');
+    sheetXml=await zipRead(entries,any);
+  }
+  const shared=[];
+  const ssXml=await zipRead(entries,'xl/sharedStrings.xml');
+  if(ssXml){
+    const sdom=new DOMParser().parseFromString(ssXml,'application/xml');
+    for(const si of sdom.getElementsByTagName('si')){
+      let s='';
+      for(const t of si.getElementsByTagName('t'))s+=t.textContent;
+      shared.push(s);
+    }
+  }
+  const dom=new DOMParser().parseFromString(sheetXml,'application/xml');
+  const rows=[];
+  for(const row of dom.getElementsByTagName('row')){
+    const cells=[];
+    for(const c of row.getElementsByTagName('c')){
+      const idx=colIndex(c.getAttribute('r'));
+      const type=c.getAttribute('t');
+      let val='';
+      if(type==='s'){
+        const v=c.getElementsByTagName('v')[0];
+        val=v?(shared[parseInt(v.textContent,10)]||''):'';
+      } else if(type==='inlineStr'){
+        for(const t of c.getElementsByTagName('t'))val+=t.textContent;
+      } else {
+        const v=c.getElementsByTagName('v')[0];
+        val=v?v.textContent:'';
+      }
+      while(cells.length<idx)cells.push('');
+      cells[idx]=val;
+    }
+    rows.push(cells);
+  }
+  return rows;
+}
+
+function readCsv(text){
+  const first=(text.split(/\r?\n/)[0]||'');
+  // Разделитель определяем по первой строке: Excel в русской локали сохраняет
+  // CSV с точкой с запятой, и запятая внутри такой строки — это дробная часть.
+  const counts=[[';',(first.match(/;/g)||[]).length],['\t',(first.match(/\t/g)||[]).length],[',',(first.match(/,/g)||[]).length]];
+  counts.sort((a,b)=>b[1]-a[1]);
+  const d=counts[0][1]>0?counts[0][0]:';';
+  return text.split(/\r?\n/).filter(l=>l.trim()!=='').map(line=>{
+    const out=[];let cur='',q=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i];
+      if(q){
+        if(ch==='"'&&line[i+1]==='"'){cur+='"';i++}
+        else if(ch==='"')q=false;
+        else cur+=ch;
+      } else if(ch==='"')q=true;
+      else if(ch===d){out.push(cur);cur=''}
+      else cur+=ch;
+    }
+    out.push(cur);
+    return out;
+  });
+}
+
+// Заголовки ищем по смыслу, а не по позиции: у брокеров спецификации приходят
+// с разными подписями колонок, а порядок столбцов у каждого свой.
+const SPEC_COLS=[
+  ['code',/(тн\s*вэд|тнвэд|^код|hs\s*code|hscode)/i],
+  ['value',/(стоим|сумма|цена|invoice|amount|value|price)/i],
+  ['cur',/(валют|curr)/i],
+  ['qty',/(кол-?во|количест|qty|quantity|мест)/i],
+  ['weight',/(вес|масс|weight|нетто)/i],
+  ['name',/(наимен|товар|описан|descr|name)/i]
+];
+
+function specMapHeader(row){
+  const map={};
+  let hits=0;
+  row.forEach((cell,i)=>{
+    const s=String(cell||'').trim();
+    if(!s)return;
+    for(const [key,re] of SPEC_COLS){
+      if(map[key]===undefined&&re.test(s)){map[key]=i;hits++;break}
+    }
+  });
+  return hits>=2?map:null;
+}
+
+function specNum(v){
+  if(v===null||v===undefined)return 0;
+  const s=String(v).replace(/\s|\u00a0/g,'').replace(',','.').replace(/[^0-9.\-]/g,'');
+  const n=parseFloat(s);
+  return isFinite(n)?n:0;
+}
+
+// Разбирает строки таблицы в позиции партии, объясняя по каждой строке, что с
+// ней не так: молча выбросить строку спецификации нельзя — брокер должен
+// видеть, что именно не попало в расчёт.
+function specRowsToItems(rows){
+  let map=null,start=0;
+  for(let i=0;i<Math.min(rows.length,10);i++){
+    const m=specMapHeader(rows[i]);
+    if(m&&m.code!==undefined){map=m;start=i+1;break}
+  }
+  // Без строки заголовка считаем, что колонки идут в самом очевидном порядке:
+  // код, наименование, стоимость.
+  if(!map){map={code:0,name:1,value:2,cur:3,qty:4,weight:5};start=0}
+  const eurRate=nbkrRateFor('EUR')||0;
+  const out=[];
+  for(let i=start;i<rows.length;i++){
+    const r=rows[i];
+    const rawCode=String(r[map.code]!==undefined?r[map.code]:'').trim();
+    const codeDigits=rawCode.replace(/\D/g,'');
+    if(!codeDigits)continue;
+    const rec={line:i+1,raw:rawCode,problems:[],warns:[],item:null};
+    const list=findETT(codeDigits);
+    let ett=list.find(x=>x[0]===codeDigits);
+    if(!ett&&list.length===1)ett=list[0];
+    if(!ett){
+      rec.problems.push(list.length
+        ?('код неоднозначен — в ЕТТ '+list.length+' подходящих подсубпозиций, укажите полный 10-значный код')
+        :specNotFoundHint(codeDigits));
+      out.push(rec);continue;
+    }
+    const cur=(String(map.cur!==undefined?(r[map.cur]||''):'').trim().toUpperCase()||'СОМ');
+    const curNorm=CALC_CURRENCIES.indexOf(cur)>=0?cur:(cur==='KGS'||cur==='СОМ'||cur===''?'СОМ':null);
+    if(!curNorm){rec.problems.push('неизвестная валюта «'+cur+'»');out.push(rec);continue}
+    const curRate=curNorm==='СОМ'?1:(nbkrRateFor(curNorm)||0);
+    if(!curRate){rec.problems.push('нет курса '+curNorm+' — курсы НБКР не загружены');out.push(rec);continue}
+    const valueCur=specNum(map.value!==undefined?r[map.value]:0);
+    if(!valueCur)rec.warns.push('стоимость не распознана — позиция уйдёт в партию с нулём');
+    const parsed=parseRateInfo(ett[3]);
+    const qty=specNum(map.qty!==undefined?r[map.qty]:0);
+    const weight=specNum(map.weight!==undefined?r[map.weight]:0);
+    if((parsed.type==='specific'||parsed.type==='plus'||parsed.type==='max')&&!qty){
+      rec.warns.push('ставка считается от количества ('+(parsed.unit||'')+'), а колонка количества пуста — специфическая часть пошлины будет нулевой');
+    }
+    if(parsed.type==='complex')rec.warns.push('ставка сложная («'+trunc(String(ett[3]),40)+'») — пошлину по этой позиции нужно задать вручную');
+    if(parsed.type==='unknown')rec.warns.push('ставка в базе не указана — пошлина будет нулевой');
+    rec.item={code:ett[0],name:ett[1],unit:ett[2],rate:ett[3],cur:curNorm,curRate:curRate,
+      valueCur:valueCur,valueSom:valueCur*curRate,weight:weight,qty:qty,eurRate:eurRate,
+      manualDuty:0,auto:null};
+    out.push(rec);
+  }
+  return out;
+}
+
+// «Кода нет в ЕТТ» — почти всегда не опечатка, а старая номенклатура или
+// подсубпозиция, которую ЕТТ разделил. Поэтому сначала смотрим TNVED_MAP, потом
+// подбираем ближайшие действующие коды по общему началу: брокеру нужен
+// действующий код, а не сообщение о том, что его код плохой.
+function specNotFoundHint(codeDigits){
+  const m=TNVED_MAP[codeDigits];
+  if(m&&m.t&&m.t.length)return 'кода нет в действующем ЕТТ; ему соответствует '+m.t.map(x=>fmtCode(x)).join(', ')+' — укажите действующий код';
+  for(let len=codeDigits.length-1;len>=4;len--){
+    const p=codeDigits.slice(0,len);
+    const cand=[];
+    for(const r of ETT_DB){
+      if(r[0].startsWith(p)){cand.push(r[0]);if(cand.length>3)break}
+    }
+    if(cand.length)return 'кода нет в ЕТТ; ближайшие действующие: '+cand.slice(0,4).map(x=>fmtCode(x)).join(', ');
+  }
+  return 'код не найден в ЕТТ';
+}
+
+const SPEC_HINT_HTML='<div class="spec-hint">📥 <b>Загрузка спецификации</b> — .xlsx (первый лист книги) или .csv. Нужна колонка с кодом ТН ВЭД и колонка со стоимостью; колонки <code>валюта</code>, <code>кол-во</code>, <code>вес</code> и <code>наименование</code> подхватываются, если они есть. Заголовки ищутся по смыслу («Код ТН ВЭД», «Стоимость», «Сумма», «HS code», «Qty»…), порядок столбцов значения не имеет. Если строки заголовков нет, ожидается порядок: код, наименование, стоимость. Курсы валют берутся из НБКР, наименования — из ЕТТ.</div>';
+const SPEC_MAX_ROWS=200;
+let specPending=[];
+
+function openSpecPicker(){document.getElementById('specFile').click()}
+
+async function onSpecFile(input){
+  const file=input.files&&input.files[0];
+  input.value='';
+  if(!file)return;
+  try{
+    let rows;
+    if(/\.xlsx$/i.test(file.name)){
+      rows=await readXlsx(await file.arrayBuffer());
+    } else {
+      rows=readCsv(await file.text());
+    }
+    if(!rows.length)throw new Error('файл пустой');
+    let recs=specRowsToItems(rows);
+    if(!recs.length)throw new Error('в файле не нашлось ни одной строки с кодом ТН ВЭД');
+    let cut=0;
+    if(recs.length>SPEC_MAX_ROWS){cut=recs.length-SPEC_MAX_ROWS;recs=recs.slice(0,SPEC_MAX_ROWS)}
+    openSpecPreview(file.name,recs,cut);
+  }catch(e){
+    openModal('<h2>Не удалось прочитать файл</h2>'
+      +'<div class="calc-warn w-red">'+esc(String(e&&e.message||e))+'</div>'
+      +'<p style="font-size:12px;color:var(--muted);line-height:1.7">Поддерживаются .xlsx (первый лист книги) и .csv. Нужна колонка с кодом ТН ВЭД и колонка со стоимостью; остальные — валюта, количество, вес — по желанию.</p>'
+      +'<div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');
+  }
+}
+
+function openSpecPreview(fileName,recs,cut){
+  specPending=recs;
+  const ok=recs.filter(r=>r.item).length;
+  let html='<h2>Спецификация: '+esc(trunc(fileName,44))+'</h2>';
+  html+='<p style="font-size:12px;color:var(--muted);margin-bottom:10px">Распознано строк: '+recs.length+', готовы к расчёту: <b>'+ok+'</b>'
+    +(cut?'. Показаны первые '+SPEC_MAX_ROWS+' строк, остальные '+cut+' пропущены.':'')+'</p>';
+  html+='<div class="spec-scroll"><table class="spec-tbl"><thead><tr><th>Стр.</th><th>Код</th><th>Наименование по ЕТТ</th><th>Стоимость</th><th>Кол-во / вес</th><th>Статус</th></tr></thead><tbody>';
+  recs.forEach(r=>{
+    const cls=r.problems.length?'bad':(r.warns.length?'warn':'');
+    const st=r.problems.length?'<span class="st bad">'+r.problems.map(esc).join('<br>')+'</span>'
+      :(r.warns.length?'<span class="st warn">'+r.warns.map(esc).join('<br>')+'</span>':'<span class="st ok">✔ готово</span>');
+    html+='<tr class="'+cls+'"><td>'+r.line+'</td><td>'+esc(r.item?fmtCode(r.item.code):r.raw)+'</td>'
+      +'<td>'+(r.item?esc(trunc(r.item.name,70)):'—')+'</td>'
+      +'<td>'+(r.item?esc(r.item.valueCur.toFixed(2)+' '+r.item.cur):'—')+'</td>'
+      +'<td>'+(r.item?esc((r.item.qty||0)+' / '+(r.item.weight||0)+' кг'):'—')+'</td>'
+      +'<td>'+st+'</td></tr>';
+  });
+  html+='</tbody></table></div>';
+  html+='<div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Отмена</button>'
+    +'<button class="calc-btn" type="button" onclick="specImport()"'+(ok?'':' disabled style="opacity:.5"')+'>Добавить '+ok+' позиц. в партию</button></div>';
+  openModal(html);
+  // Обычная модалка узкая (420 px) — под таблицу предпросмотра её надо расширить.
+  const m=document.querySelector('#activeModal .modal');
+  if(m)m.classList.add('modal-wide');
+}
+
+function specImport(){
+  let n=0;
+  specPending.forEach(r=>{if(r.item){calcBatch.push(r.item);n++}});
+  specPending=[];
+  closeModal();
+  renderCalcBatch();
+  const panel=document.getElementById('calcBatchPanel');
+  if(panel)panel.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// ═══════════════════════════════════════════
+// РАЗРЕШИТЕЛЬНЫЕ ДОКУМЕНТЫ ПО ПАРТИИ
+// ═══════════════════════════════════════════
+// Сводка собирается теми же findX(), что и обычная выдача по коду: отдельной
+// таблицы соответствий нет, поэтому новая база в поиске автоматически даёт и
+// новую строку здесь — надо лишь дописать её в этот список.
+const BATCH_REQS=[
+  {k:'ban', c:'p-red', l:'Запрет или ограничение ввоза по перечням КР — откройте карточку кода в поиске', f:(c)=>findBan(c).some(e=>e.im)},
+  {k:'waste', c:'p-red', l:'Опасные отходы — ввоз запрещён', f:(c)=>findEECWaste(c).some(e=>e.exact)},
+  {k:'wastep', c:'p-orange', l:'Опасные отходы — совпадение только по началу кода, проверьте по наименованию товара', f:(c)=>{const w=findEECWaste(c);return w.length>0&&!w.some(e=>e.exact)}},
+  {k:'nks', c:'p-purple', l:'Экспортный контроль (НКС) — лицензия/заключение', f:(c)=>findNKS(c).some(n=>!n.unver)},
+  {k:'eec30', c:'p-cyan', l:'Единый перечень ЕАЭС — разрешительный порядок', f:(c)=>findEEC30(c).length>0},
+  {k:'vet', c:'p-teal', l:'Ветеринарный контроль — разрешение и ветсертификат', f:(c)=>findVET(c).length>0},
+  {k:'phyto', c:'p-teal', l:'Карантинный фитосанитарный контроль — фитосертификат', f:(c)=>findPHYTO(c).length>0},
+  {k:'san', c:'p-teal', l:'Санитарно-эпидемиологический надзор (СЭЗ/свидетельство о госрегистрации)', f:(c)=>{const s=findSAN(c);return s.sections.length>0||s.reg.length>0}},
+  {k:'tr', c:'p-orange', l:'Технические регламенты ЕАЭС — оценка соответствия', f:(c)=>findTREAEU(c).length>0},
+  {k:'sert', c:'p-orange', l:'Обязательная сертификация КР', f:(c)=>findSert(c).length>0},
+  {k:'quota', c:'p-cyan', l:'Тарифная квота', f:(c)=>findQuota(c).length>0},
+  {k:'anti', c:'p-red', l:'Антидемпинговые/специальные меры — уточните страну происхождения', f:(c)=>findAntidump(c).length>0},
+  {k:'nbnds', c:'p-cyan', l:'Налоговая база НДС с признаками риска (ввоз из ЕАЭС)', f:(c)=>findNBNDS(c).length>0}
+];
+
+function batchRequirements(){
+  const res=[];
+  for(const req of BATCH_REQS){
+    const codes=[];
+    for(const it of calcBatch){
+      let hit=false;
+      try{hit=req.f(it.code)}catch(e){hit=false}
+      if(hit&&codes.indexOf(it.code)<0)codes.push(it.code);
+    }
+    if(codes.length)res.push({req:req,codes:codes});
+  }
+  return res;
+}
+
+function batchRequirementsHtml(){
+  const list=batchRequirements();
+  if(!list.length)return '<div class="batch-empty" style="margin-top:6px">По кодам партии запретов, разрешений и обязательной оценки соответствия не найдено. Это не отменяет проверку по наименованию товара — часть позиций перечней описана словами, а не кодом.</div>';
+  return '<div class="perm-grid">'+list.map(x=>'<div class="perm-row '+x.req.c+'"><span class="pl">'+esc(x.req.l)+'</span>'
+    +'<span class="pc">'+x.codes.slice(0,6).map(c=>esc(fmtCode(c))).join(', ')+(x.codes.length>6?' и ещё '+(x.codes.length-6):'')+'</span></div>').join('')+'</div>';
 }
 
 // Смета печатается средствами браузера («Сохранить как PDF»): так кириллица
@@ -7878,6 +8263,13 @@ function printCalcEstimate(){
     +'<tr><td>Сбор за таможенные операции (0,4%, вилка 500–250 000 сом, один раз на декларацию)</td><td class="num">'+MONEY(b.fee)+' сом</td></tr>'
     +'</tbody></table>';
   html+='<div class="est-total">Итого таможенных платежей: '+MONEY(b.total)+' сом</div>';
+  const reqs=batchRequirements();
+  if(reqs.length){
+    html+='<h2 style="font-size:13px;margin:18px 0 6px">Разрешительные документы и ограничения по партии</h2>';
+    html+='<table><colgroup><col style="width:62%"/><col style="width:38%"/></colgroup><tbody>'
+      +reqs.map(x=>'<tr><td>'+esc(x.req.l)+'</td><td>'+x.codes.map(c=>esc(fmtCode(c))).join(', ')+'</td></tr>').join('')
+      +'</tbody></table>';
+  }
   html+='<div class="est-foot">Транспортные и сопутствующие расходы ('+MONEY(b.freightSom)+' сом) распределены '
     +(b.mode==='weight'?'пропорционально весу':(b.mode==='equal'?'поровну по позициям':'пропорционально стоимости'))
     +' и включены в таможенную стоимость. Ставки — ЕТТ ЕАЭС; сбор за таможенные операции — Закон КР №52 от 24.04.2019 (ст.41, 44) и п.38 Инструкции к пост. КМ КР №79 от 13.02.2020 в редакции пост. №444 от 29.06.2026. В расчёт не входят акциз, антидемпинговые и специальные пошлины, преференции по стране происхождения, сбор за таможенное сопровождение и платежи за иные таможенные процедуры. Проверьте применимость ставки к конкретному товару по описанию позиции ТН ВЭД.</div>';
