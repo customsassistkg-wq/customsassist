@@ -3432,3 +3432,21 @@ CNY, KZT и RUB, поэтому сервис теперь собирает вс�
 Попутно: в режиме калькулятора правая колонка «Быстрый поиск» теперь скрывается так же, как в админке
 (`setResultLayout(m==='admin'||m==='calc')`) — без этого таблица партии не помещалась по ширине и
 колонки пошлины и НДС уезжали за край.
+
+### Деплой
+
+Выкачены оба файла: `tnved_checker.html` и `server/src/services/nbkrRates.js`. Бэкапы на сервере —
+`/root/tnved_checker.html.bak-20260909-051447` (11 908 773 байта) и
+`/root/nbkrRates.js.bak-20260909-051526`. md5 обоих файлов на сервере совпал с локальными
+(`3b53566550e621939ad6ec1222424236` и `8b268a1fbbeb08f9ee3ab3cfd058ccc3`).
+
+Инлайновый `<script>` проверен `node --check` на самом сервере. Для `nbkrRates.js` файл пришлось
+сначала скопировать в `/tmp/nbkrcheck.js`: Node отказывается проверять файл с расширением `.new` —
+та же особенность, что и с HTML, — и там же сервис прогнан вживую, вернув все пять курсов НБКР на
+09.09.2026.
+
+В отличие от прошлых выкаток здесь менялся `server/`, поэтому `systemctl restart tnved` был нужен:
+сервис поднялся (`active`, «tnved-api listening on :3000»). `curl` на сайт вернул HTTP 200,
+11 934 156 байт и тот же md5; в отданном HTML присутствуют `calcBatchPanel`, `calcAddToBatch`,
+`computeBatch`, `printCalcEstimate`, `CALC_CURRENCIES`, `nbkrRateFor` и `batch-scroll-hint`.
+`/api/auth/me` и `/api/nbkr-rates` без cookie отвечают 401 — авторизация не задета.
