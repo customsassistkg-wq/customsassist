@@ -270,6 +270,43 @@
   .calc-line{display:flex;justify-content:space-between;padding:7px 0;font-size:13px}
   .calc-line b{font-family:var(--head)}
   .calc-total{display:flex;justify-content:space-between;padding:12px 0 0;margin-top:6px;border-top:1px solid var(--border);font-size:16px;font-family:var(--head);font-weight:800;color:var(--pink)}
+  /* Партия (многотоварный расчёт) и печатная смета */
+  .batch-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .batch-title{font-family:var(--head);font-size:15px;font-weight:800;color:var(--text)}
+  .batch-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .batch-tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .batch-scroll-hint{display:none}
+  @media (max-width:820px){.batch-scroll-hint{display:block;font-size:10px;color:var(--muted);margin-bottom:6px}}
+  .batch-tbl{width:100%;border-collapse:collapse;font-size:12px;min-width:720px}
+  .batch-tbl th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+  .batch-tbl td{padding:9px 10px;border-bottom:1px solid rgba(26,35,51,.07);vertical-align:top}
+  .batch-tbl tr:last-child td{border-bottom:none}
+  .batch-tbl .num{text-align:right;font-family:var(--head);white-space:nowrap}
+  .batch-tbl .bcode{font-family:var(--head);font-weight:700;color:var(--pink);white-space:nowrap}
+  .batch-tbl .bname{color:var(--text);line-height:1.45;min-width:200px}
+  .batch-tbl .bsub{display:block;color:var(--muted);font-size:10px;margin-top:3px}
+  .batch-del{background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer;line-height:1;padding:2px 4px}
+  .batch-del:hover{color:var(--red)}
+  .batch-empty{font-size:12px;color:var(--muted);line-height:1.7}
+  .batch-note{font-size:10px;color:var(--muted);line-height:1.7;margin-top:12px}
+  #calcPrintArea{display:none}
+  @media print{
+    body.printing-estimate #appWrap,body.printing-estimate #authScreen,body.printing-estimate #toTopBtn{display:none!important}
+    body.printing-estimate::before{display:none!important}
+    body.printing-estimate{background:#fff}
+    body.printing-estimate #calcPrintArea{display:block!important}
+  }
+  .est{font-family:var(--head);color:#000;font-size:12px}
+  .est h1{font-size:18px;margin-bottom:4px}
+  .est .est-sub{font-size:11px;color:#444;margin-bottom:16px;line-height:1.6}
+  .est table{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:14px;table-layout:fixed}
+  .est td.est-name{word-wrap:break-word}
+  .est .est-rate{display:block;color:#444;font-size:9px;margin-top:2px}
+  .est th,.est td{border:1px solid #999;padding:5px 7px;text-align:left}
+  .est th{background:#eee;font-size:10px;text-transform:uppercase}
+  .est td.num{text-align:right;white-space:nowrap}
+  .est .est-total{font-size:14px;font-weight:800;margin-top:8px}
+  .est .est-foot{font-size:9px;color:#444;line-height:1.6;margin-top:16px;border-top:1px solid #999;padding-top:8px}
   .calc-rateinfo{font-size:11px;color:var(--muted);margin-bottom:14px;padding:10px 12px;background:var(--bg);border-radius:5px}
 
   /* ── Вход / администрирование ── */
@@ -480,6 +517,7 @@
       <div id="autoCalcPanel" style="display:none"></div>
       <div id="speciesResult"></div>
       <div id="calcResult"></div>
+      <div id="calcBatchPanel" style="display:none"></div>
       <div id="adminResult" style="display:none"></div>
       </div>
 
@@ -540,6 +578,8 @@
     </div>
   </footer>
 </div>
+
+<div id="calcPrintArea"></div>
 
 <button id="toTopBtn" type="button" title="Наверх" aria-label="Наверх" onclick="window.scrollTo({top:0,behavior:'smooth'})">⬆</button>
 
@@ -7359,10 +7399,20 @@ async function loadNbkrRates(){
 }
 // Подставляет курс НБКР в поле, только если пользователь ещё ничего туда не ввёл
 // (чтобы не затирать ручную правку), и дописывает дату курса в подпись поля.
+// Курс валюты к сому из ответа /api/nbkr-rates. Поле rates появилось вместе с
+// мультивалютным калькулятором (USD, EUR, CNY, RUB, KZT); usd/eur в корне
+// ответа сохранены и служат запасным вариантом, если сервер ещё старой версии.
+function nbkrRateFor(currency){
+  if(!nbkrRates)return null;
+  if(nbkrRates.rates&&nbkrRates.rates[currency])return nbkrRates.rates[currency];
+  if(currency==='USD')return nbkrRates.usd||null;
+  if(currency==='EUR')return nbkrRates.eur||null;
+  return null;
+}
 function fillRateField(inputId,currency,labelId){
   const el=document.getElementById(inputId);
   if(!el||!nbkrRates)return;
-  const rate=currency==='USD'?nbkrRates.usd:currency==='EUR'?nbkrRates.eur:null;
+  const rate=nbkrRateFor(currency);
   if(!rate)return;
   if(!el.value)el.value=rate;
   if(labelId){
@@ -7382,6 +7432,10 @@ function applyNbkrRatesToVisibleFields(){
   // переключении на реальную иностранную валюту поле сочтут уже заполненным и не обновят.
   if(acCur&&acCur.value!=='EUR'&&acCur.value!=='СОМ')fillRateField('acCurRate',acCur.value,'acCurRateLbl');
   fillRateField('calcEurRate','EUR','calcEurRateLbl');
+  const cCur=document.getElementById('calcCur');
+  if(cCur&&cCur.value!=='СОМ')fillRateField('calcCurRate',cCur.value,'calcCurRateLbl');
+  const fCur=document.getElementById('calcFreightCur');
+  if(fCur&&fCur.value!=='СОМ')fillRateField('calcFreightRate',fCur.value,'calcFreightRateLbl');
 }
 (function(){
   const btn=document.getElementById('toTopBtn');
@@ -7513,7 +7567,8 @@ function selectCalcCode(code){
     html+='<div class="calc-toggle-row"><input type="checkbox" id="calcAutoToggle" onchange="calcUseAuto=this.checked;selectCalcCode(calcSelectedCode)" '+(calcUseAuto?'checked':'')+'/><label for="calcAutoToggle">Физлицо ввозит б/у авто для личного пользования (льготный режим по объёму двигателя и возрасту вместо % от стоимости)</label></div>';
   }
   html+='<div id="calcFormFields"></div>';
-  html+='<button class="calc-btn" onclick="runCalc()">Рассчитать</button>';
+  html+='<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="calc-btn" style="flex:2;min-width:180px" onclick="runCalc()">Рассчитать</button>'
+    +'<button class="calc-btn" style="flex:1;min-width:150px;background:var(--pink)" onclick="calcAddToBatch()">＋ В партию</button></div>';
   html+='<div id="calcOut"></div>';
   html+='</div>';
   document.getElementById('calcResult').innerHTML=html;
@@ -7523,7 +7578,15 @@ function selectCalcCode(code){
 function renderCalcFormFields(parsed, isPassengerCar){
   const wrap=document.getElementById('calcFormFields');
   let html='';
-  html+='<div class="calc-field"><label>Таможенная стоимость, сом</label><input type="number" id="calcValue" min="0" step="0.01" placeholder="0.00"/></div>';
+  // Стоимость вводится в валюте инвойса и пересчитывается в сомы по курсу НБКР
+  // на день загрузки курса (поле правится вручную — курс на дату регистрации
+  // декларации может отличаться от сегодняшнего).
+  html+='<div class="calc-row">';
+  html+='<div class="calc-field"><label>Стоимость по инвойсу</label><input type="number" id="calcValue" min="0" step="0.01" placeholder="0.00"/></div>';
+  html+='<div class="calc-field" style="max-width:140px"><label>Валюта</label><select id="calcCur" onchange="onCalcCurChange()">'+CALC_CURRENCIES.map(c=>'<option value="'+c+'">'+c+'</option>').join('')+'</select></div>';
+  html+='<div class="calc-field" id="calcCurRateWrap" style="display:none"><label id="calcCurRateLbl">Курс к сому</label><input type="number" id="calcCurRate" min="0" step="0.0001" placeholder="напр. 87.45"/></div>';
+  html+='</div>';
+  html+='<div class="calc-field"><label>Вес нетто, кг <span style="text-transform:none;letter-spacing:0">— нужен только для распределения расходов по весу</span></label><input type="number" id="calcWeight" min="0" step="0.001" placeholder="0"/></div>';
   if(calcUseAuto && isPassengerCar){
     const ages=[...new Set(AUTO_KUB.map(r=>r.age))];
     html+='<div class="calc-row">';
@@ -7549,55 +7612,93 @@ function renderCalcFormFields(parsed, isPassengerCar){
   applyNbkrRatesToVisibleFields();
 }
 
-function runCalc(){
+// Поле курса нужно только для иностранной валюты; при переключении на сом оно
+// прячется, чтобы не осталось «висящего» курса, который потом молча применится.
+function onCalcCurChange(){
+  const cur=document.getElementById('calcCur').value;
+  const wrap=document.getElementById('calcCurRateWrap');
+  if(!wrap)return;
+  wrap.style.display=cur==='СОМ'?'none':'';
+  const el=document.getElementById('calcCurRate');
+  if(el)el.value='';
+  const lbl=document.getElementById('calcCurRateLbl');
+  if(lbl){lbl.textContent='Курс '+cur+' → сом';delete lbl.dataset.nbkrDated}
+  applyNbkrRatesToVisibleFields();
+}
+
+// Собирает позицию из полей формы. Стоимость приводится к сомам сразу: дальше
+// (в партии) она складывается с долей транспортных расходов, и хранить её в
+// валюте инвойса было бы источником ошибок при разных валютах у позиций.
+function readCalcForm(){
   const code=calcSelectedCode;
-  if(!code)return;
+  if(!code)return null;
   const rec=ETT_DB.find(r=>r[0]===code);
-  const [,,,rate]=rec;
-  const parsed=parseRateInfo(rate);
+  if(!rec)return null;
+  const [,name,unit,rate]=rec;
   const isPassengerCar=/^8703(10|21|22|23|24|31|32|33|40|50|60|70)/.test(code) && code.slice(0,6)!=='870380';
-  const value=parseFloat(document.getElementById('calcValue').value)||0;
-  let duty=0, dutyNote='';
-  if(calcUseAuto && isPassengerCar){
-    const engine=parseFloat(document.getElementById('calcEngine').value)||0;
-    const age=document.getElementById('calcAge').value;
-    const transport=document.getElementById('calcTransport').value;
-    const eurRate=parseFloat(document.getElementById('calcEurRate').value)||0;
-    const kub=findKub(code.slice(0,6)).find(r=>r.age===age);
-    const kubRate=kub?(transport==='авиа'?kub['авиа']:kub['наземный']):0;
-    duty=personalAutoDuty(kubRate,engine,eurRate);
-    dutyNote='Льготный режим физлиц: '+kubRate+' €/см³ × '+engine+' см³ × курс '+eurRate;
-  } else if(parsed.type==='simple'){
-    duty=value*parsed.pct/100;
-    dutyNote=parsed.pct+'% от таможенной стоимости';
-  } else if(parsed.type==='max'){
-    const qty=parseFloat(document.getElementById('calcQty').value)||0;
-    const eurRate=parseFloat(document.getElementById('calcEurRate').value)||0;
-    const byPct=value*parsed.pct/100;
-    const bySpec=parsed.eur*eurRate*qty;
-    duty=Math.max(byPct,bySpec);
-    dutyNote='max('+parsed.pct+'% от стоимости = '+byPct.toFixed(2)+' сом; '+parsed.eur+' €/'+esc(parsed.unit)+' × курс × кол-во = '+bySpec.toFixed(2)+' сом)';
-  } else if(parsed.type==='plus'){
-    const qty=parseFloat(document.getElementById('calcQty').value)||0;
-    const eurRate=parseFloat(document.getElementById('calcEurRate').value)||0;
-    duty=value*parsed.pct/100 + parsed.eur*eurRate*qty;
-    dutyNote=parsed.pct+'% от стоимости + '+parsed.eur+' €/'+esc(parsed.unit)+' × курс × кол-во';
-  } else if(parsed.type==='specific'){
-    const qty=parseFloat(document.getElementById('calcQty').value)||0;
-    const eurRate=parseFloat(document.getElementById('calcEurRate').value)||0;
-    duty=parsed.eur*eurRate*qty;
-    dutyNote=parsed.eur+' €/'+esc(parsed.unit)+' × курс × кол-во';
-  } else if(parsed.type==='complex'){
-    duty=parseFloat(document.getElementById('calcManualDuty').value)||0;
-    dutyNote='введено вручную (сложная ставка)';
+  const cur=(document.getElementById('calcCur')||{}).value||'СОМ';
+  const curRate=cur==='СОМ'?1:(parseFloat((document.getElementById('calcCurRate')||{}).value)||0);
+  const valueCur=parseFloat((document.getElementById('calcValue')||{}).value)||0;
+  const it={code:code,name:name,unit:unit,rate:rate,cur:cur,curRate:curRate,valueCur:valueCur,
+    valueSom:valueCur*(cur==='СОМ'?1:curRate),
+    weight:parseFloat((document.getElementById('calcWeight')||{}).value)||0,
+    qty:parseFloat((document.getElementById('calcQty')||{}).value)||0,
+    eurRate:parseFloat((document.getElementById('calcEurRate')||{}).value)||0,
+    manualDuty:parseFloat((document.getElementById('calcManualDuty')||{}).value)||0,
+    auto:null};
+  if(calcUseAuto&&isPassengerCar){
+    it.auto={engine:parseFloat((document.getElementById('calcEngine')||{}).value)||0,
+      age:(document.getElementById('calcAge')||{}).value,
+      transport:(document.getElementById('calcTransport')||{}).value,
+      eurRate:parseFloat((document.getElementById('calcEurRate')||{}).value)||0};
   }
-  const isVatFree=findLS(code).length>0||findMed(code).length>0||findMat(code).length>0;
+  return it;
+}
+
+// Пошлина по одной позиции от её таможенной стоимости в сомах. Вынесена из
+// runCalc(), потому что в партии та же позиция считается уже от стоимости с
+// добавленной долей транспортных расходов, а не от заявленной цены.
+function itemDuty(it,cvSom){
+  const parsed=parseRateInfo(it.rate);
+  if(it.auto){
+    const kub=findKub(it.code.slice(0,6)).find(r=>r.age===it.auto.age);
+    const kubRate=kub?(it.auto.transport==='авиа'?kub['авиа']:kub['наземный']):0;
+    return {duty:personalAutoDuty(kubRate,it.auto.engine,it.auto.eurRate),
+      note:'льготный режим физлиц: '+kubRate+' €/см³ × '+it.auto.engine+' см³ × курс '+it.auto.eurRate};
+  }
+  if(parsed.type==='simple')return {duty:cvSom*parsed.pct/100,note:parsed.pct+'% от таможенной стоимости'};
+  if(parsed.type==='max'){
+    const byPct=cvSom*parsed.pct/100, bySpec=parsed.eur*it.eurRate*it.qty;
+    return {duty:Math.max(byPct,bySpec),
+      note:'max('+parsed.pct+'% от стоимости = '+byPct.toFixed(2)+' сом; '+parsed.eur+' €/'+esc(parsed.unit)+' × курс × кол-во = '+bySpec.toFixed(2)+' сом)'};
+  }
+  if(parsed.type==='plus')return {duty:cvSom*parsed.pct/100+parsed.eur*it.eurRate*it.qty,
+    note:parsed.pct+'% от стоимости + '+parsed.eur+' €/'+esc(parsed.unit)+' × курс × кол-во'};
+  if(parsed.type==='specific')return {duty:parsed.eur*it.eurRate*it.qty,
+    note:parsed.eur+' €/'+esc(parsed.unit)+' × курс × кол-во'};
+  if(parsed.type==='complex')return {duty:it.manualDuty,note:'введено вручную (сложная ставка)'};
+  return {duty:0,note:'ставка не определена'};
+}
+
+function itemVatFree(code){return findLS(code).length>0||findMed(code).length>0||findMat(code).length>0}
+
+function runCalc(){
+  const it=readCalcForm();
+  if(!it)return;
+  const code=it.code;
+  const value=it.valueSom;
+  const d=itemDuty(it,value);
+  const duty=d.duty, dutyNote=d.note;
+  const isVatFree=itemVatFree(code);
   const vatRate=isVatFree?0:12;
   const vat=(value+duty)*vatRate/100;
-  const fee=(calcUseAuto && isPassengerCar) ? CUSTOMS_FEE_CAR_PERSONAL : customsFeeGoods(value);
-  const feeNote=(calcUseAuto && isPassengerCar) ? 'фиксированно 22 РП для авто физлиц' : '0,4% от таможенной стоимости, вилка 500–250 000 сом';
+  const fee=it.auto ? CUSTOMS_FEE_CAR_PERSONAL : customsFeeGoods(value);
+  const feeNote=it.auto ? 'фиксированно 22 РП для авто физлиц' : '0,4% от таможенной стоимости, вилка 500–250 000 сом';
   const total=duty+vat+fee;
   let out='<div class="calc-result">';
+  if(it.cur!=='СОМ'){
+    out+='<div class="calc-line"><span>Таможенная стоимость <span style="color:var(--muted);font-size:11px">('+it.valueCur.toFixed(2)+' '+esc(it.cur)+' × '+it.curRate+')</span></span><b>'+value.toFixed(2)+' сом</b></div>';
+  }
   out+='<div class="calc-line"><span>Пошлина <span style="color:var(--muted);font-size:11px">('+dutyNote+')</span></span><b>'+duty.toFixed(2)+' сом</b></div>';
   out+='<div class="calc-line"><span>НДС ('+vatRate+'%'+(isVatFree?' — освобождение ЛС/медизделия':'')+')</span><b>'+vat.toFixed(2)+' сом</b></div>';
   out+='<div class="calc-line"><span>Сбор за таможенные операции <span style="color:var(--muted);font-size:11px">('+feeNote+')</span></span><b>'+fee.toFixed(2)+' сом</b></div>';
@@ -7605,6 +7706,190 @@ function runCalc(){
   out+='<div style="font-size:10px;color:var(--muted);margin-top:10px">Сбор — по '+docLink('Закон КР №52 от 24.04.2019, ст.41,44',DOC_SOURCES.law52)+' и '+docLink('Инструкции к Пост. КМ КР №79 от 13.02.2020 (ред. от 29.06.2026)',DOC_SOURCES.instr79)+'. Не включает сбор за таможенное сопровождение (актуален только при физическом конвое/транзите), акциз и антидемпинговые меры (см. предупреждения выше).</div>';
   out+='</div>';
   document.getElementById('calcOut').innerHTML=out;
+}
+
+// ═══════════════════════════════════════════
+// ПАРТИЯ ТОВАРОВ (многотоварный расчёт) И СМЕТА
+// ═══════════════════════════════════════════
+// Валюты — те, что отдаёт /api/nbkr-rates (официальный ежедневный курс НБКР).
+const CALC_CURRENCIES=['СОМ','USD','EUR','CNY','RUB','KZT'];
+let calcBatch=[];
+// Транспортные и сопутствующие расходы вводятся один раз на всю партию и
+// распределяются по позициям: они входят в таможенную стоимость, а значит
+// увеличивают и пошлину, и НДС по каждой позиции.
+let calcFreight={sum:0,cur:'СОМ',rate:0,mode:'value'};
+
+function calcAddToBatch(){
+  const it=readCalcForm();
+  if(!it)return;
+  const out=document.getElementById('calcOut');
+  if(it.cur!=='СОМ'&&!it.curRate){
+    if(out)out.innerHTML='<div class="calc-warn w-yellow">⚠️ Укажите курс '+esc(it.cur)+' к сому — без него стоимость позиции не пересчитать в сомы.</div>';
+    return;
+  }
+  calcBatch.push(it);
+  if(out)out.innerHTML='<div class="calc-warn w-blue">✔ Позиция '+esc(fmtCode(it.code))+' добавлена в партию (всего '+calcBatch.length+').</div>';
+  renderCalcBatch();
+  const panel=document.getElementById('calcBatchPanel');
+  if(panel)panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function calcRemoveItem(i){calcBatch.splice(i,1);renderCalcBatch()}
+function calcClearBatch(){
+  if(!calcBatch.length)return;
+  openModal('<h2>Очистить партию</h2>'
+    +'<p style="font-size:13px;color:var(--text);margin-bottom:8px">Из расчёта будут удалены все '+calcBatch.length+' позиц. Восстановить список будет нельзя — позиции придётся добавить заново.</p>'
+    +'<div class="modal-actions"><button class="calc-btn ghost" type="button" id="batchCancelBtn">Отмена</button><button class="calc-btn" type="button" id="batchClearBtn" style="background:var(--red)">Очистить</button></div>');
+  document.getElementById('batchCancelBtn').onclick=closeModal;
+  document.getElementById('batchClearBtn').onclick=function(){calcBatch=[];closeModal();renderCalcBatch()};
+}
+function onCalcFreightChange(){
+  calcFreight.sum=parseFloat((document.getElementById('calcFreightSum')||{}).value)||0;
+  calcFreight.cur=(document.getElementById('calcFreightCur')||{}).value||'СОМ';
+  calcFreight.rate=parseFloat((document.getElementById('calcFreightRate')||{}).value)||0;
+  calcFreight.mode=(document.getElementById('calcFreightMode')||{}).value||'value';
+  renderCalcBatch();
+}
+
+// Считает партию целиком. Сбор за таможенные операции берётся ОДИН раз со всей
+// партии: п.38 Инструкции к пост. КМ КР №79 привязывает его к действиям по
+// помещению товаров под процедуру (то есть к декларации), а не к строке
+// декларации, и вилка 5–2500 РП тоже применяется один раз.
+function computeBatch(){
+  const freightSom=calcFreight.sum*(calcFreight.cur==='СОМ'?1:calcFreight.rate);
+  const totalWeight=calcBatch.reduce((s,it)=>s+(it.weight||0),0);
+  const totalValue=calcBatch.reduce((s,it)=>s+(it.valueSom||0),0);
+  // Распределение по весу невозможно, если вес не введён — молча делить поровну
+  // нельзя, поэтому возвращаем фактически применённый способ и говорим о нём.
+  let mode=calcFreight.mode;
+  let fallback='';
+  if(mode==='weight'&&totalWeight<=0){mode='value';fallback='weight_no_data'}
+  if(mode==='value'&&totalValue<=0&&freightSom>0){mode='equal';fallback='value_no_data'}
+  const rows=calcBatch.map((it,i)=>{
+    let share=0;
+    if(freightSom>0&&calcBatch.length){
+      if(mode==='weight')share=freightSom*(it.weight||0)/totalWeight;
+      else if(mode==='value')share=freightSom*(it.valueSom||0)/totalValue;
+      else share=freightSom/calcBatch.length;
+    }
+    const cv=(it.valueSom||0)+share;
+    const d=itemDuty(it,cv);
+    const vatFree=itemVatFree(it.code);
+    const vat=(cv+d.duty)*(vatFree?0:12)/100;
+    return {i:i,it:it,share:share,cv:cv,duty:d.duty,dutyNote:d.note,vatFree:vatFree,vat:vat};
+  });
+  const sum=(f)=>rows.reduce((s,r)=>s+f(r),0);
+  const cvTotal=sum(r=>r.cv);
+  const dutyTotal=sum(r=>r.duty);
+  const vatTotal=sum(r=>r.vat);
+  // Авто физлица считается по фиксированному сбору; если в партии есть хоть
+  // одна такая позиция, общий сбор смешивать с товарным нельзя — говорим прямо.
+  const hasPersonalAuto=calcBatch.some(it=>it.auto);
+  const fee=customsFeeGoods(cvTotal);
+  return {rows:rows,freightSom:freightSom,mode:mode,fallback:fallback,totalWeight:totalWeight,
+    cvTotal:cvTotal,dutyTotal:dutyTotal,vatTotal:vatTotal,fee:fee,hasPersonalAuto:hasPersonalAuto,
+    total:dutyTotal+vatTotal+fee};
+}
+
+const MONEY=(x)=>x.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+function renderCalcBatch(){
+  const box=document.getElementById('calcBatchPanel');
+  if(!box)return;
+  if(searchMode!=='calc'){box.style.display='none';return}
+  box.style.display='';
+  if(!calcBatch.length){
+    box.innerHTML='<div class="calc-card"><div class="batch-title">🧺 Партия товаров</div>'
+      +'<div class="batch-empty" style="margin-top:10px">Партия пуста. Выберите код, заполните стоимость и нажмите «В партию» — так в один расчёт собирается вся спецификация: общие транспортные расходы распределятся по позициям, а сбор за таможенные операции посчитается один раз на декларацию.</div></div>';
+    return;
+  }
+  const b=computeBatch();
+  let html='<div class="calc-card">';
+  html+='<div class="batch-head"><div class="batch-title">🧺 Партия товаров — '+calcBatch.length+' позиц.</div>'
+    +'<div class="batch-actions"><button class="btn" type="button" onclick="printCalcEstimate()">🖨 Смета (PDF)</button>'
+    +'<button class="btn danger" type="button" onclick="calcClearBatch()">Очистить</button></div></div>';
+  html+='<div class="calc-row">';
+  html+='<div class="calc-field"><label>Транспортные и сопутствующие расходы на партию</label><input type="number" id="calcFreightSum" min="0" step="0.01" placeholder="0.00" value="'+(calcFreight.sum||'')+'" oninput="onCalcFreightChange()"/></div>';
+  html+='<div class="calc-field" style="max-width:130px"><label>Валюта</label><select id="calcFreightCur" onchange="onCalcFreightChange()">'+CALC_CURRENCIES.map(c=>'<option value="'+c+'"'+(calcFreight.cur===c?' selected':'')+'>'+c+'</option>').join('')+'</select></div>';
+  if(calcFreight.cur!=='СОМ')html+='<div class="calc-field"><label id="calcFreightRateLbl">Курс '+esc(calcFreight.cur)+' → сом</label><input type="number" id="calcFreightRate" min="0" step="0.0001" value="'+(calcFreight.rate||'')+'" oninput="onCalcFreightChange()"/></div>';
+  html+='<div class="calc-field"><label>Распределять</label><select id="calcFreightMode" onchange="onCalcFreightChange()">'
+    +'<option value="value"'+(calcFreight.mode==='value'?' selected':'')+'>пропорционально стоимости</option>'
+    +'<option value="weight"'+(calcFreight.mode==='weight'?' selected':'')+'>пропорционально весу</option>'
+    +'<option value="equal"'+(calcFreight.mode==='equal'?' selected':'')+'>поровну по позициям</option></select></div>';
+  html+='</div>';
+  if(b.fallback==='weight_no_data')html+='<div class="calc-warn w-yellow">⚠️ Ни у одной позиции не указан вес — расходы распределены пропорционально стоимости.</div>';
+  if(b.fallback==='value_no_data')html+='<div class="calc-warn w-yellow">⚠️ Стоимость позиций нулевая — расходы распределены поровну.</div>';
+  if(b.hasPersonalAuto)html+='<div class="calc-warn w-yellow">⚠️ В партии есть автомобиль в льготном режиме физлица. Такой ввоз оформляется отдельно и сбор по нему фиксированный (22 РП), поэтому итог по партии для него неприменим — считайте эту позицию отдельно.</div>';
+  html+='<div class="batch-scroll-hint">⟷ Таблица прокручивается вбок — суммы пошлины и НДС правее</div>';
+  html+='<div class="batch-tbl-wrap"><table class="batch-tbl"><thead><tr>'
+    +'<th>№</th><th>Код</th><th>Наименование</th><th class="num">Стоимость</th><th class="num">Расходы</th><th class="num">Там. стоимость</th><th class="num">Пошлина</th><th class="num">НДС</th><th></th>'
+    +'</tr></thead><tbody>';
+  b.rows.forEach(r=>{
+    html+='<tr><td class="num">'+(r.i+1)+'</td>'
+      +'<td class="bcode">'+esc(fmtCode(r.it.code))+'</td>'
+      +'<td class="bname">'+esc(trunc(r.it.name,80))+'<span class="bsub">ставка '+esc(fmtRate(r.it.rate))+' · '+esc(r.dutyNote)+(r.vatFree?' · НДС 0% (ЛС/медизделия)':'')+'</span></td>'
+      +'<td class="num">'+MONEY(r.it.valueSom)+(r.it.cur!=='СОМ'?'<span class="bsub">'+MONEY(r.it.valueCur)+' '+esc(r.it.cur)+'</span>':'')+'</td>'
+      +'<td class="num">'+MONEY(r.share)+'</td>'
+      +'<td class="num">'+MONEY(r.cv)+'</td>'
+      +'<td class="num">'+MONEY(r.duty)+'</td>'
+      +'<td class="num">'+MONEY(r.vat)+'</td>'
+      +'<td><button class="batch-del" type="button" title="Убрать из партии" onclick="calcRemoveItem('+r.i+')">✕</button></td></tr>';
+  });
+  html+='</tbody></table></div>';
+  html+='<div class="calc-result">';
+  html+='<div class="calc-line"><span>Таможенная стоимость партии'+(b.freightSom>0?' <span style="color:var(--muted);font-size:11px">(включая расходы '+MONEY(b.freightSom)+' сом)</span>':'')+'</span><b>'+MONEY(b.cvTotal)+' сом</b></div>';
+  html+='<div class="calc-line"><span>Пошлина по всем позициям</span><b>'+MONEY(b.dutyTotal)+' сом</b></div>';
+  html+='<div class="calc-line"><span>НДС 12%</span><b>'+MONEY(b.vatTotal)+' сом</b></div>';
+  html+='<div class="calc-line"><span>Сбор за таможенные операции <span style="color:var(--muted);font-size:11px">(0,4% от стоимости партии, вилка 500–250 000 сом, один раз на декларацию)</span></span><b>'+MONEY(b.fee)+' сом</b></div>';
+  html+='<div class="calc-total"><span>Итого по партии</span><span>'+MONEY(b.total)+' сом</span></div>';
+  html+='</div>';
+  html+='<div class="batch-note">Транспортные и сопутствующие расходы до места прибытия входят в таможенную стоимость, поэтому они увеличивают и пошлину, и НДС. Сбор считается один раз на декларацию: п.38 Инструкции к '+docLink('Пост. КМ КР №79 от 13.02.2020 (ред. от 29.06.2026)',DOC_SOURCES.instr79)+' привязывает его к действиям по помещению товаров под таможенную процедуру, и вилка 5–2500 расчётных показателей применяется к декларации, а не к строке. Если партия подаётся несколькими декларациями, сбор считается по каждой. Акциз, антидемпинговые пошлины и преференции по стране происхождения в итог не входят.</div>';
+  html+='</div>';
+  box.innerHTML=html;
+  applyNbkrRatesToVisibleFields();
+}
+
+// Смета печатается средствами браузера («Сохранить как PDF»): так кириллица
+// выводится системным шрифтом и в файл не нужно тащить встроенный шрифт ради
+// одной кнопки. На время печати #appWrap скрывается классом на <body>.
+function printCalcEstimate(){
+  if(!calcBatch.length)return;
+  const b=computeBatch();
+  const area=document.getElementById('calcPrintArea');
+  const dt=new Date().toLocaleDateString('ru-RU');
+  let html='<div class="est">';
+  html+='<h1>Customs Assist KG — предварительный расчёт таможенных платежей</h1>';
+  html+='<div class="est-sub">Дата расчёта: '+esc(dt)+' · позиций в партии: '+calcBatch.length
+    +(nbkrRates&&nbkrRates.date?' · курсы НБКР на '+esc(nbkrRates.date):'')+'<br>'
+    +'Расчёт предварительный и справочный: он не является решением таможенного органа и не заменяет таможенную декларацию.</div>';
+  html+='<table>';
+  html+='<colgroup><col style="width:4%"/><col style="width:14%"/><col style="width:34%"/><col style="width:12%"/><col style="width:10%"/><col style="width:12%"/><col style="width:12%"/><col style="width:12%"/></colgroup>';
+  html+='<thead><tr><th>№</th><th>Код ТН ВЭД</th><th>Наименование и ставка</th><th>Стоимость, сом</th><th>Расходы, сом</th><th>Там. стоимость, сом</th><th>Пошлина, сом</th><th>НДС, сом</th></tr></thead><tbody>';
+  b.rows.forEach(r=>{
+    html+='<tr><td>'+(r.i+1)+'</td><td>'+esc(fmtCode(r.it.code))+'</td>'
+      +'<td class="est-name">'+esc(trunc(r.it.name,110))+'<span class="est-rate">ставка '+esc(fmtRate(r.it.rate))+(r.vatFree?' · НДС 0% (ЛС/медизделия)':'')+'</span></td>'
+      +'<td class="num">'+MONEY(r.it.valueSom)+'</td><td class="num">'+MONEY(r.share)+'</td><td class="num">'+MONEY(r.cv)+'</td>'
+      +'<td class="num">'+MONEY(r.duty)+'</td><td class="num">'+MONEY(r.vat)+'</td></tr>';
+  });
+  html+='</tbody></table>';
+  html+='<table><colgroup><col style="width:70%"/><col style="width:30%"/></colgroup><tbody>'
+    +'<tr><td>Таможенная стоимость партии</td><td class="num">'+MONEY(b.cvTotal)+' сом</td></tr>'
+    +'<tr><td>Ввозная таможенная пошлина</td><td class="num">'+MONEY(b.dutyTotal)+' сом</td></tr>'
+    +'<tr><td>НДС</td><td class="num">'+MONEY(b.vatTotal)+' сом</td></tr>'
+    +'<tr><td>Сбор за таможенные операции (0,4%, вилка 500–250 000 сом, один раз на декларацию)</td><td class="num">'+MONEY(b.fee)+' сом</td></tr>'
+    +'</tbody></table>';
+  html+='<div class="est-total">Итого таможенных платежей: '+MONEY(b.total)+' сом</div>';
+  html+='<div class="est-foot">Транспортные и сопутствующие расходы ('+MONEY(b.freightSom)+' сом) распределены '
+    +(b.mode==='weight'?'пропорционально весу':(b.mode==='equal'?'поровну по позициям':'пропорционально стоимости'))
+    +' и включены в таможенную стоимость. Ставки — ЕТТ ЕАЭС; сбор за таможенные операции — Закон КР №52 от 24.04.2019 (ст.41, 44) и п.38 Инструкции к пост. КМ КР №79 от 13.02.2020 в редакции пост. №444 от 29.06.2026. В расчёт не входят акциз, антидемпинговые и специальные пошлины, преференции по стране происхождения, сбор за таможенное сопровождение и платежи за иные таможенные процедуры. Проверьте применимость ставки к конкретному товару по описанию позиции ТН ВЭД.</div>';
+  html+='</div>';
+  area.innerHTML=html;
+  document.body.classList.add('printing-estimate');
+  const cleanup=()=>{document.body.classList.remove('printing-estimate');window.removeEventListener('afterprint',cleanup)};
+  window.addEventListener('afterprint',cleanup);
+  window.print();
+  // Safari/старый Edge не всегда шлют afterprint — подстраховываемся таймером,
+  // иначе страница останется в режиме печати и приложение будет скрыто.
+  setTimeout(cleanup,3000);
 }
 
 // ═══════════════════════════════════════════
@@ -7810,6 +8095,7 @@ function setSearchMode(m){
   document.getElementById('autoCalcPanel').style.display='none';
   document.getElementById('speciesResult').style.display='none';
   document.getElementById('calcResult').style.display='none';
+  document.getElementById('calcBatchPanel').style.display='none';
   document.getElementById('adminResult').style.display='none';
   if(m==='admin'){
     document.getElementById('adminResult').style.display='block';
@@ -7826,6 +8112,7 @@ function setSearchMode(m){
     document.getElementById('calcResult').style.display='block';
     calcSelectedCode=null;
     calcUseAuto=false;
+    setTimeout(renderCalcBatch,0);
   } else {
     inp.placeholder='например: 3004, 7204 2931 00 950 0 или «лом металлов»';
     if(lbl) lbl.textContent='Введите код ТН ВЭД или название товара';
@@ -7843,7 +8130,7 @@ function setSearchMode(m){
   // В админке (как и при активном поиске по коду) правая колонка «Быстрый
   // поиск» только отнимает ширину у таблицы пользователей — прячем её так
   // же, через существующий setResultLayout().
-  setResultLayout(m==='admin');
+  setResultLayout(m==='admin'||m==='calc');
   // Левое меню навигации тоже прячем в админке — таблице пользователей
   // (много колонок) нужна вся ширина. Выйти обратно можно повторным кликом
   // по «🛡️ Администрирование» в шапке (см. showApp()) — эта кнопка всегда

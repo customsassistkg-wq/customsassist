@@ -9,7 +9,11 @@ const REFRESH_INTERVAL_MS = 60 * 60 * 1000; // раз в час проверяе
 // завершится, и это и есть настоящее исправление, а не сброс refreshing.
 const FETCH_TIMEOUT_MS = 15 * 1000;
 
-let cache = null; // { date, usd, eur }
+// Курсы, которые есть в daily.xml НБКР. usd/eur продублированы в корне ответа
+// (кроме rates) — на них уже завязан фронт, и ломать их ради красоты незачем.
+const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB', 'KZT'];
+
+let cache = null; // { date, usd, eur, rates: { USD, EUR, CNY, RUB, KZT } }
 let refreshing = null;
 
 function fetchXml() {
@@ -36,10 +40,18 @@ function fetchXml() {
   });
 }
 
+// В daily.xml у каждой валюты есть <Nominal>: сейчас у всех пяти он равен 1,
+// но у НБКР он исторически бывал и 10, и 100 (например, для рубля и тенге),
+// поэтому делим на него, а не полагаемся на текущее значение.
 function parseRate(xml, isoCode) {
-  const re = new RegExp(`<Currency ISOCode="${isoCode}">[\\s\\S]*?<Value>([\\d,]+)</Value>`);
+  const re = new RegExp(
+    `<Currency ISOCode="${isoCode}">[\\s\\S]*?<Nominal>(\\d+)</Nominal>[\\s\\S]*?<Value>([\\d,]+)</Value>`
+  );
   const m = xml.match(re);
-  return m ? parseFloat(m[1].replace(',', '.')) : null;
+  if (!m) return null;
+  const nominal = parseInt(m[1], 10) || 1;
+  const value = parseFloat(m[2].replace(',', '.'));
+  return value ? value / nominal : null;
 }
 
 // Источник: https://www.nbkr.kg/XML/daily.xml — официальный ежедневный курс
@@ -52,10 +64,15 @@ async function refresh() {
     try {
       const xml = await fetchXml();
       const dateMatch = xml.match(/Date="([\d.]+)"/);
-      const usd = parseRate(xml, 'USD');
-      const eur = parseRate(xml, 'EUR');
-      if (usd && eur) {
-        cache = { date: dateMatch ? dateMatch[1] : null, usd, eur };
+      const rates = {};
+      for (const code of CURRENCIES) {
+        const v = parseRate(xml, code);
+        if (v) rates[code] = v;
+      }
+      // Доллар и евро — обязательный минимум: если их нет, разобрался не тот
+      // документ (страница ошибки, смена формата), и кэш лучше не трогать.
+      if (rates.USD && rates.EUR) {
+        cache = { date: dateMatch ? dateMatch[1] : null, usd: rates.USD, eur: rates.EUR, rates };
       }
     } catch (err) {
       console.error('nbkr-rates: refresh failed', err.message);
