@@ -477,6 +477,7 @@
         <button class="nav-item" id="navLookupBtn" type="button" onclick="setPage('lookup')"><span class="nav-ico">📋</span> Справка по товару</button>
         <button class="nav-item" id="navSpeciesBtn" type="button" onclick="setPage('search');setSearchMode('species')"><span class="nav-ico">🐾</span> Красная книга / СИТЕС</button>
         <button class="nav-item" id="navCalcBtn" type="button" onclick="setPage('search');setSearchMode('calc')"><span class="nav-ico">🧮</span> Таможенный калькулятор</button>
+        <button class="nav-item" id="navPersonalBtn" type="button" onclick="setPage('search');setSearchMode('personal')"><span class="nav-ico">📦</span> Личные отправления</button>
       </div>
 
       <div class="side-panel">
@@ -523,6 +524,7 @@
         <button id="modeAutoBtn" class="mode-btn" onclick="setSearchMode('auto')" type="button"><span class="mb-ico">🚗</span> <span class="mb-label">Поиск авто (марка/модель)</span><span class="mb-short">Авто</span></button>
         <button id="modeSpeciesBtn" class="mode-btn" onclick="setSearchMode('species')" type="button"><span class="mb-ico">🐾</span> <span class="mb-label">Красная книга / СИТЕС</span><span class="mb-short">Красная книга</span></button>
         <button id="modeCalcBtn" class="mode-btn" onclick="setSearchMode('calc')" type="button"><span class="mb-ico">🧮</span> <span class="mb-label">Калькулятор пошлины</span><span class="mb-short">Калькулятор</span></button>
+        <button id="modePersonalBtn" class="mode-btn" onclick="setSearchMode('personal')" type="button"><span class="mb-ico">📦</span> <span class="mb-label">Личные отправления</span><span class="mb-short">Личные</span></button>
       </div>
 
       <div class="sw">
@@ -537,6 +539,7 @@
 
       <div id="result"></div>
       <div id="autoCalcPanel" style="display:none"></div>
+      <div id="personalCalcPanel" style="display:none"></div>
       <div id="speciesResult"></div>
       <div id="calcResult"></div>
       <div id="calcBatchPanel" style="display:none"></div>
@@ -4602,14 +4605,16 @@ const DOC_SOURCES={
   pkm60:'https://cbd.minjust.gov.kg/230022045/edition/46520/ru',
   eec107:'https://docs.eaeunion.org/documents/317/8824/',
   nk:'https://cbd.minjust.gov.kg/3-39/edition/57656/ru',
+  eec107p1:'https://eec.eaeunion.org/upload/medialibrary/f10/20q0ib40qipuw2rqxux3giq629afbkij/Prilozhenie-1_107.pdf',
   eec107p2:'https://eec.eaeunion.org/upload/medialibrary/48d/754bnati3u804penijmb0h866e5g6cng/Prilozhenie-2_107.pdf',
+  eec107p6:'https://eec.eaeunion.org/upload/medialibrary/f7e/6to4zncrm0awn7yzwqs7u8dzuxedjbt5/Prilozhenie-6_107.pdf',
   pkm60akt:'https://cbd.minjust.gov.kg/230022041/edition/46528/ru',
   gnsP347:'https://sti.gov.kg/section/view-pdf?filePath=websti%2F2026%2F08%2F19%2F%D0%9F-347.pdf',
   eecR30:'https://docs.eaeunion.org/documents/292/1553/',
   redBookKR:'http://cbd.minjust.gov.kg/act/view/ru-ru/99137?cl=ru-ru',
   cites:'https://cites.org/eng/app/index.php',
   stroymat18:'https://cbd.minjust.gov.kg/4-4095/edition/864081/ru',
-  law52:'https://cbd.minjust.gov.kg/111908/edition/1289610/ru',
+  law52:'https://cbd.minjust.gov.kg/111908/edition/40641/ru',
   instr79:'https://cbd.minjust.gov.kg/22-270/edition/55566/ru',
   psnIndex:'https://eec.eaeunion.org/comission/department/catr/psn/',
   psnRules:'https://eec.eaeunion.org/upload/files/catr/psn/pravila.pdf',
@@ -4662,6 +4667,8 @@ const SOURCE_AUDIT={
     m:'27.08.2026 прослежены все поправки к Решению № 30 по 2026 г. включительно. 05.09.2026 перечни сверены по существу: ЕЭК публикует каждый раздел Единого перечня отдельным сводным PDF в действующей редакции — разобран 31 раздел (все, кроме СИТЕС, который в приложении ведётся отдельной базой, и раздела 90.1, чей файл является сканом). Найдено и исправлено: раздел 1.2 «Опасные отходы, запрещённые к ввозу» ведётся отдельной картой опасных отходов и сверен с официальным текстом отдельно — все 107 кодов раздела там есть (позиции 4101 и 4102 покрыты диапазоном «из 4101–4103» акта); отсутствовал раздел 1.12 (киты, дельфины и морские свиньи, запрет вывоза); раздел 2.8 (виды из красных книг государств-членов) был представлен только примечанием о частях и дериватах — добавлена запись по товарным позициям самого раздела с оговоркой, что ограничение касается только включённых в красные книги видов. Приведены к действующей номенклатуре коды разделов 2.4 (9705 00 000 0 → 9705 22 000 0 и 9705 29 000 0), 2.9 (рубины, сапфиры, изумруды и александриты получили отдельные коды 7103 10 000 2…5 и 7103 91 000 1…3, 7103 99 000 2), 2.17 (8525 80 → 8525 81…89, 9006 51/52 → 9006 53 100 0, 9006 53 800 9, 9006 59 000 9, добавлен 8517 79 000 1) и 2.22 (копии и реплики антикварного оружия — 9705 10 000 0, 9706 10 000 0, 9706 90 000 0); в раздел 2.3 добавлены шесть кодов действующей редакции. Удалена позиция «яйца диких птиц» с кодом 0407: в действующем Едином перечне такой позиции нет ни в одном разделе. Остальные разделы (1.1, 1.3, 1.4, 1.6–1.9, 2.1–2.3, 2.6, 2.10–2.14, 2.16, 2.19–2.21, 2.30) покрыты базой полностью. Разделы о тарифных и специальных квотах (2.27–2.29) ведутся в базе отдельным перечнем квот, раздел 1.2 — отдельной картой опасных отходов, разделы 2.7 и 2.8 — базой видов; раздел 21.1 (лесоматериалы) опирается на Решение №194 от 28.12.2021 и проверен отдельно, а количественное ограничение экспорта гречихи по Решению №66 от 15.06.2021 истекло 30.08.2021 и правомерно отсутствует; раздел 90.1 (автоматическое лицензирование отдельных видов стальных труб) действовал только с 01.01.2020 по 31.12.2020 — его файл на сайте ЕЭК является сканом, но сам раздел утратил силу и в базе не нужен.'},
   antidump:{n:'Антидемпинговые и защитные меры',a:'Решения Коллегии/Совета ЕЭК по мерам защиты внутреннего рынка',u:'https://eec.eaeunion.org/comission/department/podm/',d:'05.09.2026',st:'ok',
     m:'Просмотрен весь поток документов Департамента защиты внутреннего рынка на правовом портале (625 документов): уведомления о применении и продлении мер охватывают 15 товаров. Одиннадцать из них есть в базе; четыре меры истекли и отсутствуют правомерно — графитированные электроды из Индии (по 16.05.2024), ферросиликомарганец из Украины (по 24.12.2022), уголки стальные горячекатаные из Украины (по 08.03.2023), некоторые виды стальных труб из Украины (по 07.02.2022). Девять решений, на которые ссылается база, найдены на правовом портале и сверены по номеру, предмету и датам: № 108 и № 111 от 25.08.2026 (алюминиевая посуда, рессоры), № 62 от 25.05.2026 (алюминиевая лента, в силу 27.06.2026), № 46 от 07.04.2026 (свечи зажигания, 10.05.2026), № 37 от 24.03.2026 (грузовые шины, 29.06.2026), № 50 от 10.06.2025 (оцинкованный прокат, 10.07.2025), № 96 и № 101 от октября–ноября 2025 (диоксид титана, графитированные электроды), № 7 от 14.01.2025 (литые диски, 22.03.2025) — все даты совпали. Коды и ставки всех 19 записей базы сверены по русским текстам базовых решений: решение и его приложения берутся из приложенного к каждому документу архива, а язык файла определяется по буквам, которых в русском алфавите нет, — переводы на другие языки Союза бывают неполными (в кыргызском переводе Решения № 12 от 09.02.2021 пропущен код 7306 40 200 9, который есть в русском оригинале и в остальных переводах). Совпали полностью коды и ставки по меламину, задвижкам, подшипникам (21 код), фольге (7 кодов), сварным трубам (4 кода), рессорам, посуде, ленте, свечам зажигания, диоксиду титана, обоим типоразмерам графитированных электродов, литым дискам, грузовым шинам, бульдозерам, нефтегазопромысловым трубам (24 кода), горячедеформированным трубам (6 кодов) и бесшовным трубам из Украины (11 кодов — найден прямой текст Решения № 6 от 26.01.2016, прежде запись опиралась на вторичные источники). Исправлена одна запись: по оцинкованному прокату в базе стояли товарные позиции целиком (7210, 7212, 7225), тогда как Решение № 209 от 03.12.2019 называет шесть конкретных кодов, — мера показывалась и на не охваченные ею коды. По алюминиевой ленте коды в базе приведены к действующей номенклатуре: названных в решении 7606 12 200 9 и 7606 12 920 9 в действующем ЕТТ нет. Ранее: 21.08.2026 — специальных защитных и компенсационных мер нет.'},
+  personal:{n:'Товары для личного пользования — нормы и единые ставки',a:'Приложение № 1 и таблица 1 приложения № 2 к Решению Совета ЕЭК от 20.12.2017 № 107; п.3 и п.5 приложения № 6 к нему; ст.41 и 44 Закона КР № 52 от 24.04.2019; п.38 и 38² Инструкции к ПКМ КР № 79 от 13.02.2020',u:'https://eec.eaeunion.org/upload/medialibrary/f10/20q0ib40qipuw2rqxux3giq629afbkij/Prilozhenie-1_107.pdf',d:'10.09.2026',st:'ok',
+    m:'Обе таблицы сняты 10.09.2026 с консолидированных публикаций ЕЭК: приложение № 1 (нормы) и приложение № 2 (единые ставки) — по одному PDF на приложение, обе публикации несут в шапке одну и ту же цепочку редакций, последняя из которых — Решение Совета ЕЭК № 87 от 18.10.2024. Актуальность этой редакции проверена сплошным просмотром годовых разделов «Совет ЕЭК — Решения» правового портала за 2025 и 2026 годы (разделы 447 и 461): за 2025 год ни одно решение Решение № 107 не правит, за 2026 год такое решение одно — № 35 от 24.02.2026, и оно дополняет приложение № 3 (передача электромобилей), не касаясь ни норм, ни ставок. Разделы пришлось читать с учётом того, что за последней реальной страницей пейджер снова отдаёт первую: признак конца — множество номеров решений перестаёт расти (2025 год — 120 решений, 2026 — 86). Перенесены в файл все четыре категории пункта 1-4: воздушный транспорт 10 000 € и 50 кг, иные виды транспорта или пеший порядок 500 € и 25 кг, доставка перевозчиком 200 € и 31 кг, международное почтовое отправление 200 € и 31 кг. Пункт 2 акт даёт двумя вариантами — для Армении и для остальных государств Союза; взят вариант Кыргызской Республики в редакции, действующей с 1 апреля 2024 года. Ставки на превышение: 30 процентов от превышения стоимостной нормы, но не менее 4 € за 1 кг превышения весовой (пункты 1 и 2), и 15 процентов, но не менее 2 € за 1 кг (пункты 3 и 4). Алкоголь и табак вынесены из стоимостной и весовой нормы самим актом: беспошлинны 3 л алкогольных напитков в багаже (п.5 приложения № 1), сверх них и до 5 л — 10 € за 1 л (п.7 таблицы 1), доставка перевозчиком и МПО — 10 € за 1 л до 5 л (п.8), этиловый спирт — 22 € за 1 л до 5 л (п.6). Свыше 5 л алкоголя и сверх табачной нормы (200 сигарет, или 50 сигар, или 200 стиков, или 250 г табака) товар вообще перестаёт быть товаром для личного пользования — пункты 3 и 5 приложения № 6, — поэтому ставки на такое превышение нет и калькулятор его не считает, а прямо говорит, что ввезти так нельзя. Сбор за таможенные операции сверен по первоисточникам в тот же день: ст.41 ч.1 п.1 Закона КР № 52 привязывает его к выпуску товаров, ч.3 п.7 той же статьи освобождает от него при устном декларировании, а ст.44 ч.3 отсылает фиксированные размеры для транспортных средств физических лиц и для товаров электронной торговли к актам Кабинета Министров. В Инструкции к ПКМ КР № 79 (документ 22-270, действующая редакция 29.06.2026) это п.38 (0,4 процента, вилка 5-2500 расчётных показателей), п.38² (6 сомов за 1 кг брутто для товаров электронной торговли, приобретённых одним физическим лицом для личного пользования) и п.38³ (22 расчётных показателя за автомобиль физического лица). Заодно исправлена ссылка на Закон № 52: она вела на редакцию от 09.08.2023, тогда как действует редакция от 06.11.2025 (Закон КР № 253). Не реализован пункт 9 таблицы 1 — особая норма 5 000 € для лица государства Союза, временно проживавшего за границей не менее 12 месяцев: она требует подтверждения факта проживания в порядке национального законодательства, то есть по введённым в форму числам не проверяется. Условие и ставка названы текстом под расчётом.'},
   nalog:{n:'Льготы по НК КР (ст. 297–301) и постановления КМ',a:'Пост. КМ КР № 131 от 11.03.2022 (ред. 22.10.2025), № 539 от 29.08.2025 (ред. 18.12.2025), № 196 от 04.10.2021 (ред. 22.04.2026), № 709 от 22.11.2024 (перечень в ред. 22.07.2026), № 366 от 25.05.2026',u:'https://cbd.minjust.gov.kg/7-21488/edition/39582/ru',d:'10.09.2026',st:'ok',
     m:'Перечни сверены построчно с официальными текстами на cbd.minjust.gov.kg. Совпали полностью: № 196 (ВИЭ, 127 кодов), № 366 (ювелирное оборудование, 25), приложения 1, 3, 4, 8, 9 постановления № 131, приложение 1 постановления № 539 (лекарственные средства). Добавлено 150 кодов, которых в базе не было: приложение 5 № 131 (товары для лиц с инвалидностью) содержало 28 кодов из 141, приложение 12 (вооружение) — 569 из 591, приложение 6 (вакцины для животных) — не хватало 2941 10 000 0, плюс приложения 2, 7, 10. Исправлены два склеенных кода в перечне для спорта (7216/7604 и 8501/8502) и подменённый код 3215 11 000 0 в приложении 3 № 539; в приложение 2 № 539 добавлены две позиции («из 3006, 9018 32» и «из 3006 10»). Самоисполнимые перечни сверены с Налоговым кодексом КР (ред. 06.08.2026): коды пунктов 18 и 28 части 1 статьи 297, статьи 300 и обе группы части 2 статьи 301 (99 и 12 товарных позиций) совпали полностью; в пункте 28 исправлено наименование — в Кодексе это «геосинтетические цементные композитные маты», а не «семенные композитные массы». Приложение 11, на которое опирается п.23 ст.297, в действующей редакции № 131 отсутствует — помечено как неподтверждённое. Перечень статьи 299 сверен с самим Кодексом и с приложением 12 постановления № 131: статья освобождает от НДС вооружение, военную технику и специальные средства, ввозимые государственными органами и организациями, финансируемыми из государственного бюджета, в целях обороноспособности, национальной безопасности и правопорядка, а состав товаров задаёт перечень Кабинета Министров — именно он и лежит в основе карточки, и её условие повторяет формулировку статьи. 09.09.2026 все три приложения постановления № 539 сверены заново, уже построчно, а не по множеству кодов: приложение 1 — 670 строк пяти таблиц, приложение 2 — 31 строка, приложение 3 — 309 строк; нумерация каждой таблицы сплошная, чем и доказана полнота. Найдена ошибка, которую не ловит ни сверка по префиксам, ни подсчёт числа ключей: в объектном литерале JS поздний одноимённый ключ молча затирает ранний, и из-за девяти таких пар в перечне лекарственных средств были потеряны 27 МНН (в том числе Кетамин, Месна, Галоперидола деканоат, Лидокаин + эпинефрин, Гризеофульвин, Норэпинефрин, Трастузумаб и группа из шестнадцати имён во главе с Атропином), а в перечне исходных материалов — позиция 193 «Прочие силиконы в первичных формах». Все они восстановлены. В приложение 2 добавлены семь строк, которых в базе не было (тонометр офтальмологический, шприцы, наборы для диагностики in vitro, медизделия для новорожденных и др. — акт задаёт их записью «Из 9018», «Из 3926», «Из 3822», «Из 7017»), и выправлены одиннадцать наименований, потерявших дефис при переносе строки в акте («какао-масло», «витамин В1», «спрей-дозаторы», «кава-фильтр», «поверхностно-активные»). Отдельно установлено, что короткие коды перечней (29142 у камфоры, 2930909 у ихтиола, 30044 у тиопентала натрия) — не дефект: акт называет коды, которых в действующем ЕТТ нет (2914 21 000 0 — субпозиция упразднена ГС-2022; 2930 90 990 0 при существующей 2930 90 950; 3004 40 909 9 при упразднённой субпозиции 3004 40), и база хранит длиннейший префикс, который в ЕТТ существует. Проверено по официальным главам ЕТТ 12, 15, 29, 30, 32, 35, 39, 83 и 90. Все 604 строки приложения 12 покрыты базой после добавления трёх позиций: «из 6506 61» (бронешлемы — в базе была только парная «из 6506 99»), 8714 10 000 0 (тормоза мотоциклов и мопедов) и «из 8704 23» из ячейки, где акт перечисляет четыре кода подряд. 10.09.2026 исправлено то, как эти перечни применяются в калькуляторе: часть строк приложений 1 и 2 вместо кода несёт «Из NNNN», такие строки лежат в базе под голым 4-6-значным префиксом, и двусторонний префиксный поиск поднимал их на любой код товарной позиции — «Из 3926» обнуляло НДС всем изделиям из пластмасс, «Из 9018» — всем медицинским инструментам, «Из 3004» — всем лекарственным средствам в дозированной форме. Приложение 3 к тому же освобождает от НДС только импорт для производства ЛС и медизделий, то есть условие целевое и по коду непроверяемое. Теперь ставка НДС обнуляется только там, где освобождение следует из самого кода; в остальных случаях налог начисляется, а карточка и калькулятор прямо говорят, при каком условии он снимется.'},
   eecdec:{n:'Решения ЕЭК о классификации товаров',a:'Решения Коллегии ЕЭК и Комиссии Таможенного союза «О классификации …» по ст. 22 ТК ЕАЭС (ранее п. 7 ст. 52 ТК ТС)',u:'https://docs.eaeunion.org/documents/463/10886/',d:'09.09.2026',st:'ok',
@@ -7348,6 +7355,151 @@ function buildAutoCalcIndex(){
 const AUTO_CALC_IDX=buildAutoCalcIndex();
 
 
+// ═══════════════════════════════════════════
+// ТОВАРЫ ДЛЯ ЛИЧНОГО ПОЛЬЗОВАНИЯ — НОРМЫ БЕСПОШЛИННОГО ВВОЗА И ЕДИНЫЕ СТАВКИ
+// Приложение № 1 (нормы) и таблица 1 приложения № 2 (единые ставки) к Решению
+// Совета ЕЭК от 20.12.2017 № 107. Обе таблицы сняты с консолидированных
+// публикаций ЕЭК, которые датированы редакцией решений Совета ЕЭК № 91 от
+// 01.11.2018, № 35 от 17.03.2022, № 59 от 15.04.2022, № 123 от 19.08.2022,
+// № 151 от 23.09.2022, № 30 от 30.03.2023, № 94 от 27.09.2023 и № 87 от
+// 18.10.2024. Сплошной просмотр годовых разделов «Совет ЕЭК — Решения» за 2025
+// и 2026 годы (разделы 447 и 461 правового портала) 10.09.2026 нашёл
+// единственное решение, правящее № 107, — № 35 от 24.02.2026, и оно касается
+// приложения № 3, а не норм и не ставок.
+// Пункт 2 приложение № 1 даёт двумя вариантами (Республика Армения — и все
+// остальные государства Союза); здесь взят вариант Кыргызской Республики в
+// редакции, действующей с 1 апреля 2024 года. Пункт N приложения № 1 и пункт N
+// таблицы 1 приложения № 2 описывают одну и ту же категорию: первый — норму,
+// второй — ставку на превышение.
+// Стоимостная и весовая нормы не охватывают этиловый спирт и алкогольные
+// напитки крепче 0,5 об.% — у них своя норма и своя ставка, поэтому в форме они
+// вводятся отдельно от стоимости и веса прочих товаров.
+const PERSONAL_CHANNELS=[
+  {k:'air',    item:1, n:'Воздушный транспорт — сопровождаемый и (или) несопровождаемый багаж', eur:10000, kg:50, pct:30, eurKg:4},
+  {k:'land',   item:2, n:'Иные виды транспорта или пеший порядок — сопровождаемый и (или) несопровождаемый багаж', eur:500, kg:25, pct:30, eurKg:4},
+  {k:'carrier',item:3, n:'Доставка перевозчиком (курьерская служба)', eur:200, kg:31, pct:15, eurKg:2},
+  {k:'post',   item:4, n:'Международное почтовое отправление', eur:200, kg:31, pct:15, eurKg:2}
+];
+// Алкоголь: беспошлинная норма — пункт 5 приложения № 1 (3 л в багаже), ставки —
+// пункты 6-8 таблицы 1 приложения № 2. Свыше 5 л алкоголь вообще не относится к
+// товарам для личного пользования (пункт 3 приложения № 6), поэтому это не
+// «дороже», а «нельзя».
+const PERSONAL_ALCO={
+  none:      {n:'нет', free:0, max:0, eurL:0, src:''},
+  drink_bag: {n:'Алкогольные напитки крепче 0,5 об.% — в сопровождаемом и (или) несопровождаемом багаже', free:3, max:5, eurL:10, src:'п.5 приложения № 1 и п.7 таблицы 1 приложения № 2'},
+  drink_del: {n:'Алкогольные напитки крепче 0,5 об.% — доставка перевозчиком или МПО', free:0, max:5, eurL:10, src:'п.8 таблицы 1 приложения № 2'},
+  spirit:    {n:'Этиловый спирт — любым способом', free:0, max:5, eurL:22, src:'п.6 таблицы 1 приложения № 2'}
+};
+const PERSONAL_TOBACCO_NORM='200 сигарет, или 50 сигар (сигарилл), или 200 изделий с нагреваемым табаком («стиков»), или 250 г табака, или изделия в ассортименте общим весом не более 250 г';
+
+// Единая ставка берётся как бо́льшая из двух величин: процент от превышения
+// стоимостной нормы и евро за килограмм превышения весовой нормы («но не менее»
+// в тексте акта). Если превышена только одна из норм, вторая величина равна
+// нулю, и максимум даёт ровно ту, которая превышена.
+function personalGoodsDuty(ch,valueEur,kg){
+  const exV=Math.max(0,valueEur-ch.eur), exW=Math.max(0,kg-ch.kg);
+  if(exV<=0&&exW<=0)return {eur:0,exV:0,exW:0,byV:0,byW:0,within:true,
+    note:'в пределах нормы ('+ch.eur+' € и '+ch.kg+' кг) — таможенные пошлины и налоги не уплачиваются'};
+  const byV=exV*ch.pct/100, byW=exW*ch.eurKg;
+  return {eur:Math.max(byV,byW),exV:exV,exW:exW,byV:byV,byW:byW,within:false,
+    note:'max('+ch.pct+'% от превышения стоимости '+exV.toFixed(2)+' € = '+byV.toFixed(2)+' €; '+ch.eurKg+' € × превышение веса '+exW.toFixed(3)+' кг = '+byW.toFixed(2)+' €)'};
+}
+function personalAlcoDuty(key,liters){
+  const a=PERSONAL_ALCO[key];
+  if(!a||key==='none'||!liters)return {eur:0,note:'',over:false};
+  if(liters>a.max)return {eur:0,over:true,
+    note:'более '+a.max+' л — такой товар не относится к товарам для личного пользования (п.3 приложения № 6 к Решению № 107), ввезти его как личный нельзя'};
+  const ex=Math.max(0,liters-a.free);
+  if(ex<=0)return {eur:0,over:false,note:'в пределах беспошлинных '+a.free+' л'};
+  return {eur:ex*a.eurL,over:false,
+    note:a.eurL+' € × '+ex.toFixed(2)+' л'+(a.free?' (сверх беспошлинных '+a.free+' л)':'')};
+}
+// Сбор за таможенные операции. Для товаров электронной торговли, приобретённых
+// одним физическим лицом для личного пользования, п.38² Инструкции к ПКМ КР № 79
+// даёт фиксированные 6 сомов за 1 кг брутто; в остальных случаях применяется
+// п.38 (0,4% с вилкой 5-2500 расчётных показателей). При устном декларировании
+// сбор не уплачивается вовсе — п.7 ч.3 ст.41 Закона КР № 52.
+function personalFee(ecom,kg,valueSom){
+  if(ecom)return {sum:6*kg,note:'6 сомов за 1 кг брутто (п.38² Инструкции к ПКМ КР № 79)'};
+  return {sum:customsFeeGoods(valueSom),note:'0,4% от стоимости, вилка 500–250 000 сом (п.38 той же Инструкции)'};
+}
+
+function renderPersonalCalcPanel(){
+  let html='<div class="calc-card" style="margin-bottom:16px"><div class="rn" style="margin-bottom:10px">📦 Калькулятор для товаров личного пользования (нормы и единые ставки Решения Совета ЕЭК от 20.12.2017 № 107)</div>';
+  html+='<div class="calc-row"><div class="calc-field" style="flex:1 1 100%"><label>Способ ввоза</label><select id="pcChannel">'
+    +PERSONAL_CHANNELS.map(c=>'<option value="'+c.k+'">'+esc(c.n)+' — '+c.eur+' € и '+c.kg+' кг</option>').join('')+'</select></div></div>';
+  html+='<div class="calc-row"><div class="calc-field"><label>Стоимость товаров (без алкоголя)</label><input type="number" id="pcValue" min="0" step="1" placeholder="напр. 1200"/></div>';
+  html+='<div class="calc-field"><label>Валюта стоимости</label><select id="pcCur" onchange="onPcCurChange()"><option value="EUR">EUR</option><option value="USD">USD</option><option value="CNY">CNY</option><option value="RUB">RUB</option><option value="KZT">KZT</option><option value="СОМ">СОМ (уже в сомах)</option></select></div></div>';
+  html+='<div class="calc-row"><div class="calc-field"><label>Вес брутто (без алкоголя), кг</label><input type="number" id="pcWeight" min="0" step="0.001" placeholder="напр. 28"/></div>';
+  html+='<div class="calc-field"><label id="pcEurRateLbl">Курс EUR → сом</label><input type="number" id="pcEurRate" min="0" step="0.01" placeholder="напр. 98.50"/></div></div>';
+  html+='<div class="calc-row" id="pcCurRateRow" style="display:none"><div class="calc-field"><label id="pcCurRateLbl">Курс валюты стоимости → сом</label><input type="number" id="pcCurRate" min="0" step="0.0001" placeholder="напр. 87.00"/></div></div>';
+  html+='<div class="calc-row"><div class="calc-field"><label>Алкоголь</label><select id="pcAlcoKind">'
+    +Object.keys(PERSONAL_ALCO).map(k=>'<option value="'+k+'">'+esc(PERSONAL_ALCO[k].n)+'</option>').join('')+'</select></div>';
+  html+='<div class="calc-field"><label>Объём алкоголя, л</label><input type="number" id="pcAlcoL" min="0" step="0.1" placeholder="напр. 4"/></div></div>';
+  html+='<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:6px 0 10px;cursor:pointer"><input type="checkbox" id="pcEcom"/> Это товар электронной торговли, купленный одним физическим лицом для личного пользования (сбор 6 сомов за 1 кг брутто)</label>';
+  html+='<button class="calc-btn" onclick="runPersonalCalc()">Рассчитать</button>';
+  html+='<div id="pcOut"></div>';
+  html+='<div style="font-size:10px;color:var(--muted);margin-top:10px">Табак и никотиносодержащая продукция ввозятся беспошлинно в пределах нормы: '+esc(PERSONAL_TOBACCO_NORM)+'. Сверх неё такой товар не относится к товарам для личного пользования (п.5 приложения № 6), поэтому ставки на превышение нет и калькулятор его не считает. Нормы алкоголя и табака применяются при въезде в Кыргызскую Республику к лицам, достигшим 18 лет (в Казахстане — 21 года). Автомобили и иные транспортные средства для личного пользования считаются по таблице 2 того же приложения № 2 — для них есть отдельная вкладка «🚗 Поиск авто».</div>';
+  html+='</div>';
+  const panel=document.getElementById('personalCalcPanel');
+  if(panel){
+    panel.innerHTML=html;
+    applyNbkrRatesToVisibleFields();
+  }
+}
+
+function onPcCurChange(){
+  const cur=document.getElementById('pcCur').value;
+  const row=document.getElementById('pcCurRateRow');
+  // EUR берётся из поля курса евро, которое нужно в любом случае: нормы и ставки
+  // выражены в евро, поэтому отдельное поле для EUR было бы вторым именем того же курса.
+  row.style.display=(cur==='СОМ'||cur==='EUR')?'none':'';
+  if(cur!=='СОМ'&&cur!=='EUR'){
+    const lbl=document.getElementById('pcCurRateLbl');
+    if(lbl){lbl.textContent='Курс '+cur+' → сом';delete lbl.dataset.nbkrDated;}
+    const el=document.getElementById('pcCurRate');
+    if(el)el.value='';
+    applyNbkrRatesToVisibleFields();
+  }
+  document.getElementById('pcOut').innerHTML='';
+}
+
+function runPersonalCalc(){
+  const out=document.getElementById('pcOut');
+  const ch=PERSONAL_CHANNELS.find(c=>c.k===document.getElementById('pcChannel').value)||PERSONAL_CHANNELS[0];
+  const eurRate=parseFloat(document.getElementById('pcEurRate').value)||0;
+  const cur=document.getElementById('pcCur').value;
+  const curRate=cur==='СОМ'?1:(cur==='EUR'?eurRate:(parseFloat(document.getElementById('pcCurRate').value)||0));
+  const valueCur=parseFloat(document.getElementById('pcValue').value)||0;
+  const kg=parseFloat(document.getElementById('pcWeight').value)||0;
+  const alcoKey=document.getElementById('pcAlcoKind').value;
+  const alcoL=parseFloat(document.getElementById('pcAlcoL').value)||0;
+  const ecom=document.getElementById('pcEcom').checked;
+  if(!eurRate){out.innerHTML='<div class="calc-warn w-red">Укажите курс EUR → сом: и нормы, и единые ставки Решения № 107 выражены в евро.</div>';return}
+  if(cur!=='СОМ'&&cur!=='EUR'&&!curRate){out.innerHTML='<div class="calc-warn w-red">Укажите курс валюты стоимости к сому.</div>';return}
+  const valueSom=valueCur*curRate;
+  const valueEur=valueSom/eurRate;
+  const g=personalGoodsDuty(ch,valueEur,kg);
+  const a=personalAlcoDuty(alcoKey,alcoL);
+  const dutySom=(g.eur+a.eur)*eurRate;
+  const fee=personalFee(ecom,kg,valueSom);
+  const total=dutySom+fee.sum;
+  let html='';
+  if(a.over)html+='<div class="calc-warn w-red">⛔ '+esc(a.note)+'.</div>';
+  html+='<div class="calc-result">';
+  html+='<div class="calc-line"><span>Стоимость товаров <span style="color:var(--muted);font-size:11px">('+valueCur.toFixed(2)+' '+esc(cur)+' → '+valueSom.toFixed(2)+' сом)</span></span><b>'+valueEur.toFixed(2)+' €</b></div>';
+  html+='<div class="calc-line"><span>Норма ввоза <span style="color:var(--muted);font-size:11px">(п.'+ch.item+' приложения № 1)</span></span><b>'+ch.eur+' € и '+ch.kg+' кг</b></div>';
+  html+='<div class="calc-line"><span>Единая ставка на превышение <span style="color:var(--muted);font-size:11px">('+esc(g.note)+')</span></span><b>'+(g.eur*eurRate).toFixed(2)+' сом</b></div>';
+  if(alcoKey!=='none'&&alcoL>0&&!a.over)
+    html+='<div class="calc-line"><span>Алкоголь <span style="color:var(--muted);font-size:11px">('+esc(a.note)+')</span></span><b>'+(a.eur*eurRate).toFixed(2)+' сом</b></div>';
+  html+='<div class="calc-line"><span>НДС и акциз <span style="color:var(--muted);font-size:11px">(отдельно не начисляются — единая ставка заменяет и пошлину, и налоги, п.3 ст.266 ТК ЕАЭС)</span></span><b>0.00 сом</b></div>';
+  html+='<div class="calc-line"><span>Сбор за таможенные операции <span style="color:var(--muted);font-size:11px">('+esc(fee.note)+')</span></span><b>'+fee.sum.toFixed(2)+' сом</b></div>';
+  html+='<div class="calc-total"><span>Итого таможенных платежей</span><span>'+total.toFixed(2)+' сом</span></div>';
+  html+='<div style="font-size:10px;color:var(--muted);margin-top:10px">Нормы — приложение № 1, ставки — таблица 1 приложения № 2 к '+docLink('Решению Совета ЕЭК от 20.12.2017 № 107',DOC_SOURCES.eec107p1)+' (для Кыргызской Республики действует вариант норм с 1 апреля 2024 года). Сбор — '+docLink('Закон КР № 52 от 24.04.2019, ст.41, 44',DOC_SOURCES.law52)+' и '+docLink('Инструкция к ПКМ КР № 79 от 13.02.2020 (ред. № 444 от 29.06.2026)',DOC_SOURCES.instr79)+'; при декларировании товаров в устной форме сбор не уплачивается вовсе (п.7 ч.3 ст.41 Закона № 52). Пункт 9 таблицы 1 приложения № 2 даёт особый случай, который здесь не считается: физическому лицу государства Союза, временно проживавшему за границей не менее 12 месяцев и подтвердившему это, беспошлинная норма поднимается до 5 000 € в эквиваленте, а превышение облагается по ставке 30 процентов от стоимости, но не менее 4 € за 1 кг веса. Отдельные категории товаров вообще не относятся к товарам для личного пользования — их перечень в '+docLink('приложении № 6 к тому же Решению',DOC_SOURCES.eec107p6)+'.'+auditNote('personal')+'</div>';
+  html+='</div>';
+  out.innerHTML=html;
+}
+
 let acSelectedCode=null;
 function renderAutoCalcPanel(){
   const brands=Object.keys(AUTO_CALC_IDX).sort();
@@ -7524,6 +7676,9 @@ function fillRateField(inputId,currency,labelId){
 function applyNbkrRatesToVisibleFields(){
   if(!nbkrRates)return;
   fillRateField('acEurRate','EUR','acEurRateLbl');
+  fillRateField('pcEurRate','EUR','pcEurRateLbl');
+  const pcCur=document.getElementById('pcCur');
+  if(pcCur&&pcCur.value!=='EUR'&&pcCur.value!=='СОМ')fillRateField('pcCurRate',pcCur.value,'pcCurRateLbl');
   const acCur=document.getElementById('acCurrency');
   // acCurRate относится к валюте авто только когда это не EUR/СОМ (см. onAcCurrencyChange) —
   // иначе поле скрыто, а заполнять его курсом EUR "на всякий случай" неверно: при последующем
@@ -8520,6 +8675,7 @@ function updateNavActive(){
   document.getElementById('navAutoBtn').classList.toggle('active',currentPage==='search'&&searchMode==='auto');
   document.getElementById('navSpeciesBtn').classList.toggle('active',currentPage==='search'&&searchMode==='species');
   document.getElementById('navCalcBtn').classList.toggle('active',currentPage==='search'&&searchMode==='calc');
+  document.getElementById('navPersonalBtn').classList.toggle('active',currentPage==='search'&&searchMode==='personal');
   document.getElementById('navTreeBtn').classList.toggle('active',currentPage==='tree');
   document.getElementById('navNotesBtn').classList.toggle('active',currentPage==='notes');
   document.getElementById('navLookupBtn').classList.toggle('active',currentPage==='lookup');
@@ -8705,13 +8861,15 @@ function setSearchMode(m){
   document.getElementById('modeAutoBtn').classList.toggle('active',m==='auto');
   document.getElementById('modeSpeciesBtn').classList.toggle('active',m==='species');
   document.getElementById('modeCalcBtn').classList.toggle('active',m==='calc');
+  document.getElementById('modePersonalBtn').classList.toggle('active',m==='personal');
   const adminLinkBtn=document.getElementById('adminLinkBtn');
   if(adminLinkBtn) adminLinkBtn.classList.toggle('active',m==='admin');
   const inp=document.getElementById('inp');
   const lbl=document.querySelector('label.sl');
-  document.querySelector('.sw').style.display=(m==='admin'||m==='auto')?'none':'block';
+  document.querySelector('.sw').style.display=(m==='admin'||m==='auto'||m==='personal')?'none':'block';
   document.getElementById('result').style.display='none';
   document.getElementById('autoCalcPanel').style.display='none';
+  document.getElementById('personalCalcPanel').style.display='none';
   document.getElementById('speciesResult').style.display='none';
   document.getElementById('calcResult').style.display='none';
   document.getElementById('calcBatchPanel').style.display='none';
@@ -8725,6 +8883,8 @@ function setSearchMode(m){
     document.getElementById('speciesResult').style.display='block';
   } else if(m==='auto'){
     document.getElementById('autoCalcPanel').style.display='block';
+  } else if(m==='personal'){
+    document.getElementById('personalCalcPanel').style.display='block';
   } else if(m==='calc'){
     inp.placeholder='введите код ТН ВЭД для расчёта, например 8517 12 0000';
     if(lbl) lbl.textContent='Введите код ТН ВЭД для расчёта пошлины и НДС';
@@ -9177,6 +9337,7 @@ if(appInitialized)return;
 appInitialized=true;
 
 renderAutoCalcPanel();
+renderPersonalCalcPanel();
 renderSourceAudit();
 loadNbkrRates();
 
