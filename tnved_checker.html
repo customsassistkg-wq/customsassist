@@ -71,6 +71,17 @@
   .sum-nav{display:flex;flex-wrap:wrap;gap:6px;margin-top:11px;padding-top:11px;border-top:1px solid rgba(26,35,51,.08)}
   .sum-jump{font-size:11px;font-family:var(--head);color:var(--muted);background:rgba(10,132,255,.06);border:1px solid rgba(10,132,255,.18);border-radius:var(--radius-pill);padding:5px 11px;cursor:pointer;transition:all .15s;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .sum-jump:hover{color:var(--indigo);border-color:var(--indigo);background:rgba(10,132,255,.12)}
+  /* Сводка: одна строка на карточку. Плашка риска и кнопка перехода говорили
+     об одном и том же и стояли двумя рядами — «🛡️ Товарный знак в ТРОИС»
+     отдельно от «По этому коду … есть действующие товарные знаки». Теперь это
+     одна кликабельная строка, цвет которой по-прежнему берётся из тега карточки. */
+  .sum-items{display:flex;flex-direction:column;gap:5px}
+  .sum-item{display:block;width:100%;text-align:left;white-space:normal;cursor:pointer;font-weight:600;line-height:1.45;padding:7px 12px;transition:all .15s}
+  .sum-item .si-t{font-weight:800}
+  .sum-item .si-r{font-weight:600;opacity:.88}
+  .sum-item .si-rate{font-weight:800;margin-left:6px}
+  .sum-item:hover{box-shadow:var(--shadow-sm);filter:saturate(1.15)}
+  @media(max-width:640px){.sum-item{font-size:11px;padding:6px 10px}}
   .card.card-alert{border-color:rgba(224,52,43,.5);box-shadow:0 0 0 2px rgba(224,52,43,.12),var(--shadow-md)}
   .card.card-flash{box-shadow:0 0 0 3px rgba(10,132,255,.35),var(--shadow-md)}
   /* Правовое основание: ссылки на акты вынесены из текста примечаний в плашку,
@@ -6660,32 +6671,40 @@ function buildResultSummary(container,q){
   if(!box)return;
   const cards=Array.prototype.slice.call(container.querySelectorAll(':scope > .card'));
   if(cards.length<2){box.innerHTML='';box.style.display='none';return}
-  const flags=[],seen={};
-  const rate=container.querySelector('.ett-rate');
-  if(rate&&rate.textContent.trim())flags.push({t:'💰 Пошлина: '+rate.textContent.replace(/\s+/g,' ').trim(),c:'f-pink',o:-1});
-  cards.forEach(card=>card.querySelectorAll('.tag').forEach(tag=>{
-    const txt=(tag.textContent||'').replace(/\s+/g,' ').trim();
-    if(!txt||seen[txt])return;
-    seen[txt]=1;
-    let c='f-blue';
-    for(let j=0;j<tag.classList.length;j++){const k=SUM_TAG_COLOR[tag.classList[j]];if(k){c=k;break}}
-    flags.push({t:trunc(txt,52),c:c,o:SUM_FLAG_ORDER[c]===undefined?9:SUM_FLAG_ORDER[c]});
-  }));
-  flags.sort((a,b)=>a.o-b.o);
-  const shown=flags.slice(0,12),rest=flags.length-shown.length;
-  const nav=cards.map(card=>{
+  // Одна строка на карточку. Раньше сводка шла двумя рядами — плашки риска по
+  // тегам и кнопки перехода по .rn — и обе говорили об одном и том же, только
+  // разными словами. Теперь тег и заголовок карточки склеены в одну строку, а
+  // цвет по-прежнему берётся из класса тега (SUM_TAG_COLOR), так что новой
+  // карточке ничего специально настраивать не нужно.
+  const items=cards.map((card,idx)=>{
     if(!card.id)card.id='rescard-'+(++resCardSeq);
-    const icoEl=card.querySelector(':scope > .rh .ico');
+    let tags=Array.prototype.slice.call(card.querySelectorAll(':scope > .tags .tag'));
+    if(!tags.length)tags=Array.prototype.slice.call(card.querySelectorAll('.tag'));
+    let c='f-blue',o=9;
+    if(tags.length){
+      for(let j=0;j<tags[0].classList.length;j++){const k=SUM_TAG_COLOR[tags[0].classList[j]];if(k){c=k;break}}
+      o=SUM_FLAG_ORDER[c]===undefined?9:SUM_FLAG_ORDER[c];
+    }
+    const label=tags.map(t=>(t.textContent||'').replace(/\s+/g,' ').trim()).filter(Boolean).join(' · ');
     const rnEl=card.querySelector(':scope > .rn')||card.querySelector(':scope > .rh .rc');
-    const label=(rnEl?rnEl.textContent:'').replace(/\s+/g,' ').trim();
-    return `<button type="button" class="sum-jump" onclick="focusResultCard('${card.id}')">${esc(icoEl?icoEl.textContent.trim():'•')} ${esc(trunc(label||'карточка',44))}</button>`;
-  }).join('');
+    const rn=(rnEl?rnEl.textContent:'').replace(/\s+/g,' ').trim();
+    const rateEl=card.querySelector('.ett-rate');
+    const rate=rateEl?(rateEl.textContent||'').replace(/\s+/g,' ').trim():'';
+    const icoEl=card.querySelector(':scope > .rh .ico');
+    const head=label||((icoEl?icoEl.textContent.trim()+' ':'')+'Карточка');
+    const html='<button type="button" class="sum-flag sum-item '+c+'" onclick="focusResultCard(\''+card.id+'\')">'
+      +'<span class="si-t">'+esc(trunc(head,64))+'</span>'
+      +(rn&&rn!==head?'<span class="si-r"> — '+esc(trunc(rn,130))+'</span>':'')
+      +(rate?'<span class="si-rate">'+esc(trunc(rate,30))+'</span>':'')
+      +'</button>';
+    return {o:o,i:idx,html:html};
+  });
+  items.sort((a,b)=>(a.o-b.o)||(a.i-b.i));
   const hasAlert=!!container.querySelector(ALERT_TAG_SEL);
   box.className='summary'+(hasAlert?' has-alert':'');
   box.style.display='';
-  box.innerHTML=`<div class="sum-h"><span class="sum-code">${hasAlert?'⚠️':'🧭'} Сводка${q?' по запросу «'+esc(trunc(q.trim(),28))+'»':''}</span><span class="sum-cnt">найдено карточек: ${cards.length}</span></div>`
-    +`<div class="sum-flags">${shown.map(f=>`<span class="sum-flag ${f.c}">${esc(f.t)}</span>`).join('')}${rest>0?`<span class="sum-flag f-rest">+ ещё ${rest}</span>`:''}</div>`
-    +`<div class="sum-nav">${nav}</div>`;
+  box.innerHTML=`<div class="sum-h"><span class="sum-code">${hasAlert?'⚠️':'🧭'} Сводка${q?' по запросу «'+esc(trunc(q.trim(),28))+'»':''}</span><span class="sum-cnt">найдено карточек: ${cards.length} · нажмите строку, чтобы перейти к карточке</span></div>`
+    +`<div class="sum-items">${items.map(x=>x.html).join('')}</div>`;
 }
 
 function render(q,boxId){
