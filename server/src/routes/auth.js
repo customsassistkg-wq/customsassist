@@ -7,6 +7,18 @@ const { endUserSessions } = require('../services/sessions');
 
 const router = express.Router();
 
+// Канонический адрес для ссылок в письмах. APP_ORIGIN с 11.09.2026 — это
+// СПИСОК разрешённых origin (домен плюс старый адрес, на который указывает
+// мобильное приложение), и подставлять его в ссылку целиком нельзя: получится
+// "https://a,https://b/?reset=...". Берём явный PUBLIC_ORIGIN, а если его нет —
+// первый origin списка. Вычисляется на каждый вызов, чтобы тесты и локальная
+// разработка могли менять переменные окружения после загрузки модуля.
+function publicOrigin() {
+  const explicit = process.env.PUBLIC_ORIGIN;
+  const first = (process.env.APP_ORIGIN || '').split(',')[0];
+  return (explicit || first || '').trim().replace(/\/+$/, '');
+}
+
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const RESET_RESEND_COOLDOWN_MS = 2 * 60 * 1000; // don't mint a 2nd token within 2 min of a still-valid one
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -217,8 +229,7 @@ router.post('/forgot-password', async (req, res) => {
       [user.id, hashToken(token), new Date(Date.now() + RESET_TOKEN_TTL_MS)]
     );
 
-    const origin = process.env.APP_ORIGIN || '';
-    const resetUrl = `${origin}/?reset=${token}`;
+    const resetUrl = `${publicOrigin()}/?reset=${token}`;
     await sendEmail({
       to: user.email,
       subject: 'Восстановление пароля — Проверка ТН ВЭД',
