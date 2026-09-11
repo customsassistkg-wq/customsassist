@@ -342,11 +342,115 @@
   .calc-rateinfo{font-size:11px;color:var(--muted);margin-bottom:14px;padding:10px 12px;background:var(--bg);border-radius:5px}
 
   /* ── Вход / администрирование ── */
-  .auth-screen{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:radial-gradient(720px 520px at 10% 0%,rgba(90,86,214,.24),transparent 60%),radial-gradient(680px 560px at 100% 20%,rgba(224,36,94,.16),transparent 55%),radial-gradient(900px 700px at 40% 110%,rgba(10,132,255,.18),transparent 60%),var(--bg);padding:var(--space-4)}
-  .auth-card{width:100%;max-width:380px;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:28px;padding:42px 38px;box-shadow:var(--shadow-lg)}
-  .auth-card h1{font-size:20px;margin-bottom:var(--space-2)}
-  .auth-card .sub{margin-bottom:var(--space-5)}
-  .auth-card .calc-field:last-of-type{margin-bottom:var(--space-4)}
+  /* Экран входа — единственная тёмная поверхность в приложении. Все его правила
+     namespace'ятся под #authScreen, чтобы ничего не протекало в светлый интерфейс. */
+  #authScreen{--ac-ink:#EEF1FA;--ac-dim:#A7B0CE;--ac-brand:#5B6CFF;--ac-brand2:#2F6BFF;--ac-line:rgba(255,255,255,.11);--ac-field:rgba(255,255,255,.055)}
+  .auth-screen{position:fixed;inset:0;z-index:50;display:flex;align-items:stretch;justify-content:center;overflow-y:auto;
+    background:radial-gradient(900px 620px at 12% -10%,rgba(91,108,255,.30),transparent 62%),radial-gradient(760px 620px at 104% 12%,rgba(47,107,255,.22),transparent 58%),radial-gradient(900px 700px at 50% 120%,rgba(120,86,214,.20),transparent 60%),linear-gradient(160deg,#0C1226 0%,#0A0F20 48%,#080C1A 100%);color:var(--ac-ink)}
+  .auth-shell{width:100%;max-width:1180px;margin:auto;display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:40px 32px}
+
+  /* ── Левая половина: о сервисе ── */
+  .auth-hero{position:relative;min-width:0}
+  /* Схема маршрутов лежит фоном за всей левой половиной и заметно приглушена:
+     это подложка, а не иллюстрация, и она не должна спорить с заголовком. */
+  .auth-hero-art{position:absolute;left:-90px;right:-70px;top:-70px;bottom:-70px;width:auto;height:auto;opacity:.42;pointer-events:none}
+  .auth-hero::before{content:'';position:absolute;left:-40px;top:40px;width:420px;height:320px;pointer-events:none;
+    background:radial-gradient(closest-side,rgba(91,108,255,.22),transparent 70%);filter:blur(6px)}
+  .auth-hero-art .acnode{animation:acpulse 3.8s ease-in-out infinite}
+  .auth-hero-art .acnode:nth-child(2){animation-delay:.9s}
+  .auth-hero-art .acnode:nth-child(3){animation-delay:1.8s}
+  .auth-hero-art .acnode:nth-child(4){animation-delay:2.7s}
+  @keyframes acpulse{0%,100%{opacity:.45}50%{opacity:1}}
+  .auth-hero-inner{position:relative}
+  .auth-logo{display:flex;align-items:center;gap:12px;margin-bottom:38px}
+  .auth-logo-mark{width:40px;height:40px;flex-shrink:0;border-radius:12px;display:grid;place-items:center;font-family:var(--head);font-weight:800;font-size:15px;letter-spacing:.02em;color:#fff;
+    background:linear-gradient(140deg,var(--ac-brand),var(--ac-brand2));box-shadow:0 8px 24px rgba(91,108,255,.45)}
+  .auth-logo-text{font-family:var(--head);font-size:17px;font-weight:600;letter-spacing:-.01em;color:var(--ac-ink)}
+  .auth-logo-text b{font-weight:800;color:#9FB4FF}
+  .auth-hero-title{font-family:var(--head);font-size:46px;line-height:1.08;font-weight:800;letter-spacing:-.03em;margin:0 0 20px;
+    background:linear-gradient(180deg,#FFFFFF 25%,#B8C4EE 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .auth-hero-sub{font-size:15px;line-height:1.65;color:var(--ac-dim);max-width:46ch;margin:0 0 34px}
+  .auth-feats{list-style:none;display:flex;flex-direction:column;gap:14px;margin:0;padding:0}
+  .auth-feats li{display:flex;align-items:flex-start;gap:14px}
+  .af-ico{width:38px;height:38px;flex-shrink:0;border-radius:11px;display:grid;place-items:center;font-size:17px;
+    background:rgba(255,255,255,.06);border:1px solid var(--ac-line)}
+  .af-t{display:block;font-size:14px;font-weight:600;color:var(--ac-ink);line-height:1.35}
+  .af-s{display:block;font-size:12.5px;color:var(--ac-dim);line-height:1.5;margin-top:2px}
+
+  /* ── Правая половина: карточка ── */
+  .auth-pane{display:flex;justify-content:center;min-width:0}
+  .auth-card{width:100%;max-width:420px;border-radius:24px;padding:36px 34px 26px;
+    background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.035));
+    backdrop-filter:blur(26px) saturate(1.4);-webkit-backdrop-filter:blur(26px) saturate(1.4);
+    border:1px solid var(--ac-line);box-shadow:0 34px 80px rgba(4,7,20,.55),inset 0 1px 0 rgba(255,255,255,.09)}
+  .auth-card-logo{display:none;align-items:center;justify-content:center;gap:11px;margin-bottom:24px}
+  .auth-card h1{font-family:var(--head);font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0 0 7px;color:#fff}
+  .auth-card .sub{font-size:13.5px;line-height:1.55;color:var(--ac-dim);margin:0 0 26px}
+
+  .auth-field{margin-bottom:16px}
+  .auth-lrow{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .auth-field label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.11em;color:var(--ac-dim);margin-bottom:7px;font-weight:600}
+  .auth-field input{width:100%;background:var(--ac-field);border:1px solid var(--ac-line);border-radius:14px;color:var(--ac-ink);
+    font-family:var(--head);font-size:15px;padding:13px 15px;outline:none;transition:border-color .15s,box-shadow .15s,background .15s}
+  .auth-field input::placeholder{color:#6C769B}
+  .auth-field input:hover{background:rgba(255,255,255,.075)}
+  .auth-field input:focus{border-color:var(--ac-brand);background:rgba(255,255,255,.085);box-shadow:0 0 0 4px rgba(91,108,255,.20)}
+  .auth-field.is-bad input{border-color:#FF6B6B;box-shadow:0 0 0 4px rgba(255,107,107,.15)}
+  .auth-fe{display:none;font-size:12px;color:#FF8B8B;margin-top:7px;line-height:1.45}
+  .auth-field.is-bad .auth-fe{display:block}
+  .auth-pwrap{position:relative}
+  .auth-pwrap input{padding-right:46px}
+  .auth-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:0;border-radius:10px;
+    background:transparent;color:var(--ac-dim);cursor:pointer;display:grid;place-items:center;font-size:15px;line-height:1}
+  .auth-eye:hover{background:rgba(255,255,255,.09);color:var(--ac-ink)}
+  .auth-lrow a{font-size:12px;color:#9FB4FF;text-decoration:none}
+  .auth-lrow a:hover{text-decoration:underline}
+
+  .auth-btn{width:100%;border:0;border-radius:16px;padding:15px 18px;font-family:var(--head);font-size:14.5px;font-weight:600;
+    color:#fff;cursor:pointer;background:linear-gradient(135deg,var(--ac-brand),var(--ac-brand2));
+    box-shadow:0 12px 30px rgba(64,92,255,.38);transition:transform .12s,box-shadow .18s,filter .18s;position:relative}
+  .auth-btn:hover:not(:disabled){filter:brightness(1.07);box-shadow:0 16px 38px rgba(64,92,255,.5)}
+  .auth-btn:active:not(:disabled){transform:translateY(1px)}
+  .auth-btn:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
+  .auth-btn.ghost{background:rgba(255,255,255,.06);border:1px solid var(--ac-line);box-shadow:none;color:var(--ac-ink);font-weight:500}
+  .auth-btn.ghost:hover:not(:disabled){background:rgba(255,255,255,.1);filter:none}
+  .auth-btn.is-busy .ab-label{visibility:hidden}
+  .auth-btn.is-busy::after{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;
+    border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:acspin .7s linear infinite}
+  @keyframes acspin{to{transform:rotate(360deg)}}
+  .auth-btn.is-ok{background:linear-gradient(135deg,#1FA34D,#17864A);box-shadow:0 12px 30px rgba(31,163,77,.4)}
+
+  .auth-or{display:flex;align-items:center;gap:14px;margin:18px 0;color:var(--ac-dim);font-size:12px}
+  .auth-or::before,.auth-or::after{content:'';height:1px;flex:1;background:var(--ac-line)}
+  .auth-note{text-align:center;font-size:12px;color:var(--ac-dim);margin:10px 0 0}
+  .auth-back{display:block;text-align:center;margin-top:16px;font-size:12.5px;color:#9FB4FF;text-decoration:none}
+  .auth-back:hover{text-decoration:underline}
+
+  .auth-trust{margin-top:26px;padding-top:18px;border-top:1px solid var(--ac-line);text-align:center}
+  .auth-trust b{display:block;font-size:13px;font-weight:700;letter-spacing:.01em;color:var(--ac-ink)}
+  .auth-trust span{display:block;font-size:11.5px;color:var(--ac-dim);margin-top:4px}
+  .auth-trust small{display:block;font-size:11px;color:#6C769B;margin-top:10px}
+
+  /* Сообщения переиспользуют .calc-warn из приложения — на тёмном фоне их надо перекрасить */
+  #authScreen .calc-warn{border-radius:14px;font-size:12.5px;margin-bottom:14px}
+  #authScreen .w-red{background:rgba(255,107,107,.13);border-color:rgba(255,107,107,.38);color:#FF9B9B}
+  #authScreen .auth-ok{background:rgba(31,163,77,.15);border-color:rgba(31,163,77,.42);color:#7BE0A2}
+
+  @media (max-width:980px){
+    .auth-shell{grid-template-columns:1fr;gap:0;padding:24px 18px;max-width:520px}
+    .auth-hero{display:none}
+    .auth-card-logo{display:flex}
+    .auth-card{max-width:none;padding:30px 24px 22px;border-radius:22px}
+    .auth-card h1{font-size:22px}
+  }
+  @media (max-width:400px){
+    .auth-shell{padding:16px 12px}
+    .auth-card{padding:26px 18px 20px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .auth-btn,.auth-field input{transition:none}
+    .auth-hero-art .acnode{animation:none}
+  }
   .user-bar{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-3);font-size:11px;color:var(--muted);margin-bottom:var(--space-3)}
   .user-bar b{color:var(--text)}
   .admin-link-btn{border-color:rgba(155,63,196,.35);color:var(--purple);background:rgba(155,63,196,.06)}
@@ -398,62 +502,133 @@
 </head>
 <body>
 <div id="authScreen" class="auth-screen">
-  <div class="auth-card">
-    <div id="authViewLogin">
-      <h1>Вход</h1>
-      <p class="sub">Проверка ТН ВЭД — КР 2025/2026. Доступ только для зарегистрированных пользователей.</p>
-      <div class="calc-field">
-        <label for="authEmail">Email</label>
-        <input id="authEmail" type="email" autocomplete="username" placeholder="you@example.com">
+  <div class="auth-shell">
+
+    <!-- Левая половина — о сервисе. На узком экране скрывается целиком, а логотип
+         дублируется внутри карточки, чтобы на телефоне он всё равно был сверху. -->
+    <section class="auth-hero">
+      <!-- Декоративная схема торговых маршрутов: узлы и пунктирные связи.
+           Чисто оформление, поэтому спрятана от скринридеров. -->
+      <svg class="auth-hero-art" viewBox="0 0 720 560" preserveAspectRatio="xMidYMid slice" fill="none" aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id="acline" x1="0" y1="0" x2="1" y2="0.6">
+            <stop offset="0%" stop-color="#6E7CFF" stop-opacity="0"/>
+            <stop offset="28%" stop-color="#7C8CFF" stop-opacity=".85"/>
+            <stop offset="100%" stop-color="#2F6BFF" stop-opacity="0"/>
+          </linearGradient>
+          <linearGradient id="acline2" x1="0" y1="1" x2="1" y2="0">
+            <stop offset="0%" stop-color="#4B5EF0" stop-opacity="0"/>
+            <stop offset="45%" stop-color="#8FA2FF" stop-opacity=".6"/>
+            <stop offset="100%" stop-color="#8FA2FF" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <g stroke-linecap="round">
+          <path d="M-40 430 C 140 430, 210 210, 400 190 S 640 120, 780 96" stroke="url(#acline)" stroke-width="1.7" stroke-dasharray="9 11"/>
+          <path d="M-40 508 C 170 500, 268 360, 452 340 S 660 296, 780 238" stroke="url(#acline2)" stroke-width="1.3" stroke-dasharray="3 12"/>
+          <path d="M-20 150 C 150 168, 226 286, 404 300 S 660 330, 780 404" stroke="url(#acline2)" stroke-width="1.3" stroke-dasharray="3 12"/>
+          <path d="M-30 300 C 200 296, 330 250, 780 274" stroke="url(#acline)" stroke-width="1" stroke-dasharray="2 14" opacity=".6"/>
+        </g>
+        <g fill="#9DB0FF">
+          <circle class="acnode" cx="400" cy="190" r="3.6"/>
+          <circle class="acnode" cx="452" cy="340" r="3"/>
+          <circle class="acnode" cx="404" cy="300" r="2.6"/>
+          <circle class="acnode" cx="140" cy="430" r="3"/>
+        </g>
+      </svg>
+      <div class="auth-hero-inner">
+        <div class="auth-logo"><span class="auth-logo-mark">CA</span><span class="auth-logo-text">CustomsAssist<b>KG</b></span></div>
+        <h2 class="auth-hero-title">Проверяйте.<br>Анализируйте.<br>Оформляйте.</h2>
+        <p class="auth-hero-sub">Быстрый доступ к информации по ТН ВЭД, ограничениям, ставкам и таможенным данным Кыргызской Республики.</p>
+        <ul class="auth-feats">
+          <li><span class="af-ico">📗</span><div><span class="af-t">ТН ВЭД КР 2025/2026</span><span class="af-s">Действующая номенклатура, ставки и пояснения</span></div></li>
+          <li><span class="af-ico">⛔</span><div><span class="af-t">Ограничения и запреты</span><span class="af-s">Лицензии, квоты, разрешительный порядок, контроль</span></div></li>
+          <li><span class="af-ico">✨</span><div><span class="af-t">Интеллектуальный помощник</span><span class="af-s">Поиск по коду и наименованию, расчёт платежей</span></div></li>
+        </ul>
       </div>
-      <div class="calc-field">
-        <label for="authPassword">Пароль</label>
-        <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••">
+    </section>
+
+    <!-- Правая половина: карточка авторизации. Внутри четыре режима, переключает
+         showAuthView() — идентификаторы менять нельзя, на них завязан весь JS. -->
+    <section class="auth-pane">
+      <div class="auth-card">
+        <div class="auth-card-logo"><div class="auth-logo"><span class="auth-logo-mark">CA</span><span class="auth-logo-text">CustomsAssist<b>KG</b></span></div></div>
+
+    <div id="authViewLogin">
+      <h1>С возвращением 👋</h1>
+      <p class="sub">Войдите в CustomsAssistKG, чтобы продолжить работу</p>
+      <div class="auth-field" data-field="authEmail">
+        <label for="authEmail">Email</label>
+        <input id="authEmail" type="email" autocomplete="username" placeholder="you@example.com" spellcheck="false">
+        <div class="auth-fe"></div>
+      </div>
+      <div class="auth-field" data-field="authPassword">
+        <div class="auth-lrow"><label for="authPassword">Пароль</label><a href="#" id="authForgotLink">Забыли пароль?</a></div>
+        <div class="auth-pwrap">
+          <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••">
+          <button type="button" class="auth-eye" data-eye="authPassword" aria-label="Показать пароль" title="Показать пароль">👁</button>
+        </div>
+        <div class="auth-fe"></div>
       </div>
       <div id="authError" class="calc-warn w-red" style="display:none"></div>
-      <div id="authInfo" class="calc-warn" style="display:none;background:rgba(31,163,77,.11);border-color:rgba(31,163,77,.4);color:var(--green)"></div>
-      <button id="authSubmit" class="calc-btn" type="button">Войти</button>
-      <div style="text-align:center;margin-top:14px;display:flex;justify-content:center;gap:16px"><a href="#" id="authForgotLink" style="font-size:12px;color:var(--muted)">Забыли пароль?</a><a href="#" id="authRegisterLink" style="font-size:12px;color:var(--muted)">Создать аккаунт</a></div>
+      <div id="authInfo" class="calc-warn auth-ok" style="display:none"></div>
+      <button id="authSubmit" class="auth-btn" type="button"><span class="ab-label">Войти в CustomsAssistKG →</span></button>
+      <div class="auth-or"><span>или</span></div>
+      <button id="authRegisterLink" class="auth-btn ghost" type="button"><span class="ab-label">Создать аккаунт</span></button>
+      <p class="auth-note">Регистрация бесплатна</p>
     </div>
 
     <div id="authViewForgot" style="display:none">
       <h1>Восстановление пароля</h1>
       <p class="sub">Укажите email, привязанный к вашей учётной записи — если он зарегистрирован, на него придёт ссылка для сброса пароля.</p>
-      <div class="calc-field">
+      <div class="auth-field" data-field="authForgotEmail">
         <label for="authForgotEmail">Email</label>
-        <input id="authForgotEmail" type="email" autocomplete="username" placeholder="you@example.com">
+        <input id="authForgotEmail" type="email" autocomplete="username" placeholder="you@example.com" spellcheck="false">
+        <div class="auth-fe"></div>
       </div>
       <div id="authForgotError" class="calc-warn w-red" style="display:none"></div>
-      <div id="authForgotInfo" class="calc-warn" style="display:none;background:rgba(31,163,77,.11);border-color:rgba(31,163,77,.4);color:var(--green)"></div>
-      <button id="authForgotSubmit" class="calc-btn" type="button">Отправить ссылку</button>
-      <div style="text-align:center;margin-top:14px"><a href="#" id="authBackToLoginLink" style="font-size:12px;color:var(--muted)">← Назад ко входу</a></div>
+      <div id="authForgotInfo" class="calc-warn auth-ok" style="display:none"></div>
+      <button id="authForgotSubmit" class="auth-btn" type="button"><span class="ab-label">Отправить ссылку</span></button>
+      <a href="#" id="authBackToLoginLink" class="auth-back">← Назад ко входу</a>
     </div>
 
     <div id="authViewReset" style="display:none">
       <h1>Новый пароль</h1>
-      <p class="sub">Придумайте новый пароль для входа.</p>
-      <div class="calc-field">
+      <p class="sub">Придумайте новый пароль для входа в CustomsAssistKG.</p>
+      <div class="auth-field" data-field="authResetPassword">
         <label for="authResetPassword">Новый пароль</label>
-        <input id="authResetPassword" type="password" autocomplete="new-password" placeholder="не менее 8 символов">
+        <div class="auth-pwrap">
+          <input id="authResetPassword" type="password" autocomplete="new-password" placeholder="не менее 8 символов">
+          <button type="button" class="auth-eye" data-eye="authResetPassword" aria-label="Показать пароль" title="Показать пароль">👁</button>
+        </div>
+        <div class="auth-fe"></div>
       </div>
-      <div class="calc-field">
+      <div class="auth-field" data-field="authResetPassword2">
         <label for="authResetPassword2">Повторите пароль</label>
-        <input id="authResetPassword2" type="password" autocomplete="new-password" placeholder="не менее 8 символов">
+        <div class="auth-pwrap">
+          <input id="authResetPassword2" type="password" autocomplete="new-password" placeholder="не менее 8 символов">
+          <button type="button" class="auth-eye" data-eye="authResetPassword2" aria-label="Показать пароль" title="Показать пароль">👁</button>
+        </div>
+        <div class="auth-fe"></div>
       </div>
       <div id="authResetError" class="calc-warn w-red" style="display:none"></div>
-      <button id="authResetSubmit" class="calc-btn" type="button">Установить пароль</button>
+      <button id="authResetSubmit" class="auth-btn" type="button"><span class="ab-label">Установить пароль</span></button>
     </div>
 
     <div id="authViewRegister" style="display:none">
       <h1>Создать аккаунт</h1>
       <p class="sub">Бесплатный пробный доступ на 3 дня. После этого понадобится продление у администратора.</p>
-      <div class="calc-field">
+      <div class="auth-field" data-field="authRegisterEmail">
         <label for="authRegisterEmail">Email</label>
-        <input id="authRegisterEmail" type="email" autocomplete="username" placeholder="you@example.com">
+        <input id="authRegisterEmail" type="email" autocomplete="username" placeholder="you@example.com" spellcheck="false">
+        <div class="auth-fe"></div>
       </div>
-      <div class="calc-field">
+      <div class="auth-field" data-field="authRegisterPassword">
         <label for="authRegisterPassword">Пароль</label>
-        <input id="authRegisterPassword" type="password" autocomplete="new-password" placeholder="не менее 8 символов">
+        <div class="auth-pwrap">
+          <input id="authRegisterPassword" type="password" autocomplete="new-password" placeholder="не менее 8 символов">
+          <button type="button" class="auth-eye" data-eye="authRegisterPassword" aria-label="Показать пароль" title="Показать пароль">👁</button>
+        </div>
+        <div class="auth-fe"></div>
       </div>
       <!-- Honeypot — скрыто от людей CSS'ом (не через type=hidden, чтобы автозаполнение
            ботов, которое ищет видимые поля формы, тоже на это попадалось), настоящие
@@ -463,9 +638,17 @@
         <input id="authRegisterWebsite" type="text" name="website" tabindex="-1" autocomplete="off">
       </div>
       <div id="authRegisterError" class="calc-warn w-red" style="display:none"></div>
-      <button id="authRegisterSubmit" class="calc-btn" type="button">Создать аккаунт</button>
-      <div style="text-align:center;margin-top:14px"><a href="#" id="authRegisterBackLink" style="font-size:12px;color:var(--muted)">← Назад ко входу</a></div>
+      <button id="authRegisterSubmit" class="auth-btn" type="button"><span class="ab-label">Создать аккаунт</span></button>
+      <a href="#" id="authRegisterBackLink" class="auth-back">← Назад ко входу</a>
     </div>
+
+        <div class="auth-trust">
+          <b>CustomsAssistKG</b>
+          <span>Таможенные данные • ТН ВЭД • Кыргызстан</span>
+          <small>© 2026 CustomsAssistKG</small>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
 
@@ -654,6 +837,53 @@ async function apiFetch(url,opts){
   return res;
 }
 
+// Кнопки экрана входа держат подпись в <span class="ab-label">, а не в самом
+// узле: раньше обработчики писали btn.textContent='Вход...' и обратно, то есть
+// подпись была зашита в трёх местах и при любой правке разметки расходилась.
+// Теперь состояние — это класс, а текст остаётся в разметке нетронутым.
+function authBtnBusy(btn,busy){
+  if(!btn)return;
+  btn.disabled=!!busy;
+  btn.classList.toggle('is-busy',!!busy);
+  if(busy)btn.classList.remove('is-ok');
+}
+function authBtnOk(btn){ if(btn){btn.classList.remove('is-busy');btn.classList.add('is-ok');} }
+function authBtnReset(btn){ if(btn){btn.disabled=false;btn.classList.remove('is-busy','is-ok');} }
+
+// Ошибка конкретного поля показывается под ним, а не общим блоком наверху:
+// человек видит, куда именно смотреть.
+function authFieldBad(id,msg){
+  const w=document.querySelector('[data-field="'+id+'"]');
+  if(!w)return;
+  w.classList.add('is-bad');
+  const fe=w.querySelector('.auth-fe');
+  if(fe)fe.textContent=msg;
+  const inp=document.getElementById(id);
+  if(inp)inp.focus();
+}
+function authFieldsClear(){
+  document.querySelectorAll('#authScreen .auth-field.is-bad').forEach(w=>{
+    w.classList.remove('is-bad');
+    const fe=w.querySelector('.auth-fe'); if(fe)fe.textContent='';
+  });
+}
+// Тот же шаблон, что и на сервере (routes/auth.js), — чтобы форма не пропускала
+// то, что бэкенд всё равно отвергнет, и не отвергала то, что он примет.
+const AUTH_EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Возвращает true, если поле заполнено и похоже на адрес; иначе само подсвечивает.
+function authCheckEmail(id){
+  const v=(document.getElementById(id).value||'').trim();
+  if(!v){authFieldBad(id,'Введите email');return false;}
+  if(!AUTH_EMAIL_RE.test(v)){authFieldBad(id,'Похоже, адрес указан с ошибкой');return false;}
+  return true;
+}
+function authCheckPassword(id,min){
+  const v=document.getElementById(id).value||'';
+  if(!v){authFieldBad(id,'Введите пароль');return false;}
+  if(min&&v.length<min){authFieldBad(id,'Не менее '+min+' символов');return false;}
+  return true;
+}
+
 function showAuthView(view){
   document.getElementById('authViewLogin').style.display=view==='login'?'':'none';
   document.getElementById('authViewForgot').style.display=view==='forgot'?'':'none';
@@ -663,6 +893,8 @@ function showAuthView(view){
     const el=document.getElementById(id);
     el.style.display='none';el.textContent='';
   }
+  authFieldsClear();
+  document.querySelectorAll('#authScreen .auth-btn').forEach(authBtnReset);
 }
 
 function showAuthScreen(msg){
@@ -680,8 +912,9 @@ async function submitForgotPassword(){
   const errEl=document.getElementById('authForgotError');
   const infoEl=document.getElementById('authForgotInfo');
   errEl.style.display='none';infoEl.style.display='none';
-  if(!email){errEl.textContent='Введите email';errEl.style.display='block';return;}
-  btn.disabled=true;btn.textContent='Отправка...';
+  authFieldsClear();
+  if(!authCheckEmail('authForgotEmail'))return;
+  authBtnBusy(btn,true);
   try{
     await fetch('/api/auth/forgot-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
     // Deliberately the same message whether or not the email is actually
@@ -692,7 +925,7 @@ async function submitForgotPassword(){
     errEl.textContent='Не удалось соединиться с сервером';
     errEl.style.display='block';
   }finally{
-    btn.disabled=false;btn.textContent='Отправить ссылку';
+    authBtnReset(btn);
   }
 }
 
@@ -706,7 +939,7 @@ async function submitRegister(){
   if(!email||!password){errEl.textContent='Заполните email и пароль';errEl.style.display='block';return;}
   if(!EMAIL_RE.test(email)){errEl.textContent='Введите корректный email (например, user@example.com)';errEl.style.display='block';return;}
   if(password.length<8){errEl.textContent='Пароль должен быть не короче 8 символов';errEl.style.display='block';return;}
-  btn.disabled=true;btn.textContent='Создание...';
+  authBtnBusy(btn,true);
   try{
     const res=await fetch('/api/auth/register',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,website})});
     if(!res.ok){
@@ -725,7 +958,7 @@ async function submitRegister(){
     errEl.textContent='Не удалось соединиться с сервером';
     errEl.style.display='block';
   }finally{
-    btn.disabled=false;btn.textContent='Создать аккаунт';
+    authBtnReset(btn);
   }
 }
 
@@ -739,7 +972,7 @@ async function submitResetPassword(){
   errEl.style.display='none';
   if(!p1||p1.length<8){errEl.textContent='Пароль должен быть не короче 8 символов';errEl.style.display='block';return;}
   if(p1!==p2){errEl.textContent='Пароли не совпадают';errEl.style.display='block';return;}
-  btn.disabled=true;btn.textContent='Сохранение...';
+  authBtnBusy(btn,true);
   try{
     const res=await fetch('/api/auth/reset-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:pendingResetToken,password:p1})});
     if(!res.ok){
@@ -757,7 +990,7 @@ async function submitResetPassword(){
     errEl.textContent='Не удалось соединиться с сервером';
     errEl.style.display='block';
   }finally{
-    btn.disabled=false;btn.textContent='Установить пароль';
+    authBtnReset(btn);
   }
 }
 
@@ -806,8 +1039,12 @@ async function doLogin(){
   const email=document.getElementById('authEmail').value.trim();
   const password=document.getElementById('authPassword').value;
   const btn=document.getElementById('authSubmit');
-  if(!email||!password){showAuthScreen('Введите email и пароль');return;}
-  btn.disabled=true;btn.textContent='Вход...';
+  authFieldsClear();
+  // Пустое и кривое поле ловим здесь: сеть для этого дёргать незачем, а человек
+  // видит ошибку под самим полем, а не общим сообщением наверху.
+  if(!authCheckEmail('authEmail'))return;
+  if(!authCheckPassword('authPassword'))return;
+  authBtnBusy(btn,true);
   try{
     const res=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
     if(!res.ok){
@@ -820,12 +1057,16 @@ async function doLogin(){
     }
     currentUser=await res.json();
     document.getElementById('authPassword').value='';
+    // Короткая зелёная вспышка вместо мгновенной подмены экрана: иначе переход
+    // выглядит как сбой, особенно когда ответ приходит быстро.
+    authBtnOk(btn);
+    await new Promise(r=>setTimeout(r,320));
     showApp();
     initApp();
   }catch(e){
     showAuthScreen('Не удалось соединиться с сервером');
   }finally{
-    btn.disabled=false;btn.textContent='Войти';
+    authBtnReset(btn);
   }
 }
 
@@ -835,6 +1076,28 @@ async function doLogout(){
   showAuthScreen();
 }
 
+// Глазок у каждого поля пароля: один делегированный обработчик вместо трёх.
+document.getElementById('authScreen').addEventListener('click',function(e){
+  const eye=e.target.closest('.auth-eye');
+  if(!eye)return;
+  const inp=document.getElementById(eye.dataset.eye);
+  if(!inp)return;
+  const show=inp.type==='password';
+  inp.type=show?'text':'password';
+  eye.textContent=show?'🙈':'👁';
+  eye.setAttribute('aria-label',show?'Скрыть пароль':'Показать пароль');
+  eye.setAttribute('title',show?'Скрыть пароль':'Показать пароль');
+  inp.focus();
+});
+// Как только человек начал править поле, красную подсветку снимаем — держать
+// её до следующей отправки значит ругаться на уже исправленное.
+document.getElementById('authScreen').addEventListener('input',function(e){
+  const w=e.target.closest('.auth-field');
+  if(w&&w.classList.contains('is-bad')){
+    w.classList.remove('is-bad');
+    const fe=w.querySelector('.auth-fe'); if(fe)fe.textContent='';
+  }
+});
 document.getElementById('authSubmit').addEventListener('click',doLogin);
 document.getElementById('authPassword').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin()});
 document.getElementById('authEmail').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin()});
