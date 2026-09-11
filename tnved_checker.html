@@ -14,19 +14,24 @@
    ВАЖНО: печать перекрыта отдельно в @media print — там тема принудительно
    светлая, иначе распечатка выходит белым текстом по белой бумаге. */
 :root {
-    --bg:#0A0F20;--surface:#141A2E;--border:rgba(255,255,255,.13);--indigo:#8B97FF;--indigo-surface:#3A46C8;
-    --red:#FF7A72;--green:#4CD481;--yellow:#E8B34A;--blue:#9A97FF;
-    --purple:#D08AEE;--teal:#3FC7D4;--orange:#F0A24E;--cyan:#56C3E8;--pink:#FF6B96;
-    --text:#E9EDF8;--muted:#98A2C0;
+    --bg:#171A21;--surface:#20242D;--border:rgba(255,255,255,.11);--indigo:#9AA4F5;--indigo-surface:#4350C0;
+    --red:#F08A82;--green:#6FCB92;--yellow:#DDB268;--blue:#A5A6F0;
+    --purple:#C79AE0;--teal:#63C3CC;--orange:#E5A76A;--cyan:#79BEDC;--pink:#F0879F;
+    --text:#D7DBE3;--muted:#979EAC;
+    /* Цвета, зависящие от темы. Держим их токенами, а не значениями в правилах:
+       иначе смена палитры оставляет их от прежней темы и молча ломает контраст —
+       ровно это и случилось при первой примерке светлых вариантов.
+       --ink-* — текст соответствующего оттенка на текущем фоне. */
+    --ink-cyan:#79C8DC;--ink-blue:#8FB8E8;--ink-link:#A8C4EA;--hint:#9AA2B2;--placeholder:#767D8C;
     --mono:'SF Mono',ui-monospace,'Cascadia Code','Consolas','SFMono-Regular','Courier New',monospace;--head:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',ui-sans-serif,sans-serif;
     --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;
     --radius-sm:8px;--radius-md:14px;--radius-lg:18px;--radius-xl:22px;--radius-pill:999px;
-    --shadow-sm:0 1px 3px rgba(3,6,20,.45);--shadow-md:0 10px 32px rgba(3,6,20,.50);--shadow-lg:0 18px 50px rgba(3,6,20,.58);
-    --glass:rgba(255,255,255,.055);--glass-border:rgba(255,255,255,.11);--glass-blur:blur(26px) saturate(1.4);
+    --shadow-sm:0 1px 3px rgba(0,0,0,.35);--shadow-md:0 10px 30px rgba(0,0,0,.40);--shadow-lg:0 18px 46px rgba(0,0,0,.46);
+    --glass:rgba(255,255,255,.045);--glass-border:rgba(255,255,255,.09);--glass-blur:blur(24px) saturate(1.2);
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font-family:var(--head);min-height:100vh;overflow-x:hidden}
-  body::before{content:'';position:fixed;inset:0;background:radial-gradient(900px 620px at 10% -8%,rgba(91,108,255,.26),transparent 62%),radial-gradient(760px 620px at 100% 8%,rgba(47,107,255,.18),transparent 58%),radial-gradient(900px 700px at 45% 112%,rgba(120,86,214,.18),transparent 60%);pointer-events:none;z-index:0}
+  body::before{content:'';position:fixed;inset:0;background:radial-gradient(900px 620px at 10% -8%,rgba(96,110,190,.14),transparent 62%),radial-gradient(760px 620px at 100% 8%,rgba(70,110,170,.10),transparent 58%),radial-gradient(900px 700px at 45% 112%,rgba(110,90,160,.10),transparent 60%);pointer-events:none;z-index:0}
   .wrap{position:relative;z-index:1;max-width:1560px;margin:0 auto;padding:32px 24px 80px}
   header{margin-bottom:20px}
   .badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
@@ -44,7 +49,7 @@
   .sw{position:relative;margin-bottom:32px}
   .sl{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:10px;display:block}
   .si{width:100%;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:var(--radius-lg);color:var(--text);font-family:var(--mono);font-size:22px;font-weight:600;padding:18px 74px 18px 22px;outline:none;letter-spacing:.02em;transition:border-color .2s;box-shadow:var(--shadow-sm)}
-  .si::placeholder{color:#6C769B}
+  .si::placeholder{color:var(--placeholder)}
   .si:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(10,132,255,0.18)}
   .sico{position:absolute;right:8px;top:8px;bottom:8px;width:46px;border-radius:calc(var(--radius-lg) - 4px);background:var(--indigo-surface);color:#fff;font-size:19px;display:flex;align-items:center;justify-content:center;pointer-events:none;box-shadow:0 4px 14px rgba(58,70,200,.45)}
   #result{min-height:60px}
@@ -68,7 +73,7 @@
   .sum-flag.f-yellow{background:rgba(166,106,0,.12);color:var(--yellow);border-color:rgba(166,106,0,.36)}
   .sum-flag.f-orange{background:rgba(201,112,0,.12);color:var(--orange);border-color:rgba(201,112,0,.36)}
   .sum-flag.f-purple{background:rgba(155,63,196,.12);color:var(--purple);border-color:rgba(155,63,196,.36)}
-  .sum-flag.f-cyan{background:rgba(15,148,189,.12);color:#7FD6EE;border-color:rgba(15,148,189,.36)}
+  .sum-flag.f-cyan{background:rgba(15,148,189,.12);color:var(--ink-cyan);border-color:rgba(15,148,189,.36)}
   .sum-flag.f-pink{background:rgba(224,36,94,.12);color:var(--pink);border-color:rgba(224,36,94,.36)}
   .sum-flag.f-teal{background:rgba(14,138,150,.12);color:var(--teal);border-color:rgba(14,138,150,.36)}
   .sum-flag.f-blue{background:rgba(90,86,214,.12);color:var(--blue);border-color:rgba(90,86,214,.36)}
@@ -128,7 +133,7 @@
   .c-nks .rc{color:var(--purple)}
   .c-ls .rc{color:var(--teal)}
   .c-srt .rc{color:var(--orange)}
-  .c-tr .rc{color:#6FB8F5}
+  .c-tr .rc{color:var(--ink-blue)}
   .rn{font-size:13px;color:var(--text);font-weight:600;margin-bottom:10px}
   .tags{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
   .tag{font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:4px 11px;border-radius:var(--radius-pill);font-weight:700;font-family:var(--head)}
@@ -139,15 +144,15 @@
   .t-nks{background:rgba(155,63,196,0.264);color:var(--purple);border:1px solid rgba(155,63,196,0.4)}
   
   .c-eec .ico{background:rgba(15,148,189,0.264)}
-  .c-eec .rc{color:#7FD6EE}
-  .t-eec-both{background:rgba(15,148,189,0.22);color:#7FD6EE;border:1px solid rgba(15,148,189,0.4)}
+  .c-eec .rc{color:var(--ink-cyan)}
+  .t-eec-both{background:rgba(15,148,189,0.22);color:var(--ink-cyan);border:1px solid rgba(15,148,189,0.4)}
   .t-eec-ex{background:rgba(224,52,43,0.22);color:var(--red);border:1px solid rgba(224,52,43,0.4)}
   .t-eec-im{background:rgba(166,106,0,0.22);color:var(--yellow);border:1px solid rgba(166,106,0,0.4)}
   .t-eec-lic{background:rgba(0,120,166,0.22);color:#3fa9e0;border:1px solid rgba(0,120,166,0.4)}
   .t-eec-dual{background:rgba(166,90,0,0.22);color:#e0a13f;border:1px solid rgba(166,90,0,0.4)}
   .t-ls{background:rgba(14,138,150,0.22);color:var(--teal);border:1px solid rgba(14,138,150,0.4)}
   .t-srt{background:rgba(201,112,0,0.22);color:var(--orange);border:1px solid rgba(201,112,0,0.4)}
-  .t-tr{background:rgba(0,102,153,0.22);color:#6FB8F5;border:1px solid rgba(0,102,153,0.4)}
+  .t-tr{background:rgba(0,102,153,0.22);color:var(--ink-blue);border:1px solid rgba(0,102,153,0.4)}
   .c-ett .ico{background:rgba(224,36,94,0.286)}
   .c-ett .rc{color:var(--pink)}
   .t-ett{background:rgba(224,36,94,0.264);color:var(--pink);border:1px solid rgba(224,36,94,0.4)}
@@ -215,8 +220,8 @@
   .qa-btn{background:rgba(10,132,255,.08);border:1px solid rgba(10,132,255,.25);color:var(--indigo);border-radius:var(--radius-pill);padding:6px 14px;font-size:12px;font-weight:600;font-family:var(--head);cursor:pointer;transition:background .15s}
   .qa-btn:hover{background:rgba(10,132,255,.16)}
   .acc-status{font-size:12px;font-weight:600;line-height:1.5;padding:10px 12px;border-radius:var(--radius-md)}
-  .acc-status.acc-ok{background:rgba(0,212,170,.1);color:#3FC7D4}
-  .acc-status.acc-warn{background:rgba(255,149,0,.12);color:#F0A24E}
+  .acc-status.acc-ok{background:rgba(0,212,170,.1);color:var(--teal)}
+  .acc-status.acc-warn{background:rgba(255,149,0,.12);color:var(--orange)}
   .acc-status.acc-bad{background:rgba(224,52,43,.12);color:var(--red)}
   #accountPanel{text-align:right;margin-top:6px;font-size:12px}
   #accountPanel .acc-status{display:inline-block;padding:5px 10px}
@@ -245,7 +250,7 @@
   .group-btn small{font-size:10px;color:var(--muted)}
   .tree-crumbs{font-size:12px;color:var(--indigo);cursor:pointer;margin-bottom:14px;text-decoration:underline;display:inline-block}
   .tree-crumbs span{cursor:pointer}
-  .tree-crumbs span:hover{color:#9CC9FF}
+  .tree-crumbs span:hover{color:var(--ink-link)}
   .notes-ico{cursor:pointer;margin-left:8px;opacity:.55;transition:opacity .15s;display:inline-block;flex-shrink:0}
   .notes-ico:hover{opacity:1}
   .notes-hl{background:rgba(255,204,0,.28)!important;border-radius:var(--radius-md);padding:8px 10px!important;margin:0 -10px}
@@ -335,7 +340,7 @@
   .perm-row.p-red .pl{color:var(--red)}
   .perm-row.p-orange .pl{color:var(--orange)}
   .perm-row.p-purple .pl{color:var(--purple)}
-  .perm-row.p-cyan .pl{color:#7FD6EE}
+  .perm-row.p-cyan .pl{color:var(--ink-cyan)}
   .perm-row.p-teal .pl{color:var(--teal)}
   .batch-empty{font-size:12px;color:var(--muted);line-height:1.7}
   .batch-note{font-size:10px;color:var(--muted);line-height:1.7;margin-top:12px}
@@ -362,9 +367,9 @@
   /* ── Вход / администрирование ── */
   /* Экран входа — единственная тёмная поверхность в приложении. Все его правила
      namespace'ятся под #authScreen, чтобы ничего не протекало в светлый интерфейс. */
-  #authScreen{--ac-ink:#EEF1FA;--ac-dim:#A7B0CE;--ac-brand:#5B6CFF;--ac-brand2:#2F6BFF;--ac-line:rgba(255,255,255,.11);--ac-field:rgba(255,255,255,.055)}
+  #authScreen{--ac-ink:#D7DBE3;--ac-dim:#98A0B0;--ac-brand:#5B6CFF;--ac-brand2:#2F6BFF;--ac-line:rgba(255,255,255,.10);--ac-field:rgba(255,255,255,.05)}
   .auth-screen{position:fixed;inset:0;z-index:50;display:flex;align-items:stretch;justify-content:center;overflow-y:auto;
-    background:radial-gradient(900px 620px at 12% -10%,rgba(91,108,255,.30),transparent 62%),radial-gradient(760px 620px at 104% 12%,rgba(47,107,255,.22),transparent 58%),radial-gradient(900px 700px at 50% 120%,rgba(120,86,214,.20),transparent 60%),linear-gradient(160deg,#0C1226 0%,#0A0F20 48%,#080C1A 100%);color:var(--ac-ink)}
+    background:radial-gradient(900px 620px at 12% -10%,rgba(96,110,190,.18),transparent 62%),radial-gradient(760px 620px at 104% 12%,rgba(70,110,170,.13),transparent 58%),radial-gradient(900px 700px at 50% 120%,rgba(110,90,160,.12),transparent 60%),linear-gradient(160deg,#1B1F27 0%,#171A21 48%,#14171D 100%);color:var(--ac-ink)}
   .auth-shell{width:100%;max-width:1180px;margin:auto;display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:40px 32px}
 
   /* ── Левая половина: о сервисе ── */
@@ -386,7 +391,7 @@
   .auth-logo-img{display:block;width:100%;max-width:330px;height:auto;margin-bottom:32px;
     border-radius:16px;border:1px solid var(--ac-line);box-shadow:0 18px 44px rgba(4,7,20,.5)}
   .auth-hero-title{font-family:var(--head);font-size:46px;line-height:1.08;font-weight:800;letter-spacing:-.03em;margin:0 0 20px;
-    background:linear-gradient(180deg,#FFFFFF 25%,#B8C4EE 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+    background:linear-gradient(180deg,#EDEFF4 25%,#AEB6C8 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
   .auth-hero-sub{font-size:15px;line-height:1.65;color:var(--ac-dim);max-width:46ch;margin:0 0 34px}
   .auth-feats{list-style:none;display:flex;flex-direction:column;gap:14px;margin:0;padding:0}
   .auth-feats li{display:flex;align-items:flex-start;gap:14px}
@@ -398,7 +403,7 @@
   /* ── Правая половина: карточка ── */
   .auth-pane{display:flex;justify-content:center;min-width:0}
   .auth-card{width:100%;max-width:420px;border-radius:24px;padding:36px 34px 26px;
-    background:linear-gradient(180deg,rgba(255,255,255,.075),rgba(255,255,255,.035));
+    background:linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.03));
     backdrop-filter:blur(26px) saturate(1.4);-webkit-backdrop-filter:blur(26px) saturate(1.4);
     border:1px solid var(--ac-line);box-shadow:0 34px 80px rgba(4,7,20,.55),inset 0 1px 0 rgba(255,255,255,.09)}
   .auth-card-logo{display:none;margin-bottom:22px}
@@ -411,7 +416,7 @@
   .auth-field label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.11em;color:var(--ac-dim);margin-bottom:7px;font-weight:600}
   .auth-field input{width:100%;background:var(--ac-field);border:1px solid var(--ac-line);border-radius:14px;color:var(--ac-ink);
     font-family:var(--head);font-size:15px;padding:13px 15px;outline:none;transition:border-color .15s,box-shadow .15s,background .15s}
-  .auth-field input::placeholder{color:#6C769B}
+  .auth-field input::placeholder{color:var(--placeholder)}
   .auth-field input:hover{background:rgba(255,255,255,.075)}
   .auth-field input:focus{border-color:var(--ac-brand);background:rgba(255,255,255,.085);box-shadow:0 0 0 4px rgba(91,108,255,.20)}
   .auth-field.is-bad input{border-color:#FF6B6B;box-shadow:0 0 0 4px rgba(255,107,107,.15)}
@@ -448,7 +453,7 @@
   .auth-trust{margin-top:26px;padding-top:18px;border-top:1px solid var(--ac-line);text-align:center}
   .auth-trust b{display:block;font-size:13px;font-weight:700;letter-spacing:.01em;color:var(--ac-ink)}
   .auth-trust span{display:block;font-size:11.5px;color:var(--ac-dim);margin-top:4px}
-  .auth-trust small{display:block;font-size:11px;color:#6C769B;margin-top:10px}
+  .auth-trust small{display:block;font-size:11px;color:var(--placeholder);margin-top:10px}
 
   /* Сообщения переиспользуют .calc-warn из приложения — на тёмном фоне их надо перекрасить */
   #authScreen .calc-warn{border-radius:14px;font-size:12.5px;margin-bottom:14px}
@@ -7269,7 +7274,7 @@ function render(q,boxId){
       box.innerHTML=nameMatchesHtml(qt,nameList);
       return;
     }
-    box.innerHTML=`<div class="nf"><div class="big">🔍</div>«<strong>${esc(qt)}</strong>» не найдено ни по коду, ни по наименованию<br><span style="color:#9AA8C6;margin-top:6px;display:block">Товар, вероятно, не ограничен и не требует сертификации. Уточните в уполномоченных органах КР.</span></div>`;
+    box.innerHTML=`<div class="nf"><div class="big">🔍</div>«<strong>${esc(qt)}</strong>» не найдено ни по коду, ни по наименованию<br><span style="color:var(--hint);margin-top:6px;display:block">Товар, вероятно, не ограничен и не требует сертификации. Уточните в уполномоченных органах КР.</span></div>`;
     return;
   }
   let html='';
@@ -7604,7 +7609,7 @@ function render(q,boxId){
       const formLabel=forms.includes('dekl_gosreg')&&forms.length===1?'Декларация о соответствии, или свидетельство о госрегистрации, или сведения о госрегистрации в едином реестре (любой из документов по выбору)':forms.includes('class')&&forms.length===1?'Классификационное свидетельство (обязательно)':forms.includes('pasport')&&forms.length===1?'Паспорт продукции, оформляемый изготовителем (обязательно)':forms.includes('gosreg_dekl')&&forms.length===1?'Свидетельство о государственной регистрации И декларация о соответствии (оба документа обязательны одновременно)':forms.includes('ottc')&&forms.length===1?'Одобрение типа ТС / одобрение типа шасси / свидетельство о безопасности конструкции ТС':forms.includes('gosreg')&&forms.length===1?'Свидетельство о государственной регистрации (обязательно)':forms.includes('sert')&&!forms.includes('dekl_sert')&&!forms.includes('dekl_only')&&!forms.includes('gosreg')&&!forms.includes('ottc')&&!forms.includes('gosreg_dekl')&&!forms.includes('class')&&!forms.includes('dekl_gosreg')?'Сертификат соответствия ЕАЭС (обязательно)':forms.includes('dekl_only')&&!forms.includes('sert')&&!forms.includes('gosreg')&&!forms.includes('ottc')?'Декларация о соответствии ЕАЭС (обязательно)':forms.includes('dekl_sert')?'Декларация о соответствии ЕАЭС или сертификат (по выбору заявителя)':'Смешанная форма — см. позиции ниже';
       const partialHit=items.some(e=>e.partial);
       const notes=[...new Set(items.map(e=>e.note).filter(Boolean))];
-      html+=`<div class="card c-tr"><div class="rh"><div class="ico">🇪🇦</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">${esc(items[0].trName)}</div><div class="tags"><span class="tag t-tr">🇪🇦 ТР ЕАЭС — оценка соответствия</span></div><div class="det"><div><strong>Позиция(и) перечня:</strong> ${esc(positions.slice(0,3).join('; '))}${positions.length>3?` (+ ещё ${positions.length-3})`:''}</div><div><strong>Форма подтверждения:</strong> ${formLabel}</div>${notes.length?`<div><strong>Примечание:</strong> ${esc(notes.join('; '))}</div>`:''}<div><strong>Документ-основание:</strong> ${docLink(items[0].act,items[0].url)}</div>${items[0].transition?`<div><strong>Переходный период:</strong> ${esc(items[0].transition)}</div>`:''}${partialHit?'<div style="color:#b8860b"><strong>⚠ Частичное совпадение ("из ...")</strong> — требуется проверка по наименованию товара, код указывает лишь товарную позицию/субпозицию целиком</div>':''}<div style="color:#9AA8C6;margin-top:4px">Отдельно от национального перечня сертификации КР (Пост. №267) — союзный документ ЕАЭС + маркировка EAC, проверяется дополнительно.</div>${auditNote('tr')}</div></div>`;
+      html+=`<div class="card c-tr"><div class="rh"><div class="ico">🇪🇦</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">${esc(items[0].trName)}</div><div class="tags"><span class="tag t-tr">🇪🇦 ТР ЕАЭС — оценка соответствия</span></div><div class="det"><div><strong>Позиция(и) перечня:</strong> ${esc(positions.slice(0,3).join('; '))}${positions.length>3?` (+ ещё ${positions.length-3})`:''}</div><div><strong>Форма подтверждения:</strong> ${formLabel}</div>${notes.length?`<div><strong>Примечание:</strong> ${esc(notes.join('; '))}</div>`:''}<div><strong>Документ-основание:</strong> ${docLink(items[0].act,items[0].url)}</div>${items[0].transition?`<div><strong>Переходный период:</strong> ${esc(items[0].transition)}</div>`:''}${partialHit?'<div style="color:#b8860b"><strong>⚠ Частичное совпадение ("из ...")</strong> — требуется проверка по наименованию товара, код указывает лишь товарную позицию/субпозицию целиком</div>':''}<div style="color:var(--hint);margin-top:4px">Отдельно от национального перечня сертификации КР (Пост. №267) — союзный документ ЕАЭС + маркировка EAC, проверяется дополнительно.</div>${auditNote('tr')}</div></div>`;
     }
   }
 
@@ -10302,7 +10307,7 @@ document.getElementById('inp').addEventListener('input',function(){clearTimeout(
 });
 // Быстрые кнопки — ЕТТ (ставка пошлины)
 [['8703 23','Авто 1.5-3л бензин'],['8517 13','Смартфоны'],['1701 99','Сахар белый'],['2208 30','Виски'],['2402 20','Сигареты'],['8471 30','Компьютеры/ноутбуки'],['8450 11','Стиральные машины'],['6403 91','Обувь кожаная']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,79,163,.3);color:#ff4fa3';b.textContent=`${c} · ${l}`;
+  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,79,163,.3);color:var(--pink)';b.textContent=`${c} · ${l}`;
   b.onmouseover=()=>{b.style.background='rgba(255,79,163,.06)'};b.onmouseout=()=>{b.style.background=''};
   b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
   document.getElementById('sg5').appendChild(b);
