@@ -1,8 +1,9 @@
 # Codemagic build config for the iOS app (Capacitor WebView wrapper around
-# https://customsassist.trade — the origin lives in capacitor.config.json;
-# changing it needs a rebuild and a new store release, and the old origin
-# https://65-109-170-170.sslip.io must stay alive on the server until every
-# installed copy has updated).
+# https://customsassist.trade — the origin lives in capacitor.config.json.
+# Changing it needs a rebuild and a new store release: a phone only learns the
+# new origin by installing an update. The previous origin was switched off on
+# 11.09.2026 by the owner's decision, so the version in the stores before 1.1
+# cannot load at all until its user updates).
 #
 # This file alone does NOT make builds work — it still needs one-time setup
 # in the Codemagic web UI, done by whoever owns the Apple Developer account:
