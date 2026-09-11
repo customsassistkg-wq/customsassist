@@ -406,13 +406,18 @@
   [data-theme="light"] #authScreen .auth-ok{background:rgba(20,106,56,.11);border-color:rgba(20,106,56,.36);color:#0F5730}
 
   /* Сам переключатель */
-  .theme-sw{display:flex;gap:4px;padding:4px;margin-top:10px;border-radius:var(--radius-pill);background:rgba(255,255,255,.05);border:1px solid var(--border)}
+  .hdr-tools{display:flex;justify-content:flex-end;margin-bottom:var(--space-3)}
+  .theme-sw{display:inline-flex;gap:4px;padding:4px;border-radius:var(--radius-pill);background:rgba(255,255,255,.05);border:1px solid var(--border);box-shadow:var(--shadow-sm)}
   [data-theme="light"] .theme-sw{background:rgba(255,255,255,.6)}
   .theme-sw button{flex:1;border:0;background:transparent;color:var(--muted);font-family:var(--head);font-size:11px;font-weight:600;padding:6px 8px;border-radius:var(--radius-pill);cursor:pointer;transition:background .15s,color .15s}
   .theme-sw button:hover{color:var(--text)}
   .theme-sw button[aria-pressed="true"]{background:var(--indigo-surface);color:#fff}
   /* На экране входа — компактная кнопка в углу */
-  .auth-theme{position:absolute;top:18px;right:18px;z-index:2;border:1px solid var(--ac-line);background:rgba(255,255,255,.07);color:var(--ac-dim);width:38px;height:38px;border-radius:12px;cursor:pointer;font-size:15px;line-height:1;display:grid;place-items:center}
+  .auth-theme{position:absolute;top:18px;right:18px;z-index:2;display:inline-flex;align-items:center;gap:8px;
+    border:1px solid var(--ac-line);background:rgba(255,255,255,.07);color:var(--ac-dim);
+    padding:9px 14px;border-radius:var(--radius-pill);cursor:pointer;font-family:var(--head);font-size:12px;font-weight:600;line-height:1}
+  .auth-theme .at-ico{font-size:14px;line-height:1}
+  @media (max-width:560px){ .auth-theme .at-txt{display:none} .auth-theme{padding:9px 11px} }
   .auth-theme:hover{color:var(--ac-ink);background:rgba(255,255,255,.13)}
   [data-theme="light"] .auth-theme{background:rgba(255,255,255,.7)}
   [data-theme="light"] .auth-theme:hover{background:#fff}
@@ -583,7 +588,7 @@
 </head>
 <body>
 <div id="authScreen" class="auth-screen">
-  <button class="auth-theme" id="authThemeBtn" type="button" aria-label="Сменить тему" title="Сменить тему">🌗</button>
+  <button class="auth-theme" id="authThemeBtn" type="button" aria-label="Сменить тему" title="Сменить тему"><span class="at-ico">☀️</span><span class="at-txt">Светлая тема</span></button>
   <div class="auth-shell">
 
     <!-- Левая половина — о сервисе. На узком экране скрывается целиком, а логотип
@@ -736,6 +741,14 @@
 
 <div class="wrap" id="appWrap" style="display:none">
   <header>
+    <!-- Переключатель темы стоит в шапке справа, а не в списке разделов:
+         в меню он читался как ещё один раздел и не находился с первого раза. -->
+    <div class="hdr-tools">
+      <div class="theme-sw" role="group" aria-label="Тема оформления">
+        <button type="button" id="themeDarkBtn" aria-pressed="true">🌙 Тёмная</button>
+        <button type="button" id="themeLightBtn" aria-pressed="false">☀️ Светлая</button>
+      </div>
+    </div>
     <div class="user-bar" id="userBar" style="display:none"></div>
     <div id="accountPanel" style="display:none"></div>
   </header>
@@ -753,10 +766,7 @@
         <button class="nav-item" id="navSpeciesBtn" type="button" onclick="setPage('search');setSearchMode('species')"><span class="nav-ico">🐾</span> Красная книга / СИТЕС</button>
         <button class="nav-item" id="navCalcBtn" type="button" onclick="setPage('search');setSearchMode('calc')"><span class="nav-ico">🧮</span> Таможенный калькулятор</button>
         <button class="nav-item" id="navPersonalBtn" type="button" onclick="setPage('search');setSearchMode('personal')"><span class="nav-ico">📦</span> Личные отправления</button>
-        <div class="theme-sw" role="group" aria-label="Тема оформления">
-          <button type="button" id="themeDarkBtn" aria-pressed="true">🌙 Тёмная</button>
-          <button type="button" id="themeLightBtn" aria-pressed="false">☀️ Светлая</button>
-        </div>
+
       </div>
 
       <div class="side-panel">
@@ -1219,9 +1229,11 @@ function syncThemeButtons(){
   if(d) d.setAttribute("aria-pressed", String(!light));
   if(l) l.setAttribute("aria-pressed", String(light));
   const a=document.getElementById("authThemeBtn");
-  if(a){ a.textContent = light ? "🌙" : "☀️";
-         a.title = light ? "Тёмная тема" : "Светлая тема";
-         a.setAttribute("aria-label", a.title); }
+  if(a){ const label = light ? "Тёмная тема" : "Светлая тема";
+         a.querySelector(".at-ico").textContent = light ? "🌙" : "☀️";
+         a.querySelector(".at-txt").textContent = label;
+         a.title = label;
+         a.setAttribute("aria-label", label); }
 }
 document.getElementById("authThemeBtn").addEventListener("click",function(){ applyTheme(currentTheme()==="light"?"dark":"light"); });
 document.getElementById("themeDarkBtn").addEventListener("click",function(){ applyTheme("dark"); });
