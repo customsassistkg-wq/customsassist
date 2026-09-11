@@ -52,11 +52,23 @@ app.use(
 // GET/HEAD, so requiring it on mutating requests costs real clients nothing -
 // including the Capacitor wrapper in mobile/, which loads the site over its
 // real https origin (capacitor.config.json) and so sends exactly that value.
+//
+// APP_ORIGIN accepts a comma-separated list, because a domain move needs two
+// origins alive at once: the browser starts using the new domain immediately,
+// while every already-installed copy of the Capacitor app in mobile/ keeps
+// loading the origin pinned in its capacitor.config.json until the store
+// release reaches the user's phone. A single value stays valid and behaves
+// exactly as before.
+const ALLOWED_ORIGINS = (process.env.APP_ORIGIN || '')
+  .split(',')
+  .map((o) => o.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
 let warnedMissingOrigin = false;
 app.use((req, res, next) => {
   if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) return next();
 
-  const allowed = process.env.APP_ORIGIN;
+  const allowed = ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : null;
   if (!allowed) {
     // Local dev without APP_ORIGIN stays usable; a production process without
     // it is a misconfiguration worth refusing rather than quietly downgrading.
@@ -71,7 +83,7 @@ app.use((req, res, next) => {
     return next();
   }
 
-  if (req.get('origin') !== allowed) {
+  if (!allowed.includes(req.get('origin'))) {
     return res.status(403).json({ error: 'bad origin' });
   }
   next();
