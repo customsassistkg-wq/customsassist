@@ -3,7 +3,7 @@
   "appName": "Проверка ТН ВЭД",
   "webDir": "www",
   "server": {
-    "url": "https://65-109-170-170.sslip.io",
+    "url": "https://customsassist.trade",
     "androidScheme": "https",
     "cleartext": false
   }
