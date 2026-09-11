@@ -1114,6 +1114,9 @@ async function submitResetPassword(){
 }
 
 function showApp(){
+  // На случай, если предыдущий сеанс в этом же окне закончился не через
+  // «Выйти», а, например, разлогиниванием по истечении подписки.
+  resetAppView();
   document.getElementById('authScreen').style.display='none';
   document.getElementById('appWrap').style.display='block';
   const bar=document.getElementById('userBar');
@@ -1226,9 +1229,25 @@ async function doLogin(){
   }
 }
 
+// Стирает всё, что нарисовал предыдущий пользователь. Без этого выход просто
+// прятал #appWrap, а содержимое оставалось в DOM: администратор выходил с
+// открытым списком пользователей, следующий человек регистрировался в том же
+// окне — и видел чужие адреса, роли и даты входа. Данные при этом сервер
+// заново не отдавал (он отвечает 403), но на экране они были.
+function resetAppView(){
+  const clear=(id)=>{const el=document.getElementById(id); if(el) el.innerHTML='';};
+  clear('result'); clear('resultSummary'); clear('adminResult');
+  clear('userBar'); clear('accountPanel'); clear('calcPrintArea');
+  const inp=document.getElementById('inp'); if(inp) inp.value='';
+  const sp=document.getElementById('speciesResult'); if(sp) sp.innerHTML='';
+  const vb=document.getElementById('verifyBar'); if(vb) vb.style.display='none';
+  searchMode='code'; currentPage='search';
+}
+
 async function doLogout(){
   try{await fetch('/api/auth/logout',{method:'POST',credentials:'include'});}catch(e){}
   currentUser=null;
+  resetAppView();
   showAuthScreen();
 }
 
@@ -9940,6 +9959,10 @@ function submitLookup(){
 }
 
 function setSearchMode(m){
+  // Настоящая защита админского раздела — на сервере (middleware/requireAdmin,
+  // отвечает 403 обычному пользователю). Здесь второй рубеж: не давать даже
+  // открыть режим, чтобы на экране не появилось ничего чужого.
+  if(m==='admin' && (!currentUser || currentUser.role!=='admin')) m='code';
   searchMode=m;
   // все режимы (code/auto/species/calc/admin) живут внутри #pageSearch — переключение
   // режима поиска всегда должно возвращать видимость на эту страницу, откуда бы её ни вызвали
