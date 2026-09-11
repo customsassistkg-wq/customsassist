@@ -1,0 +1,31 @@
+;=============================================================================
+; Почтовые записи Resend для customsassist.trade
+; Формат BIND. Импорт: Cloudflare - DNS - Records - Import and Export -
+;                      Import DNS records - выбрать этот файл.
+;
+; Значения взяты из панели Resend (домен добавлен 11.09.2026, регион eu-west-1,
+; Custom Return-Path = send). DKIM-ключ уникален для этого домена.
+;
+; Галочку "Proxy imported DNS records" ставить не нужно и здесь: записи MX и TXT
+; в Cloudflare не проксируются в принципе, прокси работает только с A, AAAA и CNAME.
+;
+; После импорта вернитесь в Resend и нажмите "Verify DNS Records".
+;=============================================================================
+
+; Return-Path: сюда Amazon SES складывает отчёты о недоставке.
+send.customsassist.trade.              3600  IN  MX   10 feedback-smtp.eu-west-1.amazonses.com.
+
+; SPF: разрешает SES отправлять письма от имени поддомена send.
+; На одном имени такая запись должна быть ровно одна - две строки v=spf1
+; ломают проверку, механизмы объединяют внутри одной строки.
+send.customsassist.trade.              3600  IN  TXT  "v=spf1 include:amazonses.com ~all"
+
+; DKIM: открытый ключ, которым проверяется подпись писем.
+resend._domainkey.customsassist.trade. 3600  IN  TXT  "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC1GnpT7TBGgF131yMl0NyITCLcyp+9jJt1WUfQf6vHWvCvb7GA5S2ctOoN8lhDH8FuL5B7JdMQCURjeAvRWAAc9eLKAK12juJX9iHPGlVwfzflSxFTCfo+YKaverfyggWjoqJ3k2IdS0muPlzgxvetgY4529spqgd1wKZ5frWxXQIDAQAB"
+
+; DMARC: что делать с письмами, не прошедшими проверку подписи.
+; p=none означает "ничего не делать, только наблюдать" — правильное начало:
+; сначала убеждаемся, что DKIM и SPF работают, и лишь потом ужесточаем
+; политику до quarantine или reject. Значение взято из рекомендации Resend.
+; При желании сюда можно добавить адрес для отчётов: rua=mailto:you@example.com
+_dmarc.customsassist.trade.            3600  IN  TXT  "v=DMARC1; p=none;"
