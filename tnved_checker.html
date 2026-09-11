@@ -364,6 +364,59 @@
   .est .est-foot{font-size:9px;color:#444;line-height:1.6;margin-top:16px;border-top:1px solid #999;padding-top:8px}
   .calc-rateinfo{font-size:11px;color:var(--muted);margin-bottom:14px;padding:10px 12px;background:var(--bg);border-radius:5px}
 
+  /* ─── СВЕТЛАЯ ТЕМА ────────────────────────────────────────────────────────
+     Включается атрибутом data-theme="light" на <html>. Светло-серая, а не
+     белая: у белого фона контраст к тексту получается 14,4:1 против 12,0:1 у
+     серого, то есть белый бликует сильнее — а именно от избытка контраста
+     и уставали глаза на первой тёмной палитре.
+     Сначала токены, затем правила, которые нельзя выразить токеном, потому
+     что в них зашита полупрозрачная белая подложка «стекла». */
+  :root[data-theme="light"]{
+    --bg:#E8EBF1;--surface:#F7F8FB;--border:rgba(20,28,48,.16);--indigo:#3B48CC;--indigo-surface:#3A46C8;
+    --red:#B3241C;--green:#146A38;--yellow:#7A4E00;--blue:#3C39A8;
+    --purple:#732C93;--teal:#0A6570;--orange:#8A4F00;--cyan:#0B6B8C;--pink:#A81745;
+    --text:#232A38;--muted:#545C6C;
+    --ink-cyan:#0A5E74;--ink-blue:#0B5E96;--ink-link:#0A4FA8;--hint:#545C6C;--placeholder:#8A93A6;
+    --glass:rgba(252,253,255,.82);--glass-border:rgba(255,255,255,.9);--glass-blur:blur(20px) saturate(1.2);
+    --shadow-sm:0 1px 3px rgba(24,32,56,.08);--shadow-md:0 8px 26px rgba(24,32,56,.11);--shadow-lg:0 16px 40px rgba(24,32,56,.14);
+  }
+  [data-theme="light"] body::before{background:radial-gradient(900px 620px at 10% -8%,rgba(91,108,255,.10),transparent 62%),radial-gradient(760px 620px at 100% 8%,rgba(47,107,255,.08),transparent 58%),radial-gradient(900px 700px at 45% 112%,rgba(120,86,214,.07),transparent 60%)}
+  [data-theme="light"] .btn{background:rgba(255,255,255,.75)}
+  [data-theme="light"] .mode-btn.active{background:#fff;box-shadow:0 2px 8px rgba(24,32,56,.12)}
+  [data-theme="light"] .modal{background:rgba(255,255,255,.92)}
+  /* Плашки тегов: подложка задана полупрозрачным оттенком и на светлом фоне
+     даёт пастель, на которой цветной текст не дотягивает до 4,5:1. Осветляем
+     подложку до почти белой — цвет остаётся в рамке и в тексте. */
+  [data-theme="light"] .tag{background:rgba(255,255,255,.66)}
+  [data-theme="light"] .sum-flag{background:rgba(255,255,255,.62)}
+  [data-theme="light"] .t-eec-lic{color:#0A6A94}
+  [data-theme="light"] .t-eec-dual{color:#8A5A00}
+
+  /* Экран входа в светлой теме */
+  [data-theme="light"] #authScreen{--ac-ink:#232A38;--ac-dim:#545C6C;--ac-line:rgba(20,28,48,.14);--ac-field:rgba(255,255,255,.82)}
+  [data-theme="light"] .auth-screen{background:radial-gradient(900px 620px at 12% -10%,rgba(91,108,255,.13),transparent 62%),radial-gradient(760px 620px at 104% 12%,rgba(47,107,255,.10),transparent 58%),radial-gradient(900px 700px at 50% 120%,rgba(120,86,214,.09),transparent 60%),linear-gradient(160deg,#EFF1F6 0%,#E7EAF2 48%,#DFE3EE 100%)}
+  [data-theme="light"] .auth-card{background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(250,251,254,.86));box-shadow:0 24px 60px rgba(24,32,56,.14),inset 0 1px 0 rgba(255,255,255,.9)}
+  [data-theme="light"] .auth-hero-title{background:linear-gradient(180deg,#1C2330 20%,#3E4C78 100%);-webkit-background-clip:text;background-clip:text}
+  [data-theme="light"] .af-ico{background:rgba(255,255,255,.7)}
+  [data-theme="light"] .auth-btn.ghost{background:rgba(255,255,255,.72)}
+  [data-theme="light"] .auth-eye:hover{background:rgba(20,28,48,.07)}
+  [data-theme="light"] .auth-lrow a,[data-theme="light"] .auth-back{color:#2F4BC8}
+  [data-theme="light"] .auth-logo-img{box-shadow:0 16px 40px rgba(24,32,56,.16)}
+  [data-theme="light"] #authScreen .w-red{background:rgba(179,36,28,.10);border-color:rgba(179,36,28,.34);color:#96201A}
+  [data-theme="light"] #authScreen .auth-ok{background:rgba(20,106,56,.11);border-color:rgba(20,106,56,.36);color:#0F5730}
+
+  /* Сам переключатель */
+  .theme-sw{display:flex;gap:4px;padding:4px;margin-top:10px;border-radius:var(--radius-pill);background:rgba(255,255,255,.05);border:1px solid var(--border)}
+  [data-theme="light"] .theme-sw{background:rgba(255,255,255,.6)}
+  .theme-sw button{flex:1;border:0;background:transparent;color:var(--muted);font-family:var(--head);font-size:11px;font-weight:600;padding:6px 8px;border-radius:var(--radius-pill);cursor:pointer;transition:background .15s,color .15s}
+  .theme-sw button:hover{color:var(--text)}
+  .theme-sw button[aria-pressed="true"]{background:var(--indigo-surface);color:#fff}
+  /* На экране входа — компактная кнопка в углу */
+  .auth-theme{position:absolute;top:18px;right:18px;z-index:2;border:1px solid var(--ac-line);background:rgba(255,255,255,.07);color:var(--ac-dim);width:38px;height:38px;border-radius:12px;cursor:pointer;font-size:15px;line-height:1;display:grid;place-items:center}
+  .auth-theme:hover{color:var(--ac-ink);background:rgba(255,255,255,.13)}
+  [data-theme="light"] .auth-theme{background:rgba(255,255,255,.7)}
+  [data-theme="light"] .auth-theme:hover{background:#fff}
+
   /* ── Вход / администрирование ── */
   /* Экран входа — единственная тёмная поверхность в приложении. Все его правила
      namespace'ятся под #authScreen, чтобы ничего не протекало в светлый интерфейс. */
@@ -523,9 +576,14 @@
     h1{font-size:22px}
   }
 </style>
+<script data-boot>
+  // Читаем выбор темы до отрисовки. Значение по умолчанию — тёмная.
+  try{ if(localStorage.getItem("ca-theme")==="light") document.documentElement.setAttribute("data-theme","light"); }catch(e){}
+</script>
 </head>
 <body>
 <div id="authScreen" class="auth-screen">
+  <button class="auth-theme" id="authThemeBtn" type="button" aria-label="Сменить тему" title="Сменить тему">🌗</button>
   <div class="auth-shell">
 
     <!-- Левая половина — о сервисе. На узком экране скрывается целиком, а логотип
@@ -695,6 +753,10 @@
         <button class="nav-item" id="navSpeciesBtn" type="button" onclick="setPage('search');setSearchMode('species')"><span class="nav-ico">🐾</span> Красная книга / СИТЕС</button>
         <button class="nav-item" id="navCalcBtn" type="button" onclick="setPage('search');setSearchMode('calc')"><span class="nav-ico">🧮</span> Таможенный калькулятор</button>
         <button class="nav-item" id="navPersonalBtn" type="button" onclick="setPage('search');setSearchMode('personal')"><span class="nav-ico">📦</span> Личные отправления</button>
+        <div class="theme-sw" role="group" aria-label="Тема оформления">
+          <button type="button" id="themeDarkBtn" aria-pressed="true">🌙 Тёмная</button>
+          <button type="button" id="themeLightBtn" aria-pressed="false">☀️ Светлая</button>
+        </div>
       </div>
 
       <div class="side-panel">
@@ -1137,6 +1199,34 @@ document.getElementById('authRegisterLink').addEventListener('click',function(e)
 document.getElementById('authRegisterBackLink').addEventListener('click',function(e){e.preventDefault();showAuthView('login');});
 document.getElementById('authRegisterSubmit').addEventListener('click',submitRegister);
 document.getElementById('authRegisterPassword').addEventListener('keydown',function(e){if(e.key==='Enter')submitRegister()});
+
+// ═══════════════════════════════════════════
+// ТЕМА ОФОРМЛЕНИЯ
+// ═══════════════════════════════════════════
+// Выбор хранится в localStorage и применяется загрузочным скриптом в <head>,
+// то есть до первой отрисовки — иначе светлая тема мигала бы тёмным кадром.
+// Здесь только переключение и синхронизация вида кнопок.
+function currentTheme(){ return document.documentElement.getAttribute("data-theme")==="light" ? "light" : "dark"; }
+function applyTheme(t){
+  if(t==="light") document.documentElement.setAttribute("data-theme","light");
+  else document.documentElement.removeAttribute("data-theme");
+  try{ localStorage.setItem("ca-theme",t); }catch(e){}
+  syncThemeButtons();
+}
+function syncThemeButtons(){
+  const light=currentTheme()==="light";
+  const d=document.getElementById("themeDarkBtn"), l=document.getElementById("themeLightBtn");
+  if(d) d.setAttribute("aria-pressed", String(!light));
+  if(l) l.setAttribute("aria-pressed", String(light));
+  const a=document.getElementById("authThemeBtn");
+  if(a){ a.textContent = light ? "🌙" : "☀️";
+         a.title = light ? "Тёмная тема" : "Светлая тема";
+         a.setAttribute("aria-label", a.title); }
+}
+document.getElementById("authThemeBtn").addEventListener("click",function(){ applyTheme(currentTheme()==="light"?"dark":"light"); });
+document.getElementById("themeDarkBtn").addEventListener("click",function(){ applyTheme("dark"); });
+document.getElementById("themeLightBtn").addEventListener("click",function(){ applyTheme("light"); });
+syncThemeButtons();
 
 (async function initAuth(){
   // A password-reset link (?reset=<token>) always wins over the normal
@@ -10278,7 +10368,7 @@ document.getElementById('inp').addEventListener('input',function(){clearTimeout(
 });
 
 [['2710 12','Бензин (НП)'],['2710 19','Дизтопливо'],['7013','Стеклянная посуда'],['6911','Фарфор/фаянс'],['9619','Прокладки/подгузники'],['3402','Моющие средства'],['4818','Бумага туалетная'],['9603 21','Зубные щетки']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,149,0,.3);color:#ff9500';b.textContent=`${c} · ${l}`;
+  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,149,0,.3);color:var(--orange)';b.textContent=`${c} · ${l}`;
   b.onmouseover=()=>{b.style.background='rgba(255,149,0,.06)'};
   b.onmouseout=()=>{b.style.background=''};
   b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
@@ -10286,7 +10376,7 @@ document.getElementById('inp').addEventListener('input',function(){clearTimeout(
 });
 
 [['2523','Цемент'],['6810','Бетон/ЖБИ'],['6809','Гипсокартон'],['7213','Арматура'],['3917','Трубы пластик'],['3921','Утеплитель'],['4410','ДСП'],['6802','Камень облицовочный']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,149,0,.3);color:#ff9500';b.textContent=`${c} · ${l}`;
+  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,149,0,.3);color:var(--orange)';b.textContent=`${c} · ${l}`;
   b.onmouseover=()=>{b.style.background='rgba(255,149,0,.06)'};
   b.onmouseout=()=>{b.style.background=''};
   b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
@@ -10300,7 +10390,7 @@ document.getElementById('inp').addEventListener('input',function(){clearTimeout(
 });
 
 [['2903 77','ХФУ/фреоны (ОРВ)'],['3824 71','Охлаждающие смеси ОРВ'],['8418','Холодильники с ОРВ'],['3808 92','Запрещённые пестициды'],['4303 10','Одежда из тюленя'],['9306 21','Патроны оружие'],['0106 19','Соболи живые'],['3825','Опасные отходы']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(0,180,216,.35);color:#00b4d8';b.textContent=`${c} · ${l}`;
+  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(0,180,216,.35);color:var(--cyan)';b.textContent=`${c} · ${l}`;
   b.onmouseover=()=>{b.style.background='rgba(0,180,216,.06)'};b.onmouseout=()=>{b.style.background=''};
   b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
   document.getElementById('sg4').appendChild(b);
