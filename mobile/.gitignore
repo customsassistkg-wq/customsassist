@@ -8,3 +8,4 @@ ios/App/Pods/
 ios/App/build/
 ios/App/DerivedData/
 icons/
+android/keystore.properties

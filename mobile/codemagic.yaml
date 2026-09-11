@@ -67,3 +67,55 @@ workflows:
         auth: integration
         submit_to_testflight: true
         submit_to_app_store: false
+
+  # Android. Отдельный workflow, потому что ему нужна машина с Android SDK, а не
+  # mac_mini, и совсем другой набор секретов.
+  #
+  # Разовая настройка в веб-интерфейсе Codemagic:
+  #   1. Teams → Code signing identities → Android keystores: загрузить
+  #      customsassist-upload.jks (лежит вне репозитория, см. RELEASE.md),
+  #      указать пароль и алиас customsassist, дать ссылке имя ровно
+  #      "customsassist_upload" — иначе поправьте android_signing ниже.
+  #   2. Для автозагрузки в Play: Teams → Integrations → Google Play, ключ
+  #      сервисного аккаунта из Play Console (Setup → API access).
+  #
+  # Пока замена upload key в Play Console не подтверждена Google, публикацию
+  # держим выключенной: бандл подписан НОВЫМ ключом, и Play отклонит его.
+  android-capacitor:
+    name: Android Capacitor Build
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      android_signing:
+        - customsassist_upload
+      node: latest
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          cd mobile
+          npm install
+      - name: Sync Capacitor web assets into Android project
+        script: |
+          cd mobile
+          npx cap sync android
+      - name: Build release bundle
+        script: |
+          cd mobile/android
+          ./gradlew bundleRelease
+    artifacts:
+      - mobile/android/app/build/outputs/**/*.aab
+      - mobile/android/app/build/outputs/**/mapping.txt
+    publishing:
+      # Включить после подтверждения замены upload key (см. RELEASE.md).
+      # google_play:
+      #   credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+      #   track: internal
+      email:
+        recipients:
+          - tshalabaev@gmail.com

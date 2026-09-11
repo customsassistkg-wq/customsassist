@@ -79,6 +79,18 @@ A thin Capacitor shell (`kg.tnved.checker`) for Android and iOS. It ships no cop
 - **The origin change logs every updating user out once.** Session cookies belong to an origin, so a WebView that starts loading a different one arrives with no cookie. This is expected and needs no fix, but it is worth knowing before the release notes are written.
 - Native projects keep their own generated copy of `capacitor.config.json` (`android/app/src/main/assets/`, `ios/App/App/`). Both are gitignored and rebuilt by `npx cap sync`, which the iOS workflow runs; after editing the root config run `npx cap sync` locally too, or a local Android build silently keeps the old origin.
 
+**The phone is a first-class width, not a fallback — and it is measured, not eyeballed.** The wrapper is a WebView over this same site, so a CSS change reaches every installed copy at the next deploy, with no store release; only `server.url` needs one. That makes the narrow layout worth the same care as the wide one. The audit on 12.09.2026 measured an iPhone 14 (390×844) and found the header occupying 153 px, the hero banner 136 px and the search field starting at y=345 — **46 % of the first screen spent before the thing the app is opened for.** The header was three right-aligned rows (theme switch, user bar, access status) stacked by desktop rules, which on a phone reads as a ragged left edge. It is now one wrapping flex row inside `header`, ordered by `order:` so the theme pill and the email share the top line and the access chip takes the second; the theme labels moved into `<span class="ts-txt">` so the words can be dropped and the emoji kept, exactly as `.auth-theme .at-txt` already does on the login screen. Search now starts at y=188.
+
+Five rules from that pass generalise:
+
+- **`viewport-fit=cover` or `env(safe-area-inset-*)` is always zero.** Without it the notch and the gesture bar cut into the page in a WebView, and nothing in a desktop browser ever shows you this.
+- **Never put a text input below 16 px on iOS.** Safari zooms the page in when such a field takes focus and does not zoom back out. `.si` is 17 px on phones for that reason alone.
+- **An absolutely positioned overlay must be measured against the element it overlays, not its wrapper.** `.sico` is `position:absolute` inside `.sw`, and `.sw` also held the field's `<label>` — so the button was offset by the label's height and hung over the input's top edge, at *every* width. The fix is structural: the label moved out of `.sw`, which now contains only the input and the button.
+- **A right padding smaller than the overlay it clears is text running under a button.** The mobile rule had `padding-right:48px` under a 46 px button offset 8 px from the edge.
+- **Check the tap targets with a script, not by eye.** Buttons measured 29 px; `.btn` is now 38 px on phones with 44 px for the standalone ones (Apple HIG and Material both ask 44–48, and 38 is a deliberate compromise for a reference app this dense — say so rather than pretending it meets the guideline).
+
+The horizontally scrolling badge strip keeps a `mask-image` fade on its right edge: it was scrollable all along with nothing to say so.
+
 `privacy.html` at the repo root is deliberately *not* linked from the app (which shows its policy in a modal). It exists as a standalone, publicly reachable URL because app-store review requires one that works without logging in.
 
 Builds run in Codemagic (`mobile/codemagic.yaml`); `mobile/android/local.properties` and both `node_modules` are gitignored.

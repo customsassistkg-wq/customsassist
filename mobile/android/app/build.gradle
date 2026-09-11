@@ -1,5 +1,30 @@
 apply plugin: 'com.android.application'
 
+// Release signing. The keystore and its passwords are deliberately NOT in
+// this repository: the .jks lives in C:\Users\user\customsassist-keys, and
+// the path and password come either from environment variables (for CI) or
+// from mobile/android/keystore.properties, which is gitignored.
+//
+// When neither is present the build does not fail - it just produces an
+// unsigned bundle, so a fresh clone with no secrets still builds.
+def caStorePath  = System.getenv('CA_KEYSTORE_PATH')
+def caStorePass  = System.getenv('CA_KEYSTORE_PASSWORD')
+def caKeyAlias   = System.getenv('CA_KEY_ALIAS')
+def caKeyPass    = System.getenv('CA_KEY_PASSWORD')
+def caProps = file('../keystore.properties')
+if ((caStorePath == null || caStorePath.isEmpty()) && caProps.exists()) {
+    def p = new Properties()
+    caProps.withInputStream { p.load(it) }
+    caStorePath = p.getProperty('storeFile')
+    caStorePass = p.getProperty('storePassword')
+    caKeyAlias  = p.getProperty('keyAlias')
+    caKeyPass   = p.getProperty('keyPassword')
+}
+def caCanSign = caStorePath != null && !caStorePath.isEmpty() && file(caStorePath).exists()
+if (!caCanSign) {
+    logger.lifecycle('Release signing is not configured - the bundle will be unsigned')
+}
+
 android {
     namespace = "kg.tnved.checker"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +41,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (caCanSign) {
+                storeFile file(caStorePath)
+                storePassword caStorePass
+                keyAlias caKeyAlias
+                keyPassword caKeyPass != null ? caKeyPass : caStorePass
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (caCanSign) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
