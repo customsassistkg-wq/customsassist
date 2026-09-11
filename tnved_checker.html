@@ -407,6 +407,13 @@
 
   /* Сам переключатель */
   .hdr-tools{display:flex;justify-content:flex-end;margin-bottom:var(--space-3)}
+  .verify-bar{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:8px;padding:9px 14px;
+    border-radius:var(--radius-md);font-size:12px;line-height:1.5;
+    background:rgba(232,179,74,.13);border:1px solid rgba(232,179,74,.36);color:var(--yellow)}
+  /* Кнопка внутри полосы наследует приглушённый цвет .btn, а фон полосы
+     янтарный — получалось 4,04:1. Берём основной цвет текста. */
+  .verify-bar .btn{flex-shrink:0;color:var(--text)}
+  .verify-bar.vb-ok{background:rgba(76,212,129,.13);border-color:rgba(76,212,129,.36);color:var(--green)}
   .theme-sw{display:inline-flex;gap:4px;padding:4px;border-radius:var(--radius-pill);background:rgba(255,255,255,.05);border:1px solid var(--border);box-shadow:var(--shadow-sm)}
   [data-theme="light"] .theme-sw{background:rgba(255,255,255,.6)}
   .theme-sw button{flex:1;border:0;background:transparent;color:var(--muted);font-family:var(--head);font-size:11px;font-weight:600;padding:6px 8px;border-radius:var(--radius-pill);cursor:pointer;transition:background .15s,color .15s}
@@ -751,6 +758,13 @@
     </div>
     <div class="user-bar" id="userBar" style="display:none"></div>
     <div id="accountPanel" style="display:none"></div>
+    <!-- Полоса о неподтверждённом адресе. Пускаем в сервис и без подтверждения
+         (пробный доступ должен начинаться сразу), но предупреждаем: без него
+         не сработает восстановление пароля. -->
+    <div id="verifyBar" class="verify-bar" style="display:none">
+      <span class="vb-txt"></span>
+      <button type="button" id="verifyResendBtn" class="btn">Отправить письмо ещё раз</button>
+    </div>
   </header>
 
   <div class="content-row">
@@ -1000,6 +1014,11 @@ function showAuthScreen(msg){
   const errEl=document.getElementById('authError');
   if(msg){errEl.textContent=msg;errEl.style.display='block';}
   else{errEl.style.display='none';}
+  if(pendingVerifyMsg){
+    const box=document.getElementById(pendingVerifyMsg.ok?'authInfo':'authError');
+    box.textContent=pendingVerifyMsg.text;box.style.display='block';
+    pendingVerifyMsg=null;
+  }
 }
 
 async function submitForgotPassword(){
@@ -1059,6 +1078,10 @@ async function submitRegister(){
 }
 
 let pendingResetToken=null;
+// Результат перехода по ссылке из письма. Показывается на экране входа:
+// человек приходит по ссылке из почты, и после подтверждения ему всё равно
+// нужно войти.
+let pendingVerifyMsg=null;
 
 async function submitResetPassword(){
   const p1=document.getElementById('authResetPassword').value;
@@ -1102,11 +1125,48 @@ function showApp(){
   document.getElementById('logoutBtn').onclick=doLogout;
   if(isAdmin) document.getElementById('adminLinkBtn').onclick=()=>{setPage('search');setSearchMode(searchMode==='admin'?'code':'admin');};
   renderAccountPanel();
+  renderVerifyBar();
 }
 
 // Виджет статуса доступа в левой боковой панели — админам доступ бессрочный
 // (см. server/src/routes/auth.js), остальным показываем дату истечения подписки
 // и предупреждаем цветом, если срок истекает в ближайшие 14 дней.
+// Полоса о неподтверждённом адресе. Вызывается там же, где панель доступа,
+// то есть на каждый вход и на каждое обновление сведений о пользователе.
+function renderVerifyBar(){
+  const bar=document.getElementById("verifyBar");
+  if(!bar)return;
+  // emailVerified приходит из /api/auth/me и из ответа на регистрацию.
+  // Администраторы и учётные записи, заведённые вручную, помечены
+  // подтверждёнными миграцией, поэтому полосы не увидят.
+  if(!currentUser||currentUser.emailVerified!==false){bar.style.display="none";return;}
+  bar.className="verify-bar";
+  bar.querySelector(".vb-txt").textContent="✉️ Подтвердите адрес "+currentUser.email+" — без этого не получится восстановить пароль.";
+  document.getElementById("verifyResendBtn").style.display="";
+  bar.style.display="flex";
+}
+async function resendVerification(){
+  const btn=document.getElementById("verifyResendBtn");
+  const bar=document.getElementById("verifyBar");
+  btn.disabled=true;btn.textContent="Отправляем…";
+  try{
+    const res=await fetch("/api/auth/resend-verification",{method:"POST",credentials:"include"});
+    const data=await res.json().catch(()=>({}));
+    if(res.ok){
+      bar.querySelector(".vb-txt").textContent = data.cooldown
+        ? "✉️ Письмо уже отправлено — проверьте почту, в том числе папку «Спам»."
+        : "✉️ Письмо отправлено на "+currentUser.email+". Проверьте почту, в том числе папку «Спам».";
+      btn.style.display="none";
+    }else{
+      bar.querySelector(".vb-txt").textContent="Не удалось отправить письмо. Попробуйте позже.";
+      btn.disabled=false;btn.textContent="Отправить письмо ещё раз";
+    }
+  }catch(e){
+    bar.querySelector(".vb-txt").textContent="Нет связи с сервером.";
+    btn.disabled=false;btn.textContent="Отправить письмо ещё раз";
+  }
+}
+
 function renderAccountPanel(){
   const panel=document.getElementById('accountPanel');
   if(!currentUser){panel.style.display='none';return;}
@@ -1237,6 +1297,7 @@ function syncThemeButtons(){
 }
 document.getElementById("authThemeBtn").addEventListener("click",function(){ applyTheme(currentTheme()==="light"?"dark":"light"); });
 document.getElementById("themeDarkBtn").addEventListener("click",function(){ applyTheme("dark"); });
+document.getElementById("verifyResendBtn").addEventListener("click",resendVerification);
 document.getElementById("themeLightBtn").addEventListener("click",function(){ applyTheme("light"); });
 syncThemeButtons();
 
@@ -1246,6 +1307,23 @@ syncThemeButtons();
   // would silently drop the visitor straight into the app and ignore the
   // reset link they just clicked.
   const params=new URLSearchParams(location.search);
+  // Ссылка подтверждения обрабатывается до проверки сессии: человек мог
+  // открыть письмо в браузере, где он не залогинен, и подтверждение не
+  // должно этого требовать — токен сам по себе доказывает доступ к почте.
+  const verifyToken=params.get('verify');
+  if(verifyToken){
+    history.replaceState(null,'',location.pathname);
+    try{
+      const res=await fetch('/api/auth/verify-email',{method:'POST',credentials:'include',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify({token:verifyToken})});
+      const data=await res.json().catch(()=>({}));
+      pendingVerifyMsg = res.ok
+        ? {ok:true, text:'✓ Адрес '+(data.email||'')+' подтверждён. Войдите, чтобы продолжить работу.'}
+        : {ok:false, text:'Ссылка подтверждения недействительна или истекла. Войдите и отправьте письмо ещё раз.'};
+    }catch(e){
+      pendingVerifyMsg={ok:false, text:'Не удалось связаться с сервером. Попробуйте открыть ссылку позже.'};
+    }
+  }
   const resetToken=params.get('reset');
   if(resetToken){
     pendingResetToken=resetToken;

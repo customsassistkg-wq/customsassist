@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const { pool } = require('../db');
-const { sendEmail } = require('../services/email');
+const { sendEmail, renderEmail } = require('../services/email');
 const { endUserSessions } = require('../services/sessions');
 
 const router = express.Router();
@@ -20,6 +20,10 @@ function publicOrigin() {
 }
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+// Подтверждение адреса живёт сутки, а не час: ссылку сброса человек ждёт
+// прямо сейчас, а письмо о регистрации вполне может быть открыто вечером.
+const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+const VERIFY_RESEND_COOLDOWN_MS = 2 * 60 * 1000;
 const RESET_RESEND_COOLDOWN_MS = 2 * 60 * 1000; // don't mint a 2nd token within 2 min of a still-valid one
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TRIAL_DAYS = 3;
@@ -128,6 +132,42 @@ router.post('/logout', (req, res, next) => {
   });
 });
 
+
+// Выпускает токен подтверждения и шлёт письмо. Вызывается и при регистрации,
+// и по кнопке «отправить ещё раз». Ошибка отправки намеренно не роняет
+// вызывающий запрос: аккаунт уже создан, и человек не должен видеть 500
+// из-за того, что почтовый сервис моргнул — он повторит отправку кнопкой.
+async function issueVerification(user) {
+  const { rows: recent } = await pool.query(
+    `select 1 from email_verification_tokens
+      where user_id=$1 and used_at is null and expires_at>now()
+        and created_at>now()-make_interval(secs=>$2::double precision)
+      limit 1`,
+    [user.id, VERIFY_RESEND_COOLDOWN_MS / 1000]
+  );
+  if (recent[0]) return { skipped: 'cooldown' };
+
+  const token = crypto.randomBytes(32).toString('hex');
+  await pool.query(
+    'insert into email_verification_tokens (user_id, token_hash, expires_at) values ($1,$2,$3)',
+    [user.id, hashToken(token), new Date(Date.now() + VERIFY_TOKEN_TTL_MS)]
+  );
+  const url = `${publicOrigin()}/?verify=${token}`;
+  await sendEmail({
+    to: user.email,
+    subject: 'Подтвердите адрес почты — Customs Assist KG',
+    html: renderEmail({
+      title: 'Подтвердите адрес почты',
+      intro: 'Вы зарегистрировались в Customs Assist KG — сервисе проверки кодов ТН ВЭД Кыргызской Республики и ЕАЭС. Остался один шаг: подтвердите, что этот адрес ваш.',
+      actionUrl: url,
+      actionText: 'Подтвердить адрес',
+      outro: 'Ссылка действительна 24 часа. Пользоваться сервисом можно и до подтверждения, но без него мы не сможем восстановить вам пароль.',
+      footNote: 'Если вы не регистрировались в Customs Assist KG, просто не открывайте ссылку — учётная запись останется неподтверждённой.',
+    }),
+  });
+  return { sent: true };
+}
+
 router.post('/register', async (req, res, next) => {
   try {
     const { email, password, website } = req.body || {};
@@ -173,6 +213,12 @@ router.post('/register', async (req, res, next) => {
       [user.id, 'self_register', user.id, JSON.stringify({ email: user.email, trial_days: TRIAL_DAYS })]
     );
 
+    // Письмо уходит в фоне и его результат не влияет на ответ: регистрация
+    // уже состоялась, а ждать почтовый сервис значит держать человека перед
+    // крутящейся кнопкой. Неудача попадёт в журнал, и есть кнопка повтора.
+    issueVerification(user).catch((e) =>
+      console.error('verification email failed:', e.message));
+
     req.session.regenerate((err) => {
       if (err) return next(err);
       req.session.userId = user.id;
@@ -180,6 +226,7 @@ router.post('/register', async (req, res, next) => {
         email: user.email,
         role: user.role,
         subscriptionExpiresAt: user.subscription_expires_at,
+        emailVerified: false,
       });
     });
   } catch (err) {
@@ -232,10 +279,15 @@ router.post('/forgot-password', async (req, res) => {
     const resetUrl = `${publicOrigin()}/?reset=${token}`;
     await sendEmail({
       to: user.email,
-      subject: 'Восстановление пароля — Проверка ТН ВЭД',
-      html: `<p>Вы запросили восстановление пароля.</p>
-<p><a href="${resetUrl}">Установить новый пароль</a></p>
-<p>Ссылка действительна 1 час. Если вы не запрашивали восстановление — просто проигнорируйте это письмо.</p>`,
+      subject: 'Восстановление пароля — Customs Assist KG',
+      html: renderEmail({
+        title: 'Восстановление пароля',
+        intro: 'Вы запросили смену пароля в Customs Assist KG. Нажмите кнопку ниже и придумайте новый.',
+        actionUrl: resetUrl,
+        actionText: 'Установить новый пароль',
+        outro: 'Ссылка действительна 1 час и сработает один раз.',
+        footNote: 'Если вы не запрашивали восстановление, просто проигнорируйте это письмо — пароль останется прежним.',
+      }),
     });
   } catch (err) {
     // Nothing here can reach the caller any more — the response was already
@@ -288,12 +340,53 @@ router.post('/reset-password', async (req, res, next) => {
   }
 });
 
+
+// Подтверждение адреса по ссылке из письма. Токен разовый: помечаем
+// использованным и ставим отметку у пользователя.
+router.post('/verify-email', async (req, res, next) => {
+  try {
+    const { token } = req.body || {};
+    if (!token) return res.status(400).json({ error: 'token required' });
+    const { rows } = await pool.query(
+      `select evt.id as token_id, u.id as user_id, u.email, u.email_verified_at
+         from email_verification_tokens evt join users u on u.id = evt.user_id
+        where evt.token_hash=$1 and evt.used_at is null and evt.expires_at>now()`,
+      [hashToken(token)]
+    );
+    const row = rows[0];
+    if (!row) return res.status(400).json({ error: 'invalid or expired token' });
+
+    await pool.query('update email_verification_tokens set used_at=now() where id=$1', [row.token_id]);
+    if (!row.email_verified_at) {
+      await pool.query('update users set email_verified_at=now() where id=$1', [row.user_id]);
+    }
+    res.json({ ok: true, email: row.email });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Повторная отправка — только себе и только войдя: иначе маршрут стал бы
+// способом слать письма на чужой адрес чужими руками.
+router.post('/resend-verification', async (req, res, next) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'not authenticated' });
+    if (req.user.email_verified_at) return res.json({ ok: true, alreadyVerified: true });
+    const r = await issueVerification(req.user);
+    res.json({ ok: true, cooldown: r.skipped === 'cooldown' });
+  } catch (err) {
+    console.error('resend verification failed:', err.message);
+    res.status(502).json({ error: 'mail service unavailable' });
+  }
+});
+
 router.get('/me', (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'not authenticated', reason: req.authReason || null });
   res.json({
     email: req.user.email,
     role: req.user.role,
     subscriptionExpiresAt: req.user.subscription_expires_at,
+    emailVerified: !!req.user.email_verified_at,
   });
 });
 
