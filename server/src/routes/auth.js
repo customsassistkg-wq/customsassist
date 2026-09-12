@@ -206,7 +206,7 @@ router.post('/register', async (req, res, next) => {
     // Порядок не случаен: токен Turnstile одноразовый, поэтому сжигать его
     // на форме, которая всё равно не пройдёт проверку длины пароля, нельзя —
     // человеку пришлось бы решать капчу заново из-за собственной опечатки.
-    const captcha = await verifyTurnstile(req.body && req.body.turnstileToken, req.ip);
+    const captcha = await verifyTurnstile(req.body && req.body.turnstileToken, req.ip, 'register');
     if (!captcha.ok) {
       return res.status(400).json({ error: 'captcha failed' });
     }
@@ -273,7 +273,7 @@ router.post('/forgot-password', async (req, res) => {
   // пройдена» значит ответить по-разному на разные запросы, а весь смысл
   // этого обработчика в том, что ответ всегда одинаковый. Непройденная
   // проверка просто не приводит к письму.
-  const captcha = await verifyTurnstile(req.body && req.body.turnstileToken, req.ip);
+  const captcha = await verifyTurnstile(req.body && req.body.turnstileToken, req.ip, 'forgot-password');
   if (!captcha.ok) return;
 
   try {

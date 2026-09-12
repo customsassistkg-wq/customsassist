@@ -1115,7 +1115,10 @@ async function initTurnstile(){
     sc.onerror=function(){resolve();};   // не блокируем форму, если Cloudflare недоступен
     document.head.appendChild(sc);
   });
-  tsRender("register");tsRender("forgot");
+  // Рисуем только открытый вид. Рисовать оба сразу значило бы запускать два
+  // испытания Cloudflare в скрытых блоках: лишняя работа, лишние запросы, и
+  // к моменту отправки формы токен может успеть протухнуть (срок 300 с).
+  tsRenderVisible();
 }
 
 // Виджет рисуется явно (render=explicit), потому что формы лежат в скрытых
@@ -1128,6 +1131,9 @@ function tsRender(name){
   tsWidgets[name]=window.turnstile.render(box,{
     sitekey:TURNSTILE_KEY,
     language:"ru",
+    // action попадает в ответ siteverify, и сервер его сверяет: без этого
+    // токен, полученный на форме восстановления, подошёл бы к регистрации.
+    action:name==="register"?"register":"forgot-password",
     // Тема берётся текущая, а не "auto": auto следует настройке системы,
     // а у приложения свой переключатель, и они расходятся.
     theme:currentTheme()==="light"?"light":"dark"
@@ -1139,6 +1145,13 @@ function tsRender(name){
 function tsToken(name){
   if(!tsReady||!window.turnstile||tsWidgets[name]===undefined)return "";
   try{return window.turnstile.getResponse(tsWidgets[name])||"";}catch(e){return "";}
+}
+// Вызывается после загрузки скрипта: к этому моменту нужный вид уже может
+// быть открыт, и обработчик показа отработал вхолостую (скрипта не было).
+function tsRenderVisible(){
+  const r=document.getElementById("authViewRegister"), f=document.getElementById("authViewForgot");
+  if(r&&r.style.display!=="none")tsRender("register");
+  if(f&&f.style.display!=="none")tsRender("forgot");
 }
 function tsActive(){return !!TURNSTILE_KEY;}
 function tsReset(name){

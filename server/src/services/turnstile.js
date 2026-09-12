@@ -30,6 +30,19 @@ function isEnabled() {
   return secretKey().length > 0;
 }
 
+// Разрешённые имена хостов берём из APP_ORIGIN: виджет заведён на
+// customsassist.trade, и токен, выпущенный где-то ещё, нам не годится.
+function allowedHostnames() {
+  const raw = process.env.PUBLIC_ORIGIN || process.env.APP_ORIGIN || '';
+  const out = [];
+  for (const part of String(raw).split(',')) {
+    const v = part.trim();
+    if (!v) continue;
+    try { out.push(new URL(v).hostname); } catch (e) { /* мусор в настройке игнорируем */ }
+  }
+  return out;
+}
+
 // Возвращает { ok, skipped, codes }.
 //
 // О поведении при сбое. Если ключ задан, а Cloudflare недоступен, проверка
@@ -38,7 +51,7 @@ function isEnabled() {
 // выключает недоступность чужого сервиса, защитой не является. Риск при этом
 // невелик и заметен: атакующий не может вызвать сбой нашего исходящего
 // запроса, а настоящая недоступность Cloudflare попадёт в журнал.
-async function verifyTurnstile(token, remoteip) {
+async function verifyTurnstile(token, remoteip, expectedAction) {
   if (!isEnabled()) return { ok: true, skipped: true };
   if (!token || typeof token !== 'string') {
     return { ok: false, skipped: false, codes: ['missing-input-response'] };
@@ -76,6 +89,20 @@ async function verifyTurnstile(token, remoteip) {
     // наружу уходит одно общее сообщение.
     console.warn('turnstile: rejected,', (data['error-codes'] || []).join(','));
     return { ok: false, skipped: false, codes: data['error-codes'] || [] };
+  }
+
+  // success:true — ещё не конец проверки. Ответ Cloudflare говорит, ГДЕ и НА
+  // КАКОМ действии токен был выпущен, и это надо сверить: иначе токен,
+  // полученный на чужом сайте с тем же публичным ключом или на соседней
+  // форме, подойдёт сюда. Публичный ключ на то и публичный.
+  const hosts = allowedHostnames();
+  if (hosts.length && data.hostname && !hosts.includes(data.hostname)) {
+    console.warn('turnstile: hostname mismatch:', data.hostname);
+    return { ok: false, skipped: false, codes: ['hostname-mismatch'] };
+  }
+  if (expectedAction && data.action && data.action !== expectedAction) {
+    console.warn('turnstile: action mismatch:', data.action, '!=', expectedAction);
+    return { ok: false, skipped: false, codes: ['action-mismatch'] };
   }
   return { ok: true, skipped: false, codes: [] };
 }
