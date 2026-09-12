@@ -70,6 +70,18 @@ The same domain also fronts a **different project on a different server**: `ts.c
 
 **A new user column has to be added to the auth middleware's SELECT too.** `email_verified_at` was written by the verify endpoint and `/api/auth/me` still answered `emailVerified:false`, because `middleware/auth.js` loads the user with an explicit column list. The end-to-end test caught it; a UI-only check would not have.
 
+**Captcha is Cloudflare Turnstile, and it is off until two keys exist.** `services/turnstile.js` verifies a token against `challenges.cloudflare.com/turnstile/v0/siteverify`; `/register` and `/forgot-password` call it. The design decision that matters: **`isEnabled()` keys off `TURNSTILE_SECRET_KEY`, and when that is unset verification returns `{ok:true, skipped:true}`** — so the code ships and runs exactly as before until the owner pastes the keys into `.env` and restarts. The public sitekey reaches the browser through `GET /api/auth/config` rather than being baked into `tnved_checker.html`, which is what makes turning the captcha on a one-line `.env` edit instead of a rebuild and redeploy of an 8 MB file.
+
+Five things worth knowing before touching it:
+
+- **Turnstile does not require the domain to be proxied through Cloudflare.** The DNS records here are DNS-only and that is fine; only the Cloudflare account matters. Do not "enable the proxy" on this account of the captcha.
+- **The token is single-use, so verify it last.** In `/register` the captcha check sits *after* field validation and *before* `bcrypt` — validating first means a typo'd password does not burn the token and force the user to solve again; verifying before bcrypt means a bot does not cost a hash.
+- **In `/forgot-password` the check happens after the response is already sent**, alongside the rate-limit check, for the reason documented there: that endpoint answers `{ok:true}` identically and immediately for every address so it cannot be used to enumerate accounts. A failed captcha therefore just means no mail, never a different answer.
+- **Failure of the verification request itself is treated as a failure (fail closed).** An attacker cannot make our outbound call fail, so the only real cost is a Cloudflare outage blocking signups — which is logged and visible, unlike a captcha that silently lets everyone through whenever a third party is down.
+- **The widget renders into a shadow DOM.** A test that counts `iframe` elements under the container finds zero and looks like a failure; check `turnstile.getResponse()` or the container's size instead. Render is explicit (`render=explicit`) because the auth views live in `display:none` blocks and an auto-rendered widget there comes out with zero size.
+
+Cloudflare publishes test keys that make the whole path checkable without the owner's account: sitekey `1x00000000000000000000AA` with secret `1x0000000000000000000000000000000AA` always passes, `2x…AB`/`2x…AA` always fails, `3x…AA` returns `timeout-or-duplicate`. One caveat found by using them: **the "always passes" secret accepts any non-empty string, not only the dummy token**, so it cannot be used to prove that forgeries are rejected — the `2x` key proves that.
+
 **Schema/migrations:** there's no migration framework — `migrations/*.sql` files are applied by hand with `psql -f`, in order, once each. Add new migrations as new numbered files rather than editing an already-applied one.
 
 ## Mobile wrapper (`mobile/`)

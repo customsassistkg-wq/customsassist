@@ -422,6 +422,10 @@
 
   /* Сам переключатель */
   .hdr-tools{display:flex;justify-content:flex-end;margin-bottom:var(--space-3)}
+  /* Место под виджет Turnstile. Пустая коробка ничего не занимает, пока
+     капча не настроена, поэтому вёрстка форм не меняется. */
+  .cf-box{margin-bottom:var(--space-3)}
+  .cf-box:empty{margin-bottom:0}
   .verify-bar{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-top:8px;padding:9px 14px;
     border-radius:var(--radius-md);font-size:12px;line-height:1.5;
     background:rgba(232,179,74,.13);border:1px solid rgba(232,179,74,.36);color:var(--yellow)}
@@ -768,6 +772,7 @@
         <input id="authForgotEmail" type="email" autocomplete="username" placeholder="you@example.com" spellcheck="false">
         <div class="auth-fe"></div>
       </div>
+      <div id="turnstileForgot" class="cf-box"></div>
       <div id="authForgotError" class="calc-warn w-red" style="display:none"></div>
       <div id="authForgotInfo" class="calc-warn auth-ok" style="display:none"></div>
       <button id="authForgotSubmit" class="auth-btn" type="button"><span class="ab-label">Отправить ссылку</span></button>
@@ -820,6 +825,7 @@
         <label for="authRegisterWebsite">Сайт компании</label>
         <input id="authRegisterWebsite" type="text" name="website" tabindex="-1" autocomplete="off">
       </div>
+      <div id="turnstileRegister" class="cf-box"></div>
       <div id="authRegisterError" class="calc-warn w-red" style="display:none"></div>
       <button id="authRegisterSubmit" class="auth-btn" type="button"><span class="ab-label">Создать аккаунт</span></button>
       <a href="#" id="authRegisterBackLink" class="auth-back">← Назад ко входу</a>
@@ -1086,6 +1092,60 @@ function authCheckPassword(id,min){
   return true;
 }
 
+// ── Cloudflare Turnstile ───────────────────────────────────────────────
+// Публичный ключ приходит с сервера (/api/auth/config), а не зашит в этот
+// файл: включение капчи должно быть правкой .env и перезапуском службы, а
+// не пересборкой и выкатом восьмимегабайтной страницы. Пока ключа нет,
+// скрипт Cloudflare даже не загружается — чужой код не тянем без нужды.
+let TURNSTILE_KEY=null, tsWidgets={}, tsReady=false;
+
+async function initTurnstile(){
+  try{
+    const res=await fetch("/api/auth/config",{credentials:"include"});
+    if(!res.ok)return;
+    const cfg=await res.json();
+    if(!cfg.turnstileSiteKey)return;
+    TURNSTILE_KEY=cfg.turnstileSiteKey;
+  }catch(e){return;}
+  await new Promise((resolve)=>{
+    window.onTurnstileLoad=function(){tsReady=true;resolve();};
+    const sc=document.createElement("script");
+    sc.src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onTurnstileLoad";
+    sc.async=true;sc.defer=true;
+    sc.onerror=function(){resolve();};   // не блокируем форму, если Cloudflare недоступен
+    document.head.appendChild(sc);
+  });
+  tsRender("register");tsRender("forgot");
+}
+
+// Виджет рисуется явно (render=explicit), потому что формы лежат в скрытых
+// блоках: автоматический рендер в display:none даёт нулевой размер и
+// виджет остаётся невидимым.
+function tsRender(name){
+  if(!tsReady||!TURNSTILE_KEY||!window.turnstile)return;
+  const box=document.getElementById(name==="register"?"turnstileRegister":"turnstileForgot");
+  if(!box||tsWidgets[name]!==undefined)return;
+  tsWidgets[name]=window.turnstile.render(box,{
+    sitekey:TURNSTILE_KEY,
+    language:"ru",
+    // Тема берётся текущая, а не "auto": auto следует настройке системы,
+    // а у приложения свой переключатель, и они расходятся.
+    theme:currentTheme()==="light"?"light":"dark"
+  });
+}
+
+// Возвращает "" когда капча не настроена — вызывающий код тогда просто
+// отправляет запрос без токена, а сервер его и не ждёт.
+function tsToken(name){
+  if(!tsReady||!window.turnstile||tsWidgets[name]===undefined)return "";
+  try{return window.turnstile.getResponse(tsWidgets[name])||"";}catch(e){return "";}
+}
+function tsActive(){return !!TURNSTILE_KEY;}
+function tsReset(name){
+  if(!tsReady||!window.turnstile||tsWidgets[name]===undefined)return;
+  try{window.turnstile.reset(tsWidgets[name]);}catch(e){}
+}
+
 function showAuthView(view){
   document.getElementById('authViewLogin').style.display=view==='login'?'':'none';
   document.getElementById('authViewForgot').style.display=view==='forgot'?'':'none';
@@ -1097,6 +1157,10 @@ function showAuthView(view){
   }
   authFieldsClear();
   document.querySelectorAll('#authScreen .auth-btn').forEach(authBtnReset);
+  // Рисуем при первом показе: до этого блок скрыт и виджет получил бы
+  // нулевой размер. Повторные вызовы tsRender ничего не делают.
+  if(view==='register')tsRender('register');
+  if(view==='forgot')tsRender('forgot');
 }
 
 function showAuthScreen(msg){
@@ -1121,9 +1185,14 @@ async function submitForgotPassword(){
   errEl.style.display='none';infoEl.style.display='none';
   authFieldsClear();
   if(!authCheckEmail('authForgotEmail'))return;
+  const tsF=tsToken('forgot');
+  if(tsActive()&&!tsF){errEl.textContent='Подтвердите, что вы не робот';errEl.style.display='block';return;}
   authBtnBusy(btn,true);
   try{
-    await fetch('/api/auth/forgot-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
+    await fetch('/api/auth/forgot-password',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,turnstileToken:tsF})});
+    // Токен одноразовый: после отправки виджет надо сбросить, иначе
+    // вторая попытка уйдёт с уже потраченным токеном.
+    tsReset('forgot');
     // Deliberately the same message whether or not the email is actually
     // registered — see the matching comment server-side in auth.js.
     infoEl.textContent='Если такой email зарегистрирован, на него отправлена ссылка для сброса пароля.';
@@ -1146,13 +1215,20 @@ async function submitRegister(){
   if(!email||!password){errEl.textContent='Заполните email и пароль';errEl.style.display='block';return;}
   if(!EMAIL_RE.test(email)){errEl.textContent='Введите корректный email (например, user@example.com)';errEl.style.display='block';return;}
   if(password.length<8){errEl.textContent='Пароль должен быть не короче 8 символов';errEl.style.display='block';return;}
+  const tsR=tsToken('register');
+  if(tsActive()&&!tsR){errEl.textContent='Подтвердите, что вы не робот';errEl.style.display='block';return;}
   authBtnBusy(btn,true);
   try{
-    const res=await fetch('/api/auth/register',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,website})});
+    const res=await fetch('/api/auth/register',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,website,turnstileToken:tsR})});
     if(!res.ok){
       const data=await res.json().catch(()=>({}));
+      // Токен потрачен независимо от исхода — виджет сбрасываем всегда,
+      // иначе повторная отправка уйдёт с использованным токеном и
+      // получит ту же ошибку, уже без причины.
+      tsReset('register');
       const msg=data.error==='email already exists'?'Такой email уже зарегистрирован'
         :data.error==='too many attempts, try again later'?'Слишком много попыток — попробуйте позже'
+        :data.error==='captcha failed'?'Проверка «я не робот» не пройдена — попробуйте ещё раз'
         :data.error||'Ошибка создания аккаунта';
       errEl.textContent=msg;
       errEl.style.display='block';
@@ -1411,6 +1487,10 @@ document.getElementById("themeDarkBtn").addEventListener("click",function(){ app
 document.getElementById("verifyResendBtn").addEventListener("click",resendVerification);
 document.getElementById("themeLightBtn").addEventListener("click",function(){ applyTheme("light"); });
 syncThemeButtons();
+
+// Загрузка капчи идёт параллельно проверке сессии и ничего не блокирует:
+// человеку с действующей сессией виджет не нужен вовсе.
+initTurnstile();
 
 (async function initAuth(){
   // A password-reset link (?reset=<token>) always wins over the normal

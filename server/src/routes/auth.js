@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const { pool } = require('../db');
 const { sendEmail, renderEmail } = require('../services/email');
+const { verifyTurnstile, isEnabled: turnstileEnabled, siteKey: turnstileSiteKey } = require('../services/turnstile');
 const { endUserSessions } = require('../services/sessions');
 
 const router = express.Router();
@@ -38,8 +39,10 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-// Crude in-process anti-abuse (no CAPTCHA provider is wired in yet — needs
-// site/secret keys the user hasn't supplied, see session.md). A Map is fine at
+// Crude in-process anti-abuse, and the first line of defence rather than the
+// only one: Cloudflare Turnstile sits in front of registration and password
+// reset (see services/turnstile.js), while this cap still applies to every
+// attempt including the ones that never reach the captcha. A Map is fine at
 // this app's single-instance, low-traffic scale. Every endpoint that needs a
 // per-IP cap builds one of these rather than copy-pasting the same six lines:
 // registration, login (so a known account's password can't be brute-forced),
@@ -69,6 +72,14 @@ function makeRateLimiter(limit, windowMs) {
 const checkRegisterRateLimit = makeRateLimiter(REGISTER_RATE_LIMIT, REGISTER_RATE_WINDOW_MS);
 const checkLoginRateLimit = makeRateLimiter(LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW_MS);
 const checkForgotRateLimit = makeRateLimiter(FORGOT_RATE_LIMIT, FORGOT_RATE_WINDOW_MS);
+
+// Публичные настройки для страницы. Публичный ключ Turnstile не секрет —
+// он и так виден в разметке виджета. Отдаём его отдельным запросом, а не
+// зашиваем в HTML, чтобы включение капчи было правкой .env и перезапуском
+// службы, а не пересборкой и выкатом восьмимегабайтного файла.
+router.get('/config', (req, res) => {
+  res.json({ turnstileSiteKey: turnstileEnabled() ? (turnstileSiteKey() || null) : null });
+});
 
 router.post('/login', async (req, res, next) => {
   try {
@@ -191,6 +202,15 @@ router.post('/register', async (req, res, next) => {
       return res.status(400).json({ error: 'password must be at least 8 characters' });
     }
 
+    // Капча проверяется последней из проверок и до первой дорогой операции.
+    // Порядок не случаен: токен Turnstile одноразовый, поэтому сжигать его
+    // на форме, которая всё равно не пройдёт проверку длины пароля, нельзя —
+    // человеку пришлось бы решать капчу заново из-за собственной опечатки.
+    const captcha = await verifyTurnstile(req.body && req.body.turnstileToken, req.ip);
+    if (!captcha.ok) {
+      return res.status(400).json({ error: 'captcha failed' });
+    }
+
     const hash = await bcrypt.hash(password, 12);
     let rows;
     try {
@@ -248,6 +268,13 @@ router.post('/forgot-password', async (req, res) => {
   // and there is nothing useful to tell the caller anyway.
   if (!checkForgotRateLimit(req.ip)) return;
   if (!email) return;
+
+  // Капча здесь тоже после ответа, и по той же причине: сказать «капча не
+  // пройдена» значит ответить по-разному на разные запросы, а весь смысл
+  // этого обработчика в том, что ответ всегда одинаковый. Непройденная
+  // проверка просто не приводит к письму.
+  const captcha = await verifyTurnstile(req.body && req.body.turnstileToken, req.ip);
+  if (!captcha.ok) return;
 
   try {
     const { rows } = await pool.query(
