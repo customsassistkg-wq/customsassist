@@ -93,6 +93,15 @@ Five rules from that pass generalise:
 
 The horizontally scrolling badge strip keeps a `mask-image` fade on its right edge: it was scrollable all along with nothing to say so.
 
+**The site installs to a home screen without either store, and that is the cheap path.** Publishing costs money the owner had not counted on — Google Play is a **one-time US$25** registration fee and the Apple Developer Program is **US$99 per membership year** (both read off the official pages on 12.09.2026, not from memory). So on that day the site became installable on its own: `manifest.webmanifest` at the root, icons under `icons/`, and the `<link rel="manifest">` plus Apple meta tags in the page `<head>`. A phone gets an icon, its own window with no browser chrome, and the same live site — with no review, no fee and no release cycle.
+
+Four things about it are deliberate:
+
+- **No service worker.** Chrome no longer requires one for installability (the current criteria are a manifest with 192 and 512 px icons, `start_url`, `display` and HTTPS), and on an 8 MB page any caching layer risks serving yesterday's file — the exact failure this project has already lived through. Skipping it keeps "deploy = everyone sees it" true.
+- **Nginx does not know `.webmanifest`** and served it as `application/octet-stream`, which Chrome ignores silently — no manifest, no install prompt, no error. Fixed with `location = /manifest.webmanifest { default_type application/manifest+json; }` in the site config rather than by editing `/etc/nginx/mime.types`, which a package upgrade would overwrite.
+- **The icon is a crop of `logo_new.png`, not the whole banner.** The banner carries the wordmark, and at 48–72 px the lettering turns to mush; the crop keeps only the circular emblem (the red field with the sun reads at any size). The maskable variant sits at 76 % on a solid navy, because Android crops maskable icons to a circle or squircle and guarantees only the central 80 %.
+- **`apple-mobile-web-app-status-bar-style` is `black`, not `black-translucent`.** The translucent setting puts page content under the clock, which would need checking on a real iPhone that nobody here has.
+
 `privacy.html` at the repo root is deliberately *not* linked from the app (which shows its policy in a modal). It exists as a standalone, publicly reachable URL because app-store review requires one that works without logging in.
 
 Builds run in Codemagic (`mobile/codemagic.yaml`); `mobile/android/local.properties` and both `node_modules` are gitignored.
