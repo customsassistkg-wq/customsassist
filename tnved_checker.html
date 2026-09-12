@@ -779,6 +779,18 @@
       <a href="#" id="authBackToLoginLink" class="auth-back">← Назад ко входу</a>
     </div>
 
+    <!-- Пятый вид экрана входа. Появился 12.09.2026, когда подтверждение
+         адреса стало обязательным: после регистрации человек больше не
+         попадает внутрь сразу, и ему надо объяснить, что делать. -->
+    <div id="authViewVerify" style="display:none">
+      <h1>Подтвердите адрес</h1>
+      <p class="sub">Мы отправили письмо на <b id="authVerifyEmail"></b>. Откройте ссылку из письма — после этого можно войти. Загляните и в папку «Спам».</p>
+      <div id="authVerifyError" class="calc-warn w-red" style="display:none"></div>
+      <div id="authVerifyInfo" class="calc-warn auth-ok" style="display:none"></div>
+      <button id="authVerifyResend" class="auth-btn" type="button"><span class="ab-label">Отправить письмо ещё раз</span></button>
+      <a href="#" id="authVerifyBackLink" class="auth-back">← Назад ко входу</a>
+    </div>
+
     <div id="authViewReset" style="display:none">
       <h1>Новый пароль</h1>
       <p class="sub">Придумайте новый пароль для входа.</p>
@@ -1164,7 +1176,8 @@ function showAuthView(view){
   document.getElementById('authViewForgot').style.display=view==='forgot'?'':'none';
   document.getElementById('authViewReset').style.display=view==='reset'?'':'none';
   document.getElementById('authViewRegister').style.display=view==='register'?'':'none';
-  for(const id of ['authError','authInfo','authForgotError','authForgotInfo','authResetError','authRegisterError']){
+  document.getElementById('authViewVerify').style.display=view==='verify'?'':'none';
+  for(const id of ['authError','authInfo','authForgotError','authForgotInfo','authResetError','authRegisterError','authVerifyError','authVerifyInfo']){
     const el=document.getElementById(id);
     el.style.display='none';el.textContent='';
   }
@@ -1174,6 +1187,38 @@ function showAuthView(view){
   // нулевой размер. Повторные вызовы tsRender ничего не делают.
   if(view==='register')tsRender('register');
   if(view==='forgot')tsRender('forgot');
+}
+
+// Адрес, который ждёт подтверждения. Хранится между показами, чтобы кнопка
+// повторной отправки знала, кому слать: сессии-то нет.
+let pendingVerifyEmail=null;
+
+function showVerifyNotice(email){
+  pendingVerifyEmail=email||pendingVerifyEmail||"";
+  document.getElementById("authVerifyEmail").textContent=pendingVerifyEmail;
+  showAuthView("verify");
+}
+
+async function resendVerificationPublic(){
+  const btn=document.getElementById("authVerifyResend");
+  const errEl=document.getElementById("authVerifyError");
+  const infoEl=document.getElementById("authVerifyInfo");
+  errEl.style.display="none";infoEl.style.display="none";
+  if(!pendingVerifyEmail){errEl.textContent="Не знаем, на какой адрес отправлять — войдите ещё раз.";errEl.style.display="block";return;}
+  authBtnBusy(btn,true);
+  try{
+    // Ответ намеренно всегда одинаковый — сервер не говорит, есть ли такой
+    // адрес. Поэтому и сообщение здесь осторожное: «если ... то отправлено».
+    await fetch("/api/auth/resend-verification-public",{method:"POST",credentials:"include",
+      headers:{"Content-Type":"application/json"},body:JSON.stringify({email:pendingVerifyEmail})});
+    infoEl.textContent="Если адрес зарегистрирован и ещё не подтверждён, письмо отправлено повторно.";
+    infoEl.style.display="block";
+  }catch(e){
+    errEl.textContent="Не удалось соединиться с сервером";
+    errEl.style.display="block";
+  }finally{
+    authBtnReset(btn);
+  }
 }
 
 function showAuthScreen(msg){
@@ -1247,9 +1292,11 @@ async function submitRegister(){
       errEl.style.display='block';
       return;
     }
-    currentUser=await res.json();
-    showApp();
-    initApp();
+    // Раньше здесь был вход внутрь. С 12.09.2026 сессия при регистрации не
+    // создаётся: без подтверждённого адреса пользоваться сервисом нельзя.
+    const data=await res.json();
+    document.getElementById('authRegisterPassword').value='';
+    showVerifyNotice(data.email||email);
   }catch(e){
     errEl.textContent='Не удалось соединиться с сервером';
     errEl.style.display='block';
@@ -1389,6 +1436,10 @@ async function doLogin(){
     const res=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
     if(!res.ok){
       const data=await res.json().catch(()=>({}));
+      // Неподтверждённый адрес — не ошибка входа, а незаконченная
+      // регистрация: показываем экран с объяснением и кнопкой повтора,
+      // а не красную надпись под формой.
+      if(data.error==='email_not_verified'){showVerifyNotice(email);return;}
       const msg=data.error==='invalid credentials'?'Неверный email или пароль'
         :data.error==='subscription_expired'?'Подписка истекла. Свяжитесь с администратором для продления.'
         :'Ошибка входа';
@@ -1498,6 +1549,8 @@ function syncThemeButtons(){
 document.getElementById("authThemeBtn").addEventListener("click",function(){ applyTheme(currentTheme()==="light"?"dark":"light"); });
 document.getElementById("themeDarkBtn").addEventListener("click",function(){ applyTheme("dark"); });
 document.getElementById("verifyResendBtn").addEventListener("click",resendVerification);
+document.getElementById("authVerifyResend").addEventListener("click",resendVerificationPublic);
+document.getElementById('authVerifyBackLink').addEventListener('click',function(e){e.preventDefault();showAuthView('login');});
 document.getElementById("themeLightBtn").addEventListener("click",function(){ applyTheme("light"); });
 syncThemeButtons();
 
@@ -1522,7 +1575,7 @@ initTurnstile();
         headers:{'Content-Type':'application/json'},body:JSON.stringify({token:verifyToken})});
       const data=await res.json().catch(()=>({}));
       pendingVerifyMsg = res.ok
-        ? {ok:true, text:'✓ Адрес '+(data.email||'')+' подтверждён. Войдите, чтобы продолжить работу.'}
+        ? {ok:true, text:'✓ Адрес '+(data.email||'')+' подтверждён. Теперь можно войти.'}
         : {ok:false, text:'Ссылка подтверждения недействительна или истекла. Войдите и отправьте письмо ещё раз.'};
     }catch(e){
       pendingVerifyMsg={ok:false, text:'Не удалось связаться с сервером. Попробуйте открыть ссылку позже.'};

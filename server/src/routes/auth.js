@@ -72,6 +72,10 @@ function makeRateLimiter(limit, windowMs) {
 const checkRegisterRateLimit = makeRateLimiter(REGISTER_RATE_LIMIT, REGISTER_RATE_WINDOW_MS);
 const checkLoginRateLimit = makeRateLimiter(LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW_MS);
 const checkForgotRateLimit = makeRateLimiter(FORGOT_RATE_LIMIT, FORGOT_RATE_WINDOW_MS);
+// Повторная отправка письма подтверждения теперь нужна и без сессии: войти
+// до подтверждения нельзя, значит попросить письмо заново человек может
+// только с экрана входа. Ограничение то же, что у восстановления пароля.
+const checkResendRateLimit = makeRateLimiter(FORGOT_RATE_LIMIT, FORGOT_RATE_WINDOW_MS);
 
 // Публичные настройки для страницы. Публичный ключ Turnstile не секрет —
 // он и так виден в разметке виджета. Отдаём его отдельным запросом, а не
@@ -92,7 +96,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     const { rows } = await pool.query(
-      'select id, email, password_hash, role, active, subscription_expires_at from users where email = $1',
+      'select id, email, password_hash, role, active, subscription_expires_at, email_verified_at from users where email = $1',
       [String(email).toLowerCase()]
     );
     const user = rows[0];
@@ -105,6 +109,13 @@ router.post('/login', async (req, res, next) => {
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) {
       return res.status(401).json({ error: 'invalid credentials' });
+    }
+
+    // Подтверждение адреса — тоже после проверки пароля, по той же причине,
+    // что и срок подписки ниже: иначе перебором логинов можно было бы узнать,
+    // какие адреса зарегистрированы, но не подтверждены.
+    if (!user.email_verified_at) {
+      return res.status(403).json({ error: 'email_not_verified' });
     }
 
     // Checked only after the password is verified, so a failed-login probe
@@ -172,7 +183,7 @@ async function issueVerification(user) {
       intro: 'Вы зарегистрировались в Customs Assist KG — сервисе проверки кодов ТН ВЭД Кыргызской Республики и ЕАЭС. Остался один шаг: подтвердите, что этот адрес ваш.',
       actionUrl: url,
       actionText: 'Подтвердить адрес',
-      outro: 'Ссылка действительна 24 часа. Пользоваться сервисом можно и до подтверждения, но без него мы не сможем восстановить вам пароль.',
+      outro: 'Ссылка действительна 24 часа. Без подтверждения вход в сервис недоступен — это защищает вас от регистрации на ваш адрес посторонними.',
       footNote: 'Если вы не регистрировались в Customs Assist KG, просто не открывайте ссылку — учётная запись останется неподтверждённой.',
     }),
   });
@@ -233,21 +244,19 @@ router.post('/register', async (req, res, next) => {
       [user.id, 'self_register', user.id, JSON.stringify({ email: user.email, trial_days: TRIAL_DAYS })]
     );
 
-    // Письмо уходит в фоне и его результат не влияет на ответ: регистрация
-    // уже состоялась, а ждать почтовый сервис значит держать человека перед
+    // Письмо уходит в фоне и его результат не влияет на ответ: учётная запись
+    // уже создана, а ждать почтовый сервис значит держать человека перед
     // крутящейся кнопкой. Неудача попадёт в журнал, и есть кнопка повтора.
     issueVerification(user).catch((e) =>
       console.error('verification email failed:', e.message));
 
-    req.session.regenerate((err) => {
-      if (err) return next(err);
-      req.session.userId = user.id;
-      res.status(201).json({
-        email: user.email,
-        role: user.role,
-        subscriptionExpiresAt: user.subscription_expires_at,
-        emailVerified: false,
-      });
+    // Сессия НЕ создаётся: с 12.09.2026 пользоваться сервисом без
+    // подтверждённого адреса нельзя. Раньше здесь шёл regenerate и человек
+    // сразу попадал внутрь — это и позволяло зарегистрироваться на выдуманный
+    // адрес и работать. Пробный срок по-прежнему отсчитывается от регистрации.
+    res.status(201).json({
+      email: user.email,
+      needsVerification: true,
     });
   } catch (err) {
     next(err);
@@ -404,6 +413,33 @@ router.post('/resend-verification', async (req, res, next) => {
   } catch (err) {
     console.error('resend verification failed:', err.message);
     res.status(502).json({ error: 'mail service unavailable' });
+  }
+});
+
+// Повторная отправка письма БЕЗ сессии — с экрана входа.
+//
+// Отвечает {ok:true} всегда и одинаково, по той же причине, что и
+// восстановление пароля: разный ответ на существующий и несуществующий адрес
+// превращает этот маршрут в перебор учётных записей. Капчи здесь нет
+// намеренно — от рассылки писем на чужой адрес защищают два ограничения:
+// это по IP и двухминутная пауза на пользователя внутри issueVerification.
+router.post('/resend-verification-public', async (req, res) => {
+  res.json({ ok: true });
+
+  if (!checkResendRateLimit(req.ip)) return;
+  const { email } = req.body || {};
+  if (!email || !EMAIL_RE.test(String(email))) return;
+
+  try {
+    const { rows } = await pool.query(
+      'select id, email, email_verified_at from users where email = $1',
+      [String(email).toLowerCase()]
+    );
+    const user = rows[0];
+    if (!user || user.email_verified_at) return;
+    await issueVerification(user);
+  } catch (e) {
+    console.error('public resend verification failed:', e.message);
   }
 });
 
