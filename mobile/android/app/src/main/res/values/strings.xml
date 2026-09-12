@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Проверка ТН ВЭД</string>
-    <string name="title_activity_main">Проверка ТН ВЭД</string>
+    <string name="app_name">Customs Assist</string>
+    <string name="title_activity_main">Customs Assist</string>
     <string name="package_name">kg.tnved.checker</string>
     <string name="custom_url_scheme">kg.tnved.checker</string>
 </resources>

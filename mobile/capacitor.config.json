@@ -1,6 +1,6 @@
 {
   "appId": "kg.tnved.checker",
-  "appName": "Проверка ТН ВЭД",
+  "appName": "Customs Assist KG",
   "webDir": "www",
   "server": {
     "url": "https://customsassist.trade",

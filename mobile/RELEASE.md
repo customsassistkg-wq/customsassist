@@ -18,7 +18,7 @@
 Это отменяет две вещи, которые раньше считались верными:
 
 - Выключение временного адреса `65-109-170-170.sslip.io` **никого не отрезало** —
-  установленных копий из магазинов нет. Релиз 1.1 — обычная работа, не спасательная
+  установленных копий из магазинов нет. Релиз 1.2 — обычная работа, не спасательная
   операция.
 - **Утерянный ключ 1.0, возможно, не стоит ничего.** Play App Signing регистрирует
   тот ключ, которым подписана *первая* загрузка. Если в Play Console никогда ничего
@@ -66,8 +66,8 @@ Target audience). Это разовая формальность; ссылка �
 mobile\android\app\build\outputs\bundle\release\app-release.aab
 ```
 
-Он уже подписан ключом `customsassist` (RSA 4096), внутри `versionCode 2`,
-`versionName 1.1` и адрес `https://customsassist.trade` — проверено.
+Он уже подписан ключом `customsassist` (RSA 4096), внутри `versionCode 3`,
+`versionName 1.2` и адрес `https://customsassist.trade` — проверено.
 
 При первой загрузке Google предложит включить **Play App Signing** — согласиться.
 Наш ключ станет зарегистрированным upload key, и вопрос с утерянным ключом 1.0
@@ -94,6 +94,26 @@ mobile\android\app\build\outputs\bundle\release\app-release.aab
 
 3. Google подтверждает обычно за сутки-двое. **До подтверждения загрузить нельзя.**
 4. После подтверждения — шаг 3.
+
+## Переименование приложения
+
+Имя под иконкой живёт **не** в `capacitor.config.json`. `npx cap sync` его не
+обновляет: Capacitor заполняет эти файлы один раз, при создании проекта, дальше они
+ваши и правятся руками:
+
+| Где | Что |
+|---|---|
+| `android/app/src/main/res/values/strings.xml` | `app_name`, `title_activity_main` |
+| `ios/App/App/Info.plist` | `CFBundleDisplayName` |
+| `capacitor.config.json` | `appName` — только для вновь создаваемых проектов |
+
+Строка компилируется в пакет, поэтому переименование требует пересборки и нового
+`versionCode`. И проверяйте результат по самому пакету, а не по исходникам:
+`aapt2 dump badging app-release.apk | grep application-label`.
+
+Имя должно совпадать с `short_name` в `manifest.webmanifest`: на одном телефоне
+могут стоять и APK, и установленная с сайта копия, и два разных подписи под
+одинаковыми значками выглядят как ошибка.
 
 ## Ключ подписи
 
@@ -144,7 +164,7 @@ cd mobile/android
 
 ```
 apksigner verify --print-certs app-release.apk    # ждём CN=Customs Assist KG
-aapt2 dump badging app-release.apk | head -1      # ждём versionCode 2, 1.1
+aapt2 dump badging app-release.apk | head -1      # ждём versionCode 3, 1.2
 ```
 
 На телефоне при установке появится предупреждение о файле из неизвестного

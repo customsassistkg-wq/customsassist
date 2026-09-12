@@ -1,7 +1,7 @@
 {
   "id": "/",
   "name": "Customs Assist KG — проверка ТН ВЭД",
-  "short_name": "Customs KG",
+  "short_name": "Customs Assist",
   "description": "Проверка кодов ТН ВЭД Кыргызской Республики и ЕАЭС: запреты, лицензии, сертификация, ставки пошлин и таможенный калькулятор.",
   "lang": "ru",
   "dir": "ltr",
