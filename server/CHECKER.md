@@ -6,7 +6,11 @@
 поиска следует редактировать в нём. Сборки и новых зависимостей нет.
 
 После входа или успешного `/api/auth/me` страница загружает классический скрипт
-`/api/checker.js`. Маршрут проходит общий middleware авторизации (активность
+`/api/checker.js` через XMLHttpRequest (прогресс и HTTP-статус), затем исполняет
+полученный Blob как скрипт. До окончания проверки сессии форма входа скрыта;
+после успешного входа показан отдельный экран загрузки. Сетевой сбой повторяет
+только скачивание, а не вход. Параллельные отправки логина заблокированы.
+Маршрут проходит общий middleware авторизации (активность
 аккаунта и срок подписки), дополнительно требует подтверждённую почту и
 отдаёт `Cache-Control: private, no-cache, must-revalidate`. Браузер хранит личную
 копию, но перед каждым использованием проверяет её на сервере по ETag.
@@ -28,6 +32,7 @@ Nginx должен сжимать `application/javascript`: без `gzip_types` 
 node --check server/private/checker.js
 node --check server/src/index.js
 node server/tests/checker-access.test.js
+node server/tests/auth-loader.test.js
 node server/tests/admin-view.test.js
 node server/tests/admin-invitation.test.js
 ```
