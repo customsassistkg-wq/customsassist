@@ -5,6 +5,7 @@ const { pool } = require('../db');
 const { sendEmail, renderEmail } = require('../services/email');
 const { verifyTurnstile, isEnabled: turnstileEnabled, siteKey: turnstileSiteKey } = require('../services/turnstile');
 const { endUserSessions } = require('../services/sessions');
+const { issueVerification } = require('../services/verification');
 
 const router = express.Router();
 
@@ -23,8 +24,6 @@ function publicOrigin() {
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 // Подтверждение адреса живёт сутки, а не час: ссылку сброса человек ждёт
 // прямо сейчас, а письмо о регистрации вполне может быть открыто вечером.
-const VERIFY_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
-const VERIFY_RESEND_COOLDOWN_MS = 2 * 60 * 1000;
 const RESET_RESEND_COOLDOWN_MS = 2 * 60 * 1000; // don't mint a 2nd token within 2 min of a still-valid one
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TRIAL_DAYS = 3;
@@ -159,37 +158,6 @@ router.post('/logout', (req, res, next) => {
 // и по кнопке «отправить ещё раз». Ошибка отправки намеренно не роняет
 // вызывающий запрос: аккаунт уже создан, и человек не должен видеть 500
 // из-за того, что почтовый сервис моргнул — он повторит отправку кнопкой.
-async function issueVerification(user) {
-  const { rows: recent } = await pool.query(
-    `select 1 from email_verification_tokens
-      where user_id=$1 and used_at is null and expires_at>now()
-        and created_at>now()-make_interval(secs=>$2::double precision)
-      limit 1`,
-    [user.id, VERIFY_RESEND_COOLDOWN_MS / 1000]
-  );
-  if (recent[0]) return { skipped: 'cooldown' };
-
-  const token = crypto.randomBytes(32).toString('hex');
-  await pool.query(
-    'insert into email_verification_tokens (user_id, token_hash, expires_at) values ($1,$2,$3)',
-    [user.id, hashToken(token), new Date(Date.now() + VERIFY_TOKEN_TTL_MS)]
-  );
-  const url = `${publicOrigin()}/?verify=${token}`;
-  await sendEmail({
-    to: user.email,
-    subject: 'Подтвердите адрес почты — Customs Assist KG',
-    html: renderEmail({
-      title: 'Подтвердите адрес почты',
-      intro: 'Вы зарегистрировались в Customs Assist KG — сервисе проверки кодов ТН ВЭД Кыргызской Республики и ЕАЭС. Остался один шаг: подтвердите, что этот адрес ваш.',
-      actionUrl: url,
-      actionText: 'Подтвердить адрес',
-      outro: 'Ссылка действительна 24 часа. Без подтверждения вход в сервис недоступен — это защищает вас от регистрации на ваш адрес посторонними.',
-      footNote: 'Если вы не регистрировались в Customs Assist KG, просто не открывайте ссылку — учётная запись останется неподтверждённой.',
-    }),
-  });
-  return { sent: true };
-}
-
 router.post('/register', async (req, res, next) => {
   try {
     const { email, password, website } = req.body || {};
@@ -345,30 +313,33 @@ router.post('/reset-password', async (req, res, next) => {
       return res.status(400).json({ error: 'password must be at least 8 characters' });
     }
 
-    const { rows } = await pool.query(
-      `select prt.id as token_id, u.id as user_id, u.active
-       from password_reset_tokens prt
-       join users u on u.id = prt.user_id
-       where prt.token_hash=$1 and prt.used_at is null and prt.expires_at>now()`,
-      [hashToken(token)]
-    );
-    const row = rows[0];
-    if (!row || !row.active) {
-      return res.status(400).json({ error: 'invalid or expired token' });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Serialize resets for the same account, including different live tokens.
+      const { rows: users } = await client.query(
+        `select u.id from users u join password_reset_tokens t on t.user_id=u.id
+         where t.token_hash=$1 and u.active=true for update of u`, [hashToken(token)]);
+      const user = users[0];
+      const { rows: consumed } = user ? await client.query(
+        `update password_reset_tokens set used_at=now()
+         where token_hash=$1 and used_at is null and expires_at>now() returning id`,
+        [hashToken(token)]) : { rows: [] };
+      if (!consumed.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'invalid or expired token' });
+      }
+      const hash = await bcrypt.hash(password, 12);
+      await client.query('update users set password_hash=$1 where id=$2', [hash, user.id]);
+      await client.query('update password_reset_tokens set used_at=now() where user_id=$1 and used_at is null', [user.id]);
+      await endUserSessions(user.id, 'password_reset', client);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
-
-    const hash = await bcrypt.hash(password, 12);
-    await pool.query('update users set password_hash=$1 where id=$2', [hash, row.user_id]);
-    // Burn every outstanding token for this user, not only the one just
-    // spent: any other live reset link was minted by someone who could read
-    // the old mailbox, and the password has now changed out from under it.
-    await pool.query(
-      'update password_reset_tokens set used_at=now() where user_id=$1 and used_at is null',
-      [row.user_id]
-    );
-    // A changed password invalidates any session logged in under the old
-    // one, same as disabling an account does elsewhere in this file.
-    await endUserSessions(row.user_id, 'password_reset');
 
     res.json({ ok: true });
   } catch (err) {

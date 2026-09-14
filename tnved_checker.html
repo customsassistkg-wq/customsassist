@@ -761,7 +761,7 @@
       <button id="authSubmit" class="auth-btn" type="button"><span class="ab-label">Войти</span></button>
       <div class="auth-or"><span>или</span></div>
       <button id="authRegisterLink" class="auth-btn ghost" type="button"><span class="ab-label">Создать аккаунт</span></button>
-      <p class="auth-note">Регистрация бесплатна</p>
+      <p class="auth-note">3 дня бесплатного доступа</p>
     </div>
 
     <div id="authViewForgot" style="display:none">
@@ -844,9 +844,9 @@
     </div>
 
         <div class="auth-trust">
-          <b>CustomsAssistKG</b>
+          <b>Customs Assist KG</b>
           <span>Таможенные данные • ТН ВЭД • Кыргызстан</span>
-          <small>© 2026 CustomsAssistKG</small>
+          <small>© 2026 Customs Assist KG</small>
         </div>
       </div>
     </section>
@@ -1027,6 +1027,7 @@
 // АВТОРИЗАЦИЯ
 // ═══════════════════════════════════════════
 let currentUser=null;
+let appViewVersion=0;
 
 // Человекочитаемое объяснение причины разлогина, которую сервер присылает
 // в поле reason 401-ответа (см. middleware/auth.js и services/sessions.js
@@ -1467,6 +1468,8 @@ async function doLogin(){
 // окне — и видел чужие адреса, роли и даты входа. Данные при этом сервер
 // заново не отдавал (он отвечает 403), но на экране они были.
 function resetAppView(){
+  appViewVersion++;
+  adminUsers=[];
   const clear=(id)=>{const el=document.getElementById(id); if(el) el.innerHTML='';};
   clear('result'); clear('resultSummary'); clear('adminResult');
   clear('userBar'); clear('accountPanel'); clear('calcPrintArea');
@@ -10414,20 +10417,28 @@ function exportAdminUsersCSV(){
 }
 
 async function renderAdminPanel(){
+  if(!currentUser || currentUser.role!=='admin') return;
+  const version=appViewVersion;
+  const viewer=currentUser;
+  const stillCurrent=()=>version===appViewVersion && currentUser===viewer && currentUser.role==='admin';
   const box=document.getElementById('adminResult');
   box.innerHTML='<div class="calc-card">Загрузка...</div>';
   let res;
   try{
     res=await apiFetch('/api/admin/users');
   }catch(e){
+    if(!stillCurrent()) return;
     box.innerHTML='<div class="calc-warn w-red">Ошибка сети при загрузке списка пользователей</div>';
     return;
   }
+  if(!stillCurrent()) return;
   if(!res.ok){
     box.innerHTML='<div class="calc-warn w-red">Не удалось загрузить список пользователей (нет прав доступа?)</div>';
     return;
   }
-  adminUsers=await res.json();
+  const users=await res.json();
+  if(!stillCurrent()) return;
+  adminUsers=users;
   const rows=adminUsers.map(adminUserRowHtml).join('');
   box.innerHTML='<div class="calc-card">'
     +'<div class="admin-toolbar"><div class="rc">Пользователи ('+adminUsers.length+')</div>'

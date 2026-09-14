@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const { pool } = require('../db');
 const requireAdmin = require('../middleware/requireAdmin');
 const { endUserSessions } = require('../services/sessions');
+const { issueVerification } = require('../services/verification');
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -107,6 +108,7 @@ router.post('/users', async (req, res, next) => {
     }
 
     await audit(req.user.id, 'create_user', rows[0].id, { email: rows[0].email, role: rows[0].role });
+    issueVerification(rows[0]).catch((err) => console.error('admin invitation failed:', err.message));
     res.status(201).json(rows[0]);
   } catch (err) {
     next(err);

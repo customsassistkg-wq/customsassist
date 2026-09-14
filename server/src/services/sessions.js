@@ -8,8 +8,8 @@ const { pool } = require('../db');
 // from an action taken outside that browser itself — a fresh login
 // elsewhere, a password reset, an admin disabling the account or setting
 // an already-past subscription date.
-async function endUserSessions(userId, reason) {
-  await pool.query(
+async function endUserSessions(userId, reason, db = pool) {
+  await db.query(
     `update session
        set sess = (sess::jsonb - 'userId' || jsonb_build_object('endReason', $2::text))::json
      where sess ->> 'userId' = $1`,
