@@ -2,7 +2,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const source = fs.readFileSync(path.join(__dirname, '../../tnved_checker.html'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../../tnved_checker.html'), 'utf8')
+  + '\n' + fs.readFileSync(path.join(__dirname, '../private/checker.js'), 'utf8');
 function extract(name) {
   const start = source.search(new RegExp('(?:async )?function '+name+'\\('));
   const end = source.indexOf('\n}', start) + 2;

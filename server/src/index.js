@@ -95,6 +95,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/class-decisions', classDecisionsRoutes);
 app.use('/api/nbkr-rates', nbkrRatesRoutes);
+app.use('/api/checker.js', require('./routes/checker'));
 
 classDecisionsService.init();
 nbkrRatesService.init();
@@ -104,7 +105,11 @@ nbkrRatesService.init();
 // must not also serve the whole repo root (source, migrations, session.md)
 // if the Node process is ever reached directly.
 if (process.env.NODE_ENV !== 'production') {
-  app.use(express.static(path.join(__dirname, '..', '..'), { index: 'tnved_checker.html' }));
+  const root = path.join(__dirname, '..', '..');
+  app.get(['/', '/tnved_checker.html', '/privacy.html', '/manifest.webmanifest', '/email-logo.jpg'], (req, res) => {
+    res.sendFile(path.join(root, req.path === '/' ? 'tnved_checker.html' : req.path.slice(1)));
+  });
+  app.use('/icons', express.static(path.join(root, 'icons')));
 }
 
 app.use((err, req, res, next) => {

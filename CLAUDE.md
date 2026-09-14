@@ -4,6 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
+**Update 14.09.2026 — authenticated app loading:** `tnved_checker.html` now contains
+only markup, styles and authentication. The former application script, including
+all legal databases, is in `server/private/checker.js` (moved byte-for-byte).
+References below to editing/checking database constants in the inline script now
+mean this protected file. It is served only through authenticated `/api/checker.js`;
+never publish it as a static asset. See [server/CHECKER.md](server/CHECKER.md) for
+checks and deployment order, and `server/nginx.conf` for the required static-path
+blocks. The older single-file and repo-wide `express.static` descriptions below
+describe the architecture before this split.
+
 This is **not** a conventional software project — it's a working folder for building and maintaining a single deliverable:
 
 - **`tnved_checker.html`** — a self-contained, single-file web app ("Проверка ТН ВЭД — КР 2025/2026") for checking Kyrgyz Republic / EAEU customs (ТН ВЭД) codes against import/export bans, licensing, certification, veterinary/phytosanitary/sanitary control, technical regulations, export control (dual-use/NKS), duty rates, and more. No build step, no package manager, no framework — pure HTML + inline `<style>` + one inline `<script>`, ~8 MB, almost entirely legal/customs reference data hard-coded as JS constants.
