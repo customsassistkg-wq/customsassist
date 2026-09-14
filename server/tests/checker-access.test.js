@@ -37,6 +37,13 @@ app.get('/', (req,res)=>res.type('html').send(html));
   const server=app.listen(0,'127.0.0.1');
   await new Promise(resolve=>server.once('listening',resolve));
   const origin='http://127.0.0.1:'+server.address().port;
+  // Raw HTTP leaves conditional headers untouched (no browser cache simulation).
+  const conditional=(cookie,etag)=>new Promise((resolve,reject)=>{
+    require('node:http').get(origin+'/api/checker.js',{headers:{cookie,'If-None-Match':etag}},res=>{
+      let bytes=0;res.on('data',chunk=>bytes+=chunk.length);
+      res.on('end',()=>resolve({status:res.statusCode,bytes}));
+    }).on('error',reject);
+  });
   let browser;
   try{
     assert.equal((await fetch(origin+'/api/checker.js')).status,401);
@@ -45,11 +52,18 @@ app.get('/', (req,res)=>res.type('html').send(html));
       const cookie=login.headers.get('set-cookie').split(';')[0];
       const res=await fetch(origin+'/api/checker.js',{headers:{cookie}});
       assert.equal(res.status,status,user);
-      assert.match(res.headers.get('cache-control'),/no-store/);
+      assert.match(res.headers.get('cache-control'),status===200?/private, no-cache, must-revalidate/:/no-store/);
       if(status===200){
         assert.equal(await res.text(),code);
+        const etag=res.headers.get('etag');
+        assert(etag);
+        assert.deepEqual(await conditional(cookie,etag),{status:304,bytes:0});
+        assert.equal((await conditional(cookie,'"old-version"')).status,200);
         await fetch(origin+'/api/auth/logout',{method:'POST',headers:{cookie}});
         assert.equal((await fetch(origin+'/api/checker.js',{headers:{cookie}})).status,401);
+        assert.equal((await conditional(cookie,etag)).status,401);
+      }else{
+        assert.equal((await conditional(cookie,'*')).status,status);
       }
     }
     assert.equal((await fetch(origin+'/server/private/checker.js')).status,404);
@@ -106,7 +120,7 @@ app.get('/', (req,res)=>res.type('html').send(html));
       await delayed.close();
       console.log('PASS: browser login, failed load/retry, search, session reload, logout and mobile re-login');
     }
-    console.log('PASS: checker access, revoked/expired/unverified sessions, no-store and script syntax');
+    console.log('PASS: access checks precede 304; unchanged file has no body; changed ETag gets 200; errors no-store; syntax');
   }finally{
     if(browser)await browser.close();
     await new Promise(resolve=>server.close(resolve));
