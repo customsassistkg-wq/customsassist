@@ -122,6 +122,8 @@ Cloudflare publishes test keys that make the whole path checkable without the ow
 
 **Schema/migrations:** there's no migration framework — `migrations/*.sql` files are applied by hand with `psql -f`, in order, once each. Add new migrations as new numbered files rather than editing an already-applied one.
 
+**AI-помощник (`/api/assistant`, с 16.09.2026) отвечает по базе, а не по памяти модели.** `services/assistant.js` исполняет `private/checker.js` в `vm` и даёт модели один инструмент `search_base`, который вызывает тот же `render()`, что рисует карточки сайта, — новая база, подключённая в `render()`, попадает к помощнику сама. Модель — DeepSeek через совместимый с Anthropic API; ключ и модель только в `.env` (`AI_API_KEY`, `AI_MODEL`), промт — `src/assistant-prompt.md`. Три вещи проверены на настоящем API и легко ломаются: **первый раунд принуждает поиск через `tool_choice:{type:"tool",name:"search_base"}` — `{type:"any"}` DeepSeek молча игнорирует**; **выдача по одному коду — до 31 тыс. знаков**, и обрезка на 14 тыс. отрезала сертификацию, после чего модель уверенно писала, что её нет (лимит 40 000 — не уменьшать, не измерив выдачу); длинный вопрос требует `proxy_read_timeout` в отдельном `location = /api/assistant` в nginx. Проверки: `node server/tests/assistant.test.js` и `assistant-browser.test.js` (с `PLAYWRIGHT_MODULE`, модель подменена).
+
 ## Mobile wrapper (`mobile/`)
 
 A thin Capacitor shell (`kg.tnved.checker`) for Android and iOS. It ships no copy of the app: `capacitor.config.json` sets `server.url` to the production origin, so the WebView simply loads the deployed site and every `/api/*` call is same-origin. Two consequences worth remembering:

@@ -14,7 +14,7 @@ const PROMPT = fs.readFileSync(path.join(__dirname, '../assistant-prompt.md'), '
 const API_URL = (process.env.AI_BASE_URL || 'https://api.deepseek.com/anthropic').replace(/\/+$/, '') + '/v1/messages';
 const MODEL = process.env.AI_MODEL || 'deepseek-chat';
 const MAX_TOOL_ROUNDS = 6;
-const MAX_TOOL_CHARS = 14000;
+const MAX_TOOL_CHARS = 40000; // полная выдача по коду — до ~31 тыс. знаков; 14 тыс. отрезали сертификацию
 
 let ctx = null;
 // Загружается при первом вопросе, а не при старте: 12 МБ кода и ~150 МБ памяти
@@ -113,7 +113,9 @@ async function callModel(messages, forceTool) {
     body: JSON.stringify({
       model: MODEL, max_tokens: 4000, tools: TOOLS, messages,
       // Первый раунд — только поиск: ответить, не заглянув в базу, модель не может.
-      ...(forceTool ? { tool_choice: { type: 'any' } } : {}),
+      // Именно type:'tool' с именем: DeepSeek молча игнорирует type:'any' (проверено
+      // 16.09.2026 — на «ping» пришёл текст без вызова), а именованный выбор соблюдает.
+      ...(forceTool ? { tool_choice: { type: 'tool', name: 'search_base' } } : {}),
       system: PROMPT + `\n\n---\nСегодня ${new Date().toISOString().slice(0, 10)}.`,
     }),
     signal: AbortSignal.timeout(90000),

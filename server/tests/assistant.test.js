@@ -29,7 +29,7 @@ const { searchBase, ask } = require('../src/services/assistant');
   const r = await ask([{ role: 'user', content: 'Какая пошлина на смартфон 8517130000?' }]);
   assert.equal(r.answer, 'Ставка 0%.');
   assert.deepEqual(r.searched, ['8517130000']);
-  assert.deepEqual(calls[0].tool_choice, { type: 'any' });  // без поиска ответить нельзя
+  assert.deepEqual(calls[0].tool_choice, { type: 'tool', name: 'search_base' });  // без поиска ответить нельзя
   assert.equal(calls[1].tool_choice, undefined);
   assert.match(calls[1].messages[2].content[0].content, /8517 13 000 0/);
   assert.match(calls[0].system, /search_base/);
