@@ -8,6 +8,53 @@ nbkr.getRates = async () => ({ date: '16.09.2026', usd: 87.45, eur: 100.9086, ra
 const a = require('../src/services/assistant');
 
 (async () => {
+  // ── тарифы: месячный лимит вопросов ──
+  {
+    let used = 0;
+    const user = { id: 'u1', email: 'u@x.kg', role: 'user', active: true, email_verified_at: new Date(), ai_plan: 'base' };
+    require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async (sql) => {
+      if (/count\(\*\)::int as used/.test(sql)) return { rows: [{ used }] };
+      if (/update users set ai_plan/.test(sql)) return { rows: [{ id: 'u1', ai_plan: 'pro' }] };
+      return { rows: [user] };
+    } } } };
+    const express = require('express');
+    const route = require('../src/routes/assistant');
+    // граница месяца — полночь по Бишкеку: 30.09 19:00 UTC — это уже 1 октября
+    assert.equal(route.bishkekMonth(new Date('2026-09-30T19:00:00Z')).start.toISOString(), '2026-09-30T18:00:00.000Z');
+    assert.equal(route.bishkekMonth(new Date('2026-09-30T17:59:00Z')).start.toISOString(), '2026-08-31T18:00:00.000Z');
+    assert.deepEqual(Object.values(route.PLANS).map((p) => p.limit), [100, 300, 1000]);
+    const app = express();
+    app.use(express.json());
+    app.use((req, res, next) => { req.user = user; next(); });
+    app.use('/api/assistant', route);
+    const server = app.listen(0);
+    await new Promise((r) => server.once('listening', r));
+    const base = 'http://127.0.0.1:' + server.address().port + '/api/assistant';
+    const post = () => fetch(base, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'x' }] }) });
+    try {
+      used = 100;
+      let r = await post();
+      assert.equal(r.status, 429);
+      let j = await r.json();
+      assert.equal(j.error, 'quota_exceeded');
+      assert.equal(j.quota.remaining, 0);
+      assert.equal(j.quota.plans.max.limit, 1000);
+      used = 37;
+      j = await (await fetch(base + '/quota')).json();
+      assert.deepEqual([j.plan, j.limit, j.remaining], ['base', 100, 63]);
+      user.ai_plan = 'max'; used = 999;
+      j = await (await fetch(base + '/quota')).json();
+      assert.deepEqual([j.name, j.remaining], ['Max', 1]);
+      user.role = 'admin'; used = 5000;
+      j = await (await fetch(base + '/quota')).json();
+      assert.deepEqual([j.limit, j.remaining], [null, null]);
+      user.role = 'user'; user.ai_plan = 'непонятный';
+      j = await (await fetch(base + '/quota')).json();
+      assert.equal(j.plan, 'base');                 // неизвестный тариф — как базовый, а не без лимита
+    } finally { server.close(); }
+    console.log('PASS: тарифы — граница месяца по Бишкеку, 429 при исчерпании, Max, админ, неизвестный тариф');
+  }
+
   // ── search_base ──
   let t = a.searchBase({ query: '8517130000' });
   assert.match(t, /8517 13 000 0/);

@@ -68,7 +68,24 @@
   .si:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(10,132,255,0.18)}
   .sico{position:absolute;right:8px;top:8px;bottom:8px;width:46px;border-radius:calc(var(--radius-lg) - 4px);background:var(--indigo-surface);color:#fff;font-size:19px;display:flex;align-items:center;justify-content:center;pointer-events:none;box-shadow:0 4px 14px rgba(58,70,200,.45)}
   #result{min-height:60px}
-  /* AI-помощник */
+  /* AI-ассистент */
+  .nav-ico .ai-mark{display:block}
+  .ai-head-t{display:flex;align-items:center;gap:12px;min-width:0;flex:1 1 240px}
+  .ai-head-t .ai-mark{flex-shrink:0;filter:drop-shadow(0 6px 14px rgba(59,107,255,.35))}
+  .ai-head-t .ai-name{font-family:var(--head);font-weight:700;font-size:17px;color:var(--text)}
+  .ai-head-t .ai-sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .ai-hello{display:flex;flex-direction:column;align-items:center;text-align:center;padding:26px 8px 14px}
+  .ai-hello-mark{position:relative;margin-bottom:14px}
+  .ai-hello-mark::before{content:"";position:absolute;inset:-18px;border-radius:50%;background:radial-gradient(circle,rgba(91,108,255,.45),rgba(34,211,238,.18) 45%,transparent 70%);animation:aiGlow 3.2s ease-in-out infinite}
+  .ai-hello-mark .ai-mark{position:relative;animation:aiFloat 3.2s ease-in-out infinite}
+  .ai-hello h3{font-family:var(--head);font-size:20px;margin:0 0 6px;color:var(--text)}
+  .ai-hello p{font-size:13px;color:var(--muted);margin:0 0 14px;max-width:460px}
+  .ai-chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+  .ai-chip{background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-pill);color:var(--text);font-size:13px;padding:8px 14px;cursor:pointer;transition:border-color .15s,transform .15s}
+  .ai-chip:hover{border-color:#5B6CFF;transform:translateY(-1px)}
+  @keyframes aiFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+  @keyframes aiGlow{0%,100%{opacity:.75;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+  @media (prefers-reduced-motion:reduce){.ai-hello-mark::before,.ai-hello-mark .ai-mark{animation:none}}
   .ai-log{display:flex;flex-direction:column;gap:12px;margin:14px 0}
   .ai-msg{max-width:92%;padding:12px 16px;border-radius:var(--radius-md);line-height:1.55;font-size:14px;overflow-wrap:anywhere}
   .ai-msg.u{align-self:flex-end;background:var(--indigo-surface);color:#fff;white-space:pre-wrap}
@@ -83,7 +100,12 @@
   .ai-form textarea{flex:1 1 260px;min-width:0;min-height:52px;max-height:200px;resize:vertical;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-md);color:var(--text);font-family:inherit;font-size:16px;line-height:1.4;padding:12px 14px;outline:none}
   .ai-form textarea::placeholder{color:var(--placeholder)}
   .ai-note{font-size:12px;color:var(--hint);margin-top:8px}
-  .ai-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .ai-quota{font-size:12px;color:var(--muted);margin-top:6px}
+  .ai-quota:empty{display:none}
+  .ai-quota.low{color:var(--orange)}
+  .ai-quota.out{color:var(--red);font-weight:600}
+  .admin-plan-sel{background:var(--glass);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text);font-size:13px;padding:4px 8px}
+  .ai-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
   .ai-msg a.ai-code{font-family:var(--mono);white-space:nowrap}
   .ai-warn{margin-top:8px;font-size:13px;color:var(--orange)}
   .ai-rate{display:flex;gap:6px;margin-top:8px}
@@ -92,7 +114,7 @@
   .ai-why{display:flex;gap:6px;margin:-4px 0 0;max-width:92%;align-self:flex-start;flex-wrap:wrap}
   .ai-why input{flex:1 1 200px;min-width:0;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-md);color:var(--text);font-size:16px;padding:6px 10px}
   .modal:has(.ai-log-modal){max-width:960px}
-  .ai-form .ai-attach{min-width:52px;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:22px;padding:0 14px;cursor:pointer;border-radius:var(--radius-md)}
+  .ai-form .ai-attach{border-color:var(--border);min-width:52px;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:22px;padding:0 14px;cursor:pointer;border-radius:var(--radius-md)}
   .ai-thumbs{display:flex;gap:8px;flex-wrap:wrap}
   .ai-thumbs:not(:empty){margin-bottom:10px}
   .ai-thumb{position:relative;display:inline-block}
@@ -776,7 +798,7 @@
         <ul class="auth-feats">
           <li><span class="af-ico">📗</span><div><span class="af-t">ТН ВЭД КР 2025/2026</span><span class="af-s">Действующая номенклатура, ставки и пояснения</span></div></li>
           <li><span class="af-ico">⛔</span><div><span class="af-t">Ограничения и запреты</span><span class="af-s">Лицензии, квоты, разрешительный порядок, контроль</span></div></li>
-          <li><span class="af-ico">✨</span><div><span class="af-t">Интеллектуальный помощник</span><span class="af-s">Поиск по коду и наименованию, расчёт платежей</span></div></li>
+          <li><span class="af-ico">✨</span><div><span class="af-t">AI-ассистент</span><span class="af-s">Отвечает по базе, считает платежи, читает фото инвойсов</span></div></li>
         </ul>
       </div>
     </section>
@@ -939,7 +961,7 @@
         <button class="nav-item" id="navTreeBtn" type="button" onclick="setPage('tree')"><span class="nav-ico">🌳</span> Классификатор ТН ВЭД</button>
         <button class="nav-item" id="navNotesBtn" type="button" onclick="setPage('notes')"><span class="nav-ico">📖</span> Пояснения и примечания</button>
         <button class="nav-item" id="navLookupBtn" type="button" onclick="setPage('lookup')"><span class="nav-ico">📋</span> Справка по товару</button>
-        <button class="nav-item" id="navAiBtn" type="button" onclick="setPage('ai')"><span class="nav-ico">🤖</span> AI-помощник</button>
+        <button class="nav-item" id="navAiBtn" type="button" onclick="setPage('ai')"><span class="nav-ico"><svg class="ai-mark" width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="aiGradNav" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B5CF6"/><stop offset=".5" stop-color="#3B6BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="13" fill="url(#aiGradNav)"/><path d="M4 15C4 8 8 4 15 4h18c7 0 11 4 11 11v2C33 13 17 13 4 21z" fill="#fff" opacity=".13"/><path d="M22 11c1.2 6.3 4.7 9.8 11 11-6.3 1.2-9.8 4.7-11 11-1.2-6.3-4.7-9.8-11-11 6.3-1.2 9.8-4.7 11-11z" fill="#fff"/><path d="M35 8c.5 2.6 1.9 4 4.5 4.5-2.6.5-4 1.9-4.5 4.5-.5-2.6-1.9-4-4.5-4.5 2.6-.5 4-1.9 4.5-4.5z" fill="#fff" opacity=".85"/><circle cx="34.5" cy="34.5" r="2.2" fill="#fff" opacity=".7"/></svg></span> AI-ассистент</button>
         <button class="nav-item" id="navSpeciesBtn" type="button" onclick="setPage('search');setSearchMode('species')"><span class="nav-ico">🐾</span> Красная книга / СИТЕС</button>
         <button class="nav-item" id="navCalcBtn" type="button" onclick="setPage('search');setSearchMode('calc')"><span class="nav-ico">🧮</span> Таможенный калькулятор</button>
         <button class="nav-item" id="navPersonalBtn" type="button" onclick="setPage('search');setSearchMode('personal')"><span class="nav-ico">📦</span> Личные отправления</button>

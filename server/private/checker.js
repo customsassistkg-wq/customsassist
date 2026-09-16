@@ -8436,7 +8436,7 @@ function updateNavActive(){
 // Ответ модели — Markdown; перед разметкой всё экранируется через esc(),
 // ссылки пропускаются только http(s), коды ТН ВЭД становятся переходом к карточке.
 let aiHistory=[],aiBusy=false,aiImages=[];
-function aiStoreKey(){return currentUser&&currentUser.id?'ca-ai-'+currentUser.id:''}
+function aiStoreKey(){return currentUser&&currentUser.email?'ca-ai-'+currentUser.email.toLowerCase():''}
 function aiSave(){try{const k=aiStoreKey();if(k)sessionStorage.setItem(k,JSON.stringify(aiHistory.slice(-40)))}catch(e){}}
 function aiLoad(){try{const k=aiStoreKey();const v=k&&sessionStorage.getItem(k);const a=v?JSON.parse(v):[];return Array.isArray(a)?a:[]}catch(e){return []}}
 function aiForget(){try{for(let i=sessionStorage.length-1;i>=0;i--){const k=sessionStorage.key(i);if(k&&k.indexOf('ca-ai-')===0)sessionStorage.removeItem(k)}}catch(e){}}
@@ -8457,26 +8457,59 @@ function aiMd(t){
   }
   return html+(list?'</ul>':'');
 }
+// Знак AI-ассистента. id градиента уникален на экземпляр: одинаковые id в одном
+// документе браузер разрешает к первому, и скрытый первый знак обесцвечивает остальные.
+let aiMarkSeq=0;
+function aiMark(size){
+  const id='aiGrad'+(++aiMarkSeq);
+  return '<svg class="ai-mark" width="'+size+'" height="'+size+'" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="'+id+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B5CF6"/><stop offset=".5" stop-color="#3B6BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="13" fill="url(#'+id+')"/><path d="M4 15C4 8 8 4 15 4h18c7 0 11 4 11 11v2C33 13 17 13 4 21z" fill="#fff" opacity=".13"/><path d="M22 11c1.2 6.3 4.7 9.8 11 11-6.3 1.2-9.8 4.7-11 11-1.2-6.3-4.7-9.8-11-11 6.3-1.2 9.8-4.7 11-11z" fill="#fff"/><path d="M35 8c.5 2.6 1.9 4 4.5 4.5-2.6.5-4 1.9-4.5 4.5-.5-2.6-1.9-4-4.5-4.5 2.6-.5 4-1.9 4.5-4.5z" fill="#fff" opacity=".85"/><circle cx="34.5" cy="34.5" r="2.2" fill="#fff" opacity=".7"/></svg>';
+}
+const AI_HELLO_CHIPS=['Пошлина и ограничения на смартфоны из Китая','Сколько платить: 1000 кг куриных ножек 0207146001 из США на 2000 USD','📎 Разобрать фото инвойса'];
+function aiHelloHtml(){
+  return '<div class="ai-hello" id="aiHello"><div class="ai-hello-mark">'+aiMark(72)+'</div>'
+    +'<h3>Чем помочь?</h3><p>Опишите товар, назовите код ТН ВЭД или приложите фото инвойса. Ассистент ищет в базе CustomsAssistKG и отвечает по найденным карточкам.</p>'
+    +'<div class="ai-chips">'+AI_HELLO_CHIPS.map((c,i)=>'<button type="button" class="ai-chip" data-chip="'+i+'">'+esc(c)+'</button>').join('')+'</div></div>';
+}
 function renderAiPage(){
   const box=document.getElementById('pageAi');
   if(box.querySelector('#aiLog'))return;
   if(!aiHistory.length)aiHistory=aiLoad();
-  box.innerHTML='<div class="card"><div class="ai-head"><div class="rn">🤖 AI-помощник CustomsAssistKG</div>'
+  box.innerHTML='<div class="card"><div class="ai-head"><div class="ai-head-t">'+aiMark(44)+'<div><div class="ai-name">AI-ассистент</div><div class="ai-sub">Предварительный анализ по базе CustomsAssistKG, а не решение таможенного органа</div></div></div>'
     +'<button class="btn" type="button" id="aiNewBtn">Новый диалог</button></div>'
-    +'<div class="det">Опишите товар или назовите код ТН ВЭД, можно со страной и стоимостью. Помощник сначала ищет в базе CustomsAssistKG и отвечает по найденным карточкам. Это предварительный анализ, а не решение таможенного органа.</div>'
-    +'<div class="ai-log" id="aiLog"></div>'
+    +'<div class="ai-log" id="aiLog">'+(aiHistory.length?'':aiHelloHtml())+'</div>'
     +'<div class="ai-thumbs" id="aiThumbs"></div>'
     +'<form class="ai-form" id="aiForm"><label class="btn ai-attach" title="Фото или скан инвойса">📎<input type="file" id="aiFile" accept="image/jpeg,image/png,image/webp" multiple hidden></label>'
     +'<textarea id="aiInput" rows="2" placeholder="Например: смартфоны из Китая, 200 шт. на 30 000 USD — сколько платить и что нужно?"></textarea>'
     +'<button class="calc-btn" id="aiSendBtn" type="submit">Спросить</button></form>'
-    +'<div class="ai-note">Enter — отправить, Shift+Enter — новая строка. 📎 — фото или скан инвойса (JPG, PNG), до 4 шт. Коды в ответе открывают карточку.</div></div>';
+    +'<div class="ai-note">Enter — отправить, Shift+Enter — новая строка. 📎 — фото или скан инвойса (JPG, PNG), до 4 шт. Коды в ответе открывают карточку.</div>'
+    +'<div class="ai-quota" id="aiQuota"></div></div>';
   document.getElementById('aiForm').addEventListener('submit',aiSend);
   document.getElementById('aiInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey)aiSend(e)});
-  document.getElementById('aiNewBtn').addEventListener('click',()=>{if(aiBusy)return;aiHistory=[];aiSave();document.getElementById('aiLog').innerHTML=''});
+  document.getElementById('aiNewBtn').addEventListener('click',()=>{if(aiBusy)return;aiHistory=[];aiSave();document.getElementById('aiLog').innerHTML=aiHelloHtml()});
   document.getElementById('aiLog').addEventListener('click',aiLogClick);
   document.getElementById('aiFile').addEventListener('change',e=>{aiAddFiles(e.target.files);e.target.value=''});
   document.getElementById('aiThumbs').addEventListener('click',e=>{const x=e.target.closest('[data-rm]');if(x){aiImages.splice(+x.dataset.rm,1);aiRenderThumbs()}});
   for(const m of aiHistory)aiAppend(m);
+  aiLoadQuota();
+}
+// Остаток вопросов по тарифу: Базовый (входит в подписку), Pro, Max — лимиты задаёт сервер.
+async function aiLoadQuota(){
+  try{const res=await apiFetch('/api/assistant/quota');if(res.ok)aiShowQuota(await res.json())}catch(e){}
+}
+function aiShowQuota(q){
+  const box=document.getElementById('aiQuota');
+  if(!box||!q)return;
+  const till=q.resets?q.resets.split('-').reverse().join('.'):'';
+  if(q.limit==null){box.className='ai-quota';box.textContent=q.name+': без лимита · в этом месяце вопросов: '+q.used;return}
+  box.className='ai-quota'+(q.remaining===0?' out':(q.remaining<=Math.ceil(q.limit*0.1)?' low':''));
+  box.textContent='Тариф «'+q.name+'»: осталось '+q.remaining+' из '+q.limit+' вопросов в месяц · обновится '+till;
+}
+function aiQuotaText(q){
+  if(!q)return 'Лимит вопросов исчерпан.';
+  const till=q.resets?q.resets.split('-').reverse().join('.'):'';
+  const up=Object.entries(q.plans||{}).filter(([k,p])=>p.limit>q.limit).map(([k,p])=>'«'+p.name+'» — '+p.limit);
+  return 'Лимит тарифа «'+q.name+'» — '+q.limit+' вопросов в месяц — исчерпан. Новые вопросы — с '+till+'.'
+    +(up.length?' Больше вопросов в месяц: '+up.join(', ')+'. Тариф подключает администратор.':'');
 }
 // Фото инвойса сжимается в браузере до 1600 px по длинной стороне (JPEG 0,85):
 // телефонный снимок в 4–12 МБ иначе упирается в лимит запроса, а тексту
@@ -8504,6 +8537,7 @@ function aiRenderThumbs(){
 }
 function aiAppend(m){
   const log=document.getElementById('aiLog');
+  const hello=document.getElementById('aiHello');if(hello)hello.remove();
   const d=document.createElement('div');
   d.className='ai-msg '+(m.role==='user'?'u':'a')+(m.err?' err':'');
   if(m.role==='user'){d.textContent=m.content+(m.imgs?'\n📎 изображений: '+m.imgs:'')}
@@ -8532,6 +8566,12 @@ async function aiRate(box,rating,comment){
   box.querySelector('.ai-down').classList.toggle('on',rating===-1);
 }
 function aiLogClick(e){
+  const chip=e.target.closest('.ai-chip');
+  if(chip){
+    const i=+chip.dataset.chip;
+    if(i===2){document.getElementById('aiFile').click();return}
+    const inp=document.getElementById('aiInput');inp.value=AI_HELLO_CHIPS[i];inp.focus();return;
+  }
   const code=e.target.closest('.ai-code');
   if(code){e.preventDefault();goToCode(code.dataset.code);return}
   const box=e.target.closest('.ai-rate');
@@ -8549,8 +8589,8 @@ function aiLogClick(e){
   }
 }
 const AI_ERR={rate_limited:'Дневной лимит вопросов исчерпан. Попробуйте завтра.',
-  ai_balance:'Помощник временно недоступен: закончился баланс API.',
-  assistant_disabled:'Помощник не настроен на сервере.',
+  ai_balance:'Ассистент временно недоступен: закончился баланс API.',
+  assistant_disabled:'Ассистент не настроен на сервере.',
   ai_unavailable:'Сервис модели не ответил. Попробуйте ещё раз.',
   bad_image:'Изображение не принято: нужен JPG, PNG или WebP.',
   too_many_images:'Не больше 4 изображений за один вопрос.'};
@@ -8571,7 +8611,7 @@ async function aiSend(e){
       body:JSON.stringify({messages:aiHistory.map(m=>({role:m.role,content:m.content})),images:imgs.map(im=>({media_type:im.media_type,data:im.data}))})});
     if(ver!==appViewVersion)return;
     if(res.status===413){fail('Изображения слишком большие — отправьте меньше или в меньшем размере.');return}
-    if(!res.ok){const data=await res.json().catch(()=>({}));fail(AI_ERR[data.error]||'Ошибка: '+(data.error||res.status));return}
+    if(!res.ok){const data=await res.json().catch(()=>({}));if(data.error==='quota_exceeded'){aiShowQuota(data.quota);fail(aiQuotaText(data.quota));return}fail(AI_ERR[data.error]||'Ошибка: '+(data.error||res.status));return}
     const reader=res.body.getReader(),dec=new TextDecoder();
     let buf='',final=null;
     for(;;){
@@ -8590,6 +8630,7 @@ async function aiSend(e){
     }
     if(!final||final.error){fail(AI_ERR[final&&final.error]||'Ответ не получен. Попробуйте ещё раз.');return}
     wait.remove();
+    aiShowQuota(final.quota);
     const am={role:'assistant',content:final.answer,id:final.id,src:(final.searched||[]).join(', '),unverified:final.unverified||[]};
     aiHistory.push(am);aiSave();aiAppend(am);
   }catch(err){
@@ -8607,7 +8648,7 @@ async function openAssistantLog(onlyBad){
     const res=await apiFetch('/api/admin/assistant'+(onlyBad?'?rating=-1':''));
     if(!res.ok)throw new Error(res.status);
     data=await res.json();
-  }catch(e){openModal('<h2>Журнал помощника</h2><div class="calc-warn w-red">Не удалось загрузить журнал</div><div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');return}
+  }catch(e){openModal('<h2>Журнал AI-ассистента</h2><div class="calc-warn w-red">Не удалось загрузить журнал</div><div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');return}
   const n=v=>(v||0).toLocaleString('ru-RU');
   const usd=v=>'$'+(v||0).toFixed(4);
   const totals=data.totals.map(t=>'<tr><td>'+esc(t.email)+'</td><td>'+n(t.questions)+'</td><td>'+n(t.input_tokens)+' / '+n(t.output_tokens)+'</td><td>'+usd(t.cost_usd)+'</td><td>'+n(t.good)+' / '+n(t.bad)+'</td><td>'+n(t.errors)+'</td></tr>').join('');
@@ -8617,7 +8658,7 @@ async function openAssistantLog(onlyBad){
     +(r.comment?'<div class="det"><b>Комментарий:</b> '+esc(r.comment)+'</div>':'')
     +(r.error?'<div class="det"><b>Ошибка:</b> '+esc(r.error)+'</div>':'<div class="det"><b>Поиски:</b> '+esc((r.searched||[]).join(', '))+(r.unverified&&r.unverified.length?' · <b>не подтверждены:</b> '+esc(r.unverified.join(', ')):'')+' · '+n(r.duration_ms)+' мс</div><div class="ai-msg a">'+aiMd(r.answer||'')+'</div>')
     +'</details>').join('');
-  openModal('<div class="ai-log-modal"></div><h2>Журнал помощника</h2>'
+  openModal('<div class="ai-log-modal"></div><h2>Журнал AI-ассистента</h2>'
     +'<div class="det">За 30 дней. Токены — вход без кэша / выход; стоимость — по ценам DeepSeek в момент вопроса; оценки — 👍 / 👎.</div>'
     +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Вопросов</th><th>Токены</th><th>Стоимость</th><th>Оценки</th><th>Ошибок</th></tr></thead><tbody>'+(totals||'<tr><td colspan="6">Вопросов пока не было</td></tr>')+'</tbody></table></div>'
     +'<h3 style="margin:18px 0 8px">Расход за месяц — для счёта</h3>'
@@ -8630,6 +8671,7 @@ async function openAssistantLog(onlyBad){
 // Месячный расход помощника по пользователям — основа счёта. Стоимость в $ посчитана
 // сервером в момент каждого вопроса; сомы — по сегодняшнему курсу НБКР (указан в таблице).
 let aiBillingData=null;
+const AI_PLAN_NAMES={base:'Базовый',pro:'Pro',max:'Max'};
 async function loadAssistantBilling(){
   const box=document.getElementById('aiBilling');
   const month=(document.getElementById('aiBillMonth')||{}).value||'';
@@ -8643,11 +8685,11 @@ async function loadAssistantBilling(){
   const som=v=>rate?(v*rate).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' сом':'—';
   let sum=0,q=0;
   const rows=d.rows.map(r=>{sum+=r.cost_usd;q+=r.questions;
-    return '<tr><td>'+esc(r.email)+'</td><td>'+n(r.questions)+'</td><td>'+n(r.input_tokens)+' / '+n(r.cache_read_tokens)+' / '+n(r.output_tokens)+'</td><td>$'+r.cost_usd.toFixed(4)+'</td><td>'+som(r.cost_usd)+'</td></tr>'}).join('');
+    return '<tr><td>'+esc(r.email)+'</td><td>'+esc(AI_PLAN_NAMES[r.ai_plan]||r.ai_plan||'')+'</td><td>'+n(r.questions)+'</td><td>'+n(r.input_tokens)+' / '+n(r.cache_read_tokens)+' / '+n(r.output_tokens)+'</td><td>$'+r.cost_usd.toFixed(4)+'</td><td>'+som(r.cost_usd)+'</td></tr>'}).join('');
   box.innerHTML='<div class="det">'+esc(d.month)+' по времени Бишкека. Токены — вход / из кэша / выход. Курс НБКР: '+(rate?rate+' сом за $ на '+esc(d.rateDate||''):'недоступен')+'.</div>'
-    +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Вопросов</th><th>Токены</th><th>Стоимость, $</th><th>В сомах</th></tr></thead><tbody>'
-    +(rows||'<tr><td colspan="5">За этот месяц вопросов не было</td></tr>')
-    +(rows?'<tr><td><b>Итого</b></td><td><b>'+n(q)+'</b></td><td></td><td><b>$'+sum.toFixed(4)+'</b></td><td><b>'+som(sum)+'</b></td></tr>':'')
+    +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Тариф</th><th>Вопросов</th><th>Токены</th><th>Стоимость, $</th><th>В сомах</th></tr></thead><tbody>'
+    +(rows||'<tr><td colspan="6">За этот месяц вопросов не было</td></tr>')
+    +(rows?'<tr><td><b>Итого</b></td><td></td><td><b>'+n(q)+'</b></td><td></td><td><b>$'+sum.toFixed(4)+'</b></td><td><b>'+som(sum)+'</b></td></tr>':'')
     +'</tbody></table></div>';
 }
 function exportAssistantBilling(){
@@ -8655,8 +8697,8 @@ function exportAssistantBilling(){
   if(!d||!d.rows.length){loadAssistantBilling();return}
   const rate=d.usdRate||0;
   const cell=v=>'"'+String(v).replace(/"/g,'""')+'"';
-  const lines=[['Месяц','Пользователь','Вопросов','Вход без кэша','Вход из кэша','Выход','Стоимость USD','Курс НБКР','Стоимость сом']]
-    .concat(d.rows.map(r=>[d.month,r.email,r.questions,r.input_tokens,r.cache_read_tokens,r.output_tokens,r.cost_usd.toFixed(6).replace('.',','),String(rate).replace('.',','),(r.cost_usd*rate).toFixed(2).replace('.',',')]));
+  const lines=[['Месяц','Пользователь','Тариф','Вопросов','Вход без кэша','Вход из кэша','Выход','Стоимость USD','Курс НБКР','Стоимость сом']]
+    .concat(d.rows.map(r=>[d.month,r.email,AI_PLAN_NAMES[r.ai_plan]||r.ai_plan||'',r.questions,r.input_tokens,r.cache_read_tokens,r.output_tokens,r.cost_usd.toFixed(6).replace('.',','),String(rate).replace('.',','),(r.cost_usd*rate).toFixed(2).replace('.',',')]));
   // «;» и запятая в дробях — так CSV открывается в Excel с русской локалью без мастера импорта
   const csv='\ufeff'+lines.map(l=>l.map(cell).join(';')).join('\r\n');
   const a=document.createElement('a');
@@ -9349,6 +9391,8 @@ function adminUserRowHtml(u){
     +'<td>'+(u.active?'<span class="tag t-sub-ok">Активен</span>':'<span class="tag t-off">Отключён</span>')+'</td>'
     +'<td title="Активность в последние 5 минут">'+onlineCell+'</td>'
     +'<td>'+subCell+'</td>'
+    +'<td>'+(u.role==='admin'?'без лимита':'<select class="admin-plan-sel" aria-label="AI-тариф">'
+      +[['base','Базовый · 100'],['pro','Pro · 300'],['max','Max · 1000']].map(([v,t])=>'<option value="'+v+'"'+((u.ai_plan||'base')===v?' selected':'')+'>'+t+'</option>').join('')+'</select>')+'</td>'
     +'<td>'+(u.created_at?fmtDate(u.created_at):'—')+'</td>'
     +'<td>'+(u.last_login_at?fmtDateTime(u.last_login_at):'—')+'</td>'
     +'<td class="au-actions no-print">'
@@ -9418,18 +9462,33 @@ async function renderAdminPanel(){
         +'<button class="qa-btn no-print" id="adminBackBtn" type="button">← На главную</button>'
         +'<button class="qa-btn no-print" id="adminPrintBtn" type="button">🖨️ Печать</button>'
         +'<button class="qa-btn no-print" id="adminExportBtn" type="button">⬇️ Экспорт CSV</button>'
-        +'<button class="qa-btn no-print" id="adminAiLogBtn" type="button">🤖 Журнал помощника</button>'
+        +'<button class="qa-btn no-print" id="adminAiLogBtn" type="button">✨ Журнал AI-ассистента</button>'
         +'<button class="calc-btn" id="adminCreateBtn" style="width:auto;padding:10px 18px" type="button">+ Новый пользователь</button>'
       +'</div>'
     +'</div>'
     +(rows
-      ?'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Email (логин)</th><th>Роль</th><th>Статус</th><th>Онлайн</th><th>Подписка</th><th>Регистрация</th><th>Последний вход</th><th class="no-print">Действия</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      ?'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Email (логин)</th><th>Роль</th><th>Статус</th><th>Онлайн</th><th>Подписка</th><th>AI-тариф</th><th>Регистрация</th><th>Последний вход</th><th class="no-print">Действия</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
       :'<div style="color:var(--muted);font-size:12px">Пользователей нет</div>')
     +'</div>';
 }
 
 // Делегирование кликов внутри #adminResult — переживает перерисовку box.innerHTML
 // в renderAdminPanel (сам #adminResult из DOM никогда не удаляется).
+// Тариф AI-ассистента меняется выбором в строке; при ошибке выбор откатывается.
+document.getElementById('adminResult').addEventListener('change',async function(e){
+  const sel=e.target.closest('.admin-plan-sel');
+  if(!sel)return;
+  const row=sel.closest('.admin-tr'),u=row&&adminUserById(row.dataset.userId);
+  if(!u)return;
+  const prev=u.ai_plan||'base';
+  sel.disabled=true;
+  try{
+    const res=await apiFetch('/api/admin/users/'+encodeURIComponent(u.id)+'/plan',{method:'PATCH',body:JSON.stringify({plan:sel.value})});
+    if(!res.ok)throw new Error(res.status);
+    u.ai_plan=sel.value;
+  }catch(err){sel.value=prev;openModal('<h2>Тариф не изменён</h2><div class="calc-warn w-red">Не удалось сохранить AI-тариф для '+esc(u.email)+'</div><div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>')}
+  finally{sel.disabled=false}
+});
 document.getElementById('adminResult').addEventListener('click',function(e){
   if(e.target.closest('#adminBackBtn')){setSearchMode('code');return;}
   if(e.target.closest('#adminCreateBtn')){openCreateUserModal();return;}

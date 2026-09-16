@@ -16,6 +16,7 @@ const user = { id: 'valid', email: 'test@example.test', role: 'user', active: tr
 const db = { inserts: 0, rated: null };
 require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async (sql, params) => {
   if (/insert into assistant_log/.test(sql)) { db.inserts++; return { rows: [{ id: 42 }] }; }
+  if (/count\(\*\)::int as used/.test(sql)) return { rows: [{ used: db.inserts }] };
   if (/update assistant_log/.test(sql)) { db.rated = params; return { rowCount: 1 }; }
   return { rows: [user] };
 } } } };
@@ -41,7 +42,8 @@ app.use(express.json());
 app.use(session({ secret: 'x', resave: false, saveUninitialized: false }));
 app.use(require('../src/middleware/auth'));
 app.get('/api/auth/config', (q, r) => r.json({}));
-app.get('/api/auth/me', (q, r) => (q.user ? r.json({ ...q.user, emailVerified: true }) : r.status(401).json({})));
+// как настоящий /api/auth/me — без id: переписка должна восстанавливаться по email
+app.get('/api/auth/me', (q, r) => (q.user ? r.json({ email: q.user.email, role: q.user.role, emailVerified: true }) : r.status(401).json({})));
 app.post('/api/auth/login', (q, r) => { q.session.userId = 'valid'; r.json({ ...user, emailVerified: true }); });
 app.post('/api/auth/logout', (q, r) => q.session.destroy(() => r.json({})));
 app.get('/api/nbkr-rates', (q, r) => r.status(503).json({}));
@@ -84,6 +86,7 @@ app.get('/', (q, r) => r.type('html').send(html));
       assert.match(r.h, /class="ai-code" data-code="8517130000"/);
       assert.match(r.h, /Поиск в базе: 8517130000/);
       assert.match(r.h, /class="ai-rate" data-id="42"/);
+      assert.match(await page.locator('#aiQuota').innerText(), /Тариф «Базовый»: осталось \d+ из 100/);
       assert.equal(r.msgs, 2);
       const lastUser = lastFirstRequest.messages[lastFirstRequest.messages.length - 1];
       assert.equal(lastUser.content[0].type, 'image');

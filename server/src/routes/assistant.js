@@ -4,19 +4,38 @@ const { ask } = require('../services/assistant');
 
 const router = express.Router();
 
-// Каждый вопрос — несколько платных вызовов модели. Лимит на пользователя,
-// а не на IP: доступ и так только после входа, а офис за одним NAT не должен
-// делить один лимит на всех.
-const LIMIT = Number(process.env.AI_DAILY_LIMIT || 50);
-const WINDOW_MS = 24 * 60 * 60 * 1000;
-const hits = new Map();
-function allow(userId) {
-  const now = Date.now();
-  const recent = (hits.get(userId) || []).filter((t) => now - t < WINDOW_MS);
-  if (recent.length >= LIMIT) return false;
-  recent.push(now);
-  hits.set(userId, recent);
-  return true;
+// Тарифы AI-ассистента: месячный лимит вопросов. base входит в подписку.
+// Месяц — календарный по времени Бишкека (UTC+6), как и отчёт для счёта.
+// Вопрос с ошибкой модели не списывается: пользователь ответа не получил.
+// Администраторы без лимита. Числа можно переопределить: AI_PLAN_LIMITS={"base":100,...}.
+const PLANS = {
+  base: { name: 'Базовый', limit: 100 },
+  pro: { name: 'Pro', limit: 300 },
+  max: { name: 'Max', limit: 1000 },
+};
+if (process.env.AI_PLAN_LIMITS) {
+  for (const [k, v] of Object.entries(JSON.parse(process.env.AI_PLAN_LIMITS))) if (PLANS[k]) PLANS[k].limit = Number(v);
+}
+
+function bishkekMonth(now = new Date()) {
+  const b = new Date(now.getTime() + 6 * 3600e3);
+  const y = b.getUTCFullYear(), m = b.getUTCMonth();
+  return { start: new Date(Date.UTC(y, m, 1) - 6 * 3600e3), next: new Date(Date.UTC(y, m + 1, 1) - 6 * 3600e3) };
+}
+
+async function quotaFor(user) {
+  const { start, next } = bishkekMonth();
+  const { rows } = await pool.query(
+    'select count(*)::int as used from assistant_log where user_id = $1 and created_at >= $2 and error is null',
+    [user.id, start]
+  );
+  const used = rows[0]?.used || 0;
+  const plans = Object.fromEntries(Object.entries(PLANS).map(([k, v]) => [k, { name: v.name, limit: v.limit }]));
+  const resets = new Date(next.getTime() + 6 * 3600e3).toISOString().slice(0, 10);
+  if (user.role === 'admin') return { plan: 'admin', name: 'Администратор', limit: null, used, remaining: null, resets, plans };
+  const plan = PLANS[user.ai_plan] ? user.ai_plan : 'base';
+  const { name, limit } = PLANS[plan];
+  return { plan, name, limit, used, remaining: Math.max(0, limit - used), resets, plans };
 }
 
 function guard(req, res) {
@@ -70,7 +89,11 @@ router.post('/', async (req, res) => {
     images.push({ media_type: img.media_type, data: img.data });
   }
 
-  if (!allow(req.user.id)) return res.status(429).json({ error: 'rate_limited', limit: LIMIT });
+  // Проверка лимита до начала работы. Параллельные запросы у самой границы могут
+  // пройти на один-два вопроса сверх — это дешевле, чем блокировка на каждый вопрос.
+  let quota;
+  try { quota = await quotaFor(req.user); } catch (err) { console.error('assistant quota:', err.message); return res.status(500).json({ error: 'internal error' }); }
+  if (quota.remaining === 0) return res.status(429).json({ error: 'quota_exceeded', quota });
 
   res.status(200).type('application/x-ndjson');
   res.set('Cache-Control', 'no-store');
@@ -81,7 +104,7 @@ router.post('/', async (req, res) => {
   try {
     const r = await ask(history, { images, onStep: (s) => send({ step: s }) });
     const id = await logQuestion({ userId: req.user.id, question, ...r, ms: Date.now() - started });
-    send({ id, answer: r.answer, searched: r.searched, unverified: r.unverified });
+    send({ id, answer: r.answer, searched: r.searched, unverified: r.unverified, quota: await quotaFor(req.user).catch(() => null) });
   } catch (err) {
     console.error('assistant:', err.message);
     const error = /balance/i.test(err.message) ? 'ai_balance' : 'ai_unavailable';
@@ -89,6 +112,12 @@ router.post('/', async (req, res) => {
     send({ error });
   }
   res.end();
+});
+
+// Остаток вопросов по тарифу — для строки под полем ввода.
+router.get('/quota', async (req, res, next) => {
+  if (!guard(req, res)) return;
+  try { res.json(await quotaFor(req.user)); } catch (err) { next(err); }
 });
 
 // Оценка ответа: только своего и только один раз меняемым значением.
@@ -111,3 +140,5 @@ router.post('/rate', async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.bishkekMonth = bishkekMonth;
+module.exports.PLANS = PLANS;

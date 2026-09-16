@@ -63,7 +63,7 @@ router.get('/users', async (req, res, next) => {
     // heartbeat throttle in middleware/auth.js so a request landing just
     // before the next heartbeat isn't shown as offline.
     const { rows } = await pool.query(
-      `select id, email, role, active, subscription_expires_at, created_at, last_login_at, last_seen_at,
+      `select id, email, role, active, subscription_expires_at, created_at, last_login_at, last_seen_at, ai_plan,
               (last_seen_at is not null and last_seen_at > now() - interval '5 minutes') as online
        from users order by created_at asc`
     );
@@ -173,6 +173,25 @@ router.patch('/users/:id/active', async (req, res, next) => {
   }
 });
 
+// Тариф AI-ассистента: base (100 вопросов в месяц, входит в подписку), pro (300), max (1000).
+router.patch('/users/:id/plan', async (req, res, next) => {
+  try {
+    const id = normalizeUserId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'invalid user id' });
+    const { plan } = req.body || {};
+    if (!['base', 'pro', 'max'].includes(plan)) return res.status(400).json({ error: 'invalid plan' });
+    const { rows } = await pool.query(
+      'update users set ai_plan=$1 where id=$2 returning id, email, role, active, ai_plan',
+      [plan, id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'not found' });
+    await audit(req.user.id, 'set_ai_plan', id, { plan });
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch('/users/:id/subscription', async (req, res, next) => {
   try {
     const id = normalizeUserId(req.params.id);
@@ -245,13 +264,13 @@ router.get('/assistant/billing', async (req, res, next) => {
     const [y, m] = month.split('-').map(Number);
     const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
     const { rows } = await pool.query(
-      `select u.email, count(*)::int as questions,
+      `select u.email, u.ai_plan, count(*)::int as questions,
               count(*) filter (where l.error is not null)::int as errors,
               sum(l.input_tokens)::int as input_tokens, sum(l.cache_read_tokens)::int as cache_read_tokens,
               sum(l.output_tokens)::int as output_tokens, round(sum(l.cost_usd), 6)::float as cost_usd
          from assistant_log l join users u on u.id = l.user_id
         where l.created_at >= $1::timestamptz and l.created_at < $2::timestamptz
-        group by u.email order by cost_usd desc`,
+        group by u.email, u.ai_plan order by cost_usd desc`,
       [`${month}-01T00:00:00+06:00`, `${next}-01T00:00:00+06:00`]
     );
     const rates = await require('../services/nbkrRates').getRates().catch(() => null);
