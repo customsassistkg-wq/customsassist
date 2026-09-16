@@ -34,6 +34,7 @@ node --check server/src/index.js
 node server/tests/checker-access.test.js
 node server/tests/auth-loader.test.js
 node server/tests/admin-view.test.js
+node server/tests/lookup-filter.test.js
 node server/tests/admin-invitation.test.js
 ```
 

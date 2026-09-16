@@ -314,6 +314,14 @@
   .calc-warn.w-red{background:rgba(224,52,43,.11);border-color:rgba(224,52,43,.4);color:var(--red)}
   .calc-warn.w-yellow{background:rgba(166,106,0,.11);border-color:rgba(166,106,0,.4);color:var(--yellow)}
   .calc-warn.w-blue{background:rgba(90,86,214,.11);border-color:rgba(90,86,214,.4);color:var(--blue)}
+  /* Справка по товару: карточки, не относящиеся к выбранному направлению или
+     стране происхождения, не удаляются, а уезжают в свёрнутый блок с причиной.
+     Скрыть ограничение насовсем нельзя — инспектор должен иметь возможность
+     посмотреть, что именно отфильтровано и почему. */
+  .lk-hidden{margin-top:16px;border:1px dashed var(--border);border-radius:var(--radius-md);padding:10px 14px 14px;background:var(--glass)}
+  .lk-hidden>summary{cursor:pointer;font-size:12px;color:var(--muted);font-weight:600}
+  .lk-hidden .card{margin-top:4px;opacity:.72}
+  .lk-why{margin-top:12px;font-size:11px;color:var(--muted);line-height:1.5}
   .calc-result{margin-top:16px;border-top:1px solid var(--border);padding-top:16px}
   .calc-line{display:flex;justify-content:space-between;padding:7px 0;font-size:13px}
   .calc-line b{font-family:var(--head)}

@@ -3897,6 +3897,7 @@ const NPA_REGISTRY_URL='https://www.gov.kg/ru/npa/c/provisions';
 // Ссылки на первоисточники проверены веб-поиском 26.08.2026; "не найдено" означает, что акт существует,
 // но официальная прямая ссылка не была найдена (сайт-источник плохо индексируется/не отдаёт статический текст).
 const DOC_SOURCES={
+  tkEaes:'https://eec.eaeunion.org/upload/iblock/93c/TK-EAES.pdf',
   trois:'https://customs.gov.kg/site/ru/master/customskg/_/attachment/inline/253d6317-97a6-46df-ba64-1f48134ae572:74dabc7b819147c0861cc132cd894ee32d21492a/21%20%D0%B0%D0%B2%D0%B3%D1%83%D1%81%D1%82%D0%B0%202026%20%D0%B3%D0%BE%D0%B4%D0%B0%20%D0%A2%D0%A0%D0%9E%D0%98%D0%A1%20%D0%93%D0%A2%D0%A1.pdf',
   troisPage:'https://customs.gov.kg/site/ru/master/customskg/intellektualdyk-menchik-ukuktaryn-korgoo',
   trois694:'https://cbd.minjust.gov.kg/7-1580/edition/641478/ru',
@@ -5979,7 +5980,7 @@ function focusResultCard(id){
 }
 
 function enhanceResultCards(container,q){
-  if(!container||container.id!=='result')return;
+  if(!container)return;
   const cards=Array.prototype.slice.call(container.querySelectorAll(':scope > .card'));
   cards.forEach(card=>{
     if(card.dataset.enh)return;
@@ -6021,7 +6022,7 @@ function enhanceResultCards(container,q){
   alerts.forEach(c=>c.classList.add('card-alert'));
   const fresh=alerts.filter(c=>!c.dataset.ord);
   for(let i=fresh.length-1;i>=0;i--){fresh[i].dataset.ord='1';container.insertBefore(fresh[i],container.firstChild)}
-  buildResultSummary(container,q);
+  if(container.id==='result')buildResultSummary(container,q);
 }
 
 // Сводная плашка: чем кончилась проверка (плашки рисков) и что именно нашлось
@@ -6112,7 +6113,7 @@ function render(q,boxId){
   if(ettList.length>0){
     if(ettList.length===1){
       const [ec,en,eu,er]=ettList[0];
-      html+=`<div class="card c-ett"><div class="rh"><div class="ico">💰</div><div><div class="rc">${esc(fmtCode(ec))}</div></div></div><div class="rn">${ettNameRowHtml(ec,en)}</div><div class="tags"><span class="tag t-ett">💰 Ставка ввозной пошлины</span></div><div class="rn" style="margin-top:2px">${ettNameHtml(ec,en)}</div><div class="ett-rate">${esc(fmtRate(er))}</div><div class="det">${quickActionsHtml(ec)}<div><strong>Доп. ед. изм.:</strong> ${esc(eu||'не указана')}</div><div><strong>Источник:</strong> ЕТТ ЕАЭС, база пользователя 2026</div>${TNVED_MAP[ec]?legacyNote(ec,null,''):''}${auditNote('ett')}<div style="margin-top:8px"><span class="notes-ico" style="margin-left:0;opacity:.85" onclick="openNotesForCode('${ec}')">📖 Пояснения к группе ${esc(ec.slice(0,2))} ТН ВЭД</span></div></div></div>`;
+      html+=`<div class="card c-ett" data-dir="im" data-kind="tariff"><div class="rh"><div class="ico">💰</div><div><div class="rc">${esc(fmtCode(ec))}</div></div></div><div class="rn">${ettNameRowHtml(ec,en)}</div><div class="tags"><span class="tag t-ett">💰 Ставка ввозной пошлины</span></div><div class="rn" style="margin-top:2px">${ettNameHtml(ec,en)}</div><div class="ett-rate">${esc(fmtRate(er))}</div><div class="det">${quickActionsHtml(ec)}<div><strong>Доп. ед. изм.:</strong> ${esc(eu||'не указана')}</div><div><strong>Источник:</strong> ЕТТ ЕАЭС, база пользователя 2026</div>${TNVED_MAP[ec]?legacyNote(ec,null,''):''}${auditNote('ett')}<div style="margin-top:8px"><span class="notes-ico" style="margin-left:0;opacity:.85" onclick="openNotesForCode('${ec}')">📖 Пояснения к группе ${esc(ec.slice(0,2))} ТН ВЭД</span></div></div></div>`;
     } else {
       const shown=ettList.slice(0,30);
       let rowsHtml='';
@@ -6126,7 +6127,7 @@ function render(q,boxId){
       // карточку на всю ширину строки (grid-column:1/-1). При 1-2 позициях
       // строк мало, обычная колонка сетки смотрится нормально — не трогаем.
       const wideAttr=ettList.length>2?' style="grid-column:1/-1"':'';
-      html+=`<div class="card c-ett"${wideAttr}><div class="rh"><div class="ico">💰</div><div><div class="rc">${esc(qt)}…</div></div></div><div class="rn">Ставки ввозной пошлины ЕТТ — найдено ${ettList.length} позиций</div><div class="tags"><span class="tag t-ett">💰 ЕТТ ЕАЭС</span></div><div class="ett-list">${rowsHtml}</div>${moreNote}</div>`;
+      html+=`<div class="card c-ett" data-dir="im" data-kind="tariff"${wideAttr}><div class="rh"><div class="ico">💰</div><div><div class="rc">${esc(qt)}…</div></div></div><div class="rn">Ставки ввозной пошлины ЕТТ — найдено ${ettList.length} позиций</div><div class="tags"><span class="tag t-ett">💰 ЕТТ ЕАЭС</span></div><div class="ett-list">${rowsHtml}</div>${moreNote}</div>`;
     }
   }
   // Преференциальная ставка по Соглашению ЕАЭС-ОАЭ (только для товаров, происходящих из ОАЭ)
@@ -6153,7 +6154,7 @@ function render(q,boxId){
       rows+=`<div class="usir-row"><div class="un">${esc(fmtCode(ec))} — ${esc(en)}</div>${body}${uLegacy}</div>`;
     }
     const moreNote=uaeList.length>20?`<div class="ett-more">Показаны первые 20 из ${uaeList.length} позиций — введите больше цифр кода, чтобы уточнить</div>`:'';
-    html+=`<div class="card c-ett"><div class="rh"><div class="ico">🇦🇪</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень исключений к Соглашению об экономическом партнёрстве ЕАЭС-ОАЭ от 27.06.2025 — для товаров, происходящих из ОАЭ, действует не общая преференция 0%, а собственный график ставок по годам</div><div class="tags"><span class="tag t-ett">🇦🇪 Ставка ЕАЭС-ОАЭ</span></div><div class="usir-list">${rows}</div>${moreNote}<div class="det"><strong>Важно:</strong> применяется только к товарам, ПРОИСХОДЯЩИМ из ОАЭ (нужен сертификат происхождения по Соглашению), и только если рассчитанная по этому графику пошлина НЕ ниже пошлины по обычному ЕТТ — иначе применяется ставка ЕТТ (п.2 Решения №113). Для золотых/серебряных/платиновых слитков отмеченных «ставка ЕТТ» в графике — при ввозе для последующей переработки с подтверждающим документом уполномоченного органа страны-члена возможна ставка 0% вне зависимости от стоимости (п.3 Решения №113). Источник: ${docLink('Решение Коллегии ЕЭК №113 от 25.08.2026','https://docs.eaeunion.org/documents/463/10896/')}. <strong>Дата вступления решения в силу — 06.10.2026</strong> (опубликовано 28.08.2026; по пункту 4 решение вступает в силу с даты вступления в силу Соглашения, но не ранее 30 календарных дней с даты опубликования). До этой даты приведённый график ставок не применяется.${auditNote('uae')}</div></div>`;
+    html+=`<div class="card c-ett" data-dir="im" data-kind="tariff" data-cty="оаэ эмираты"><div class="rh"><div class="ico">🇦🇪</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень исключений к Соглашению об экономическом партнёрстве ЕАЭС-ОАЭ от 27.06.2025 — для товаров, происходящих из ОАЭ, действует не общая преференция 0%, а собственный график ставок по годам</div><div class="tags"><span class="tag t-ett">🇦🇪 Ставка ЕАЭС-ОАЭ</span></div><div class="usir-list">${rows}</div>${moreNote}<div class="det"><strong>Важно:</strong> применяется только к товарам, ПРОИСХОДЯЩИМ из ОАЭ (нужен сертификат происхождения по Соглашению), и только если рассчитанная по этому графику пошлина НЕ ниже пошлины по обычному ЕТТ — иначе применяется ставка ЕТТ (п.2 Решения №113). Для золотых/серебряных/платиновых слитков отмеченных «ставка ЕТТ» в графике — при ввозе для последующей переработки с подтверждающим документом уполномоченного органа страны-члена возможна ставка 0% вне зависимости от стоимости (п.3 Решения №113). Источник: ${docLink('Решение Коллегии ЕЭК №113 от 25.08.2026','https://docs.eaeunion.org/documents/463/10896/')}. <strong>Дата вступления решения в силу — 06.10.2026</strong> (опубликовано 28.08.2026; по пункту 4 решение вступает в силу с даты вступления в силу Соглашения, но не ранее 30 календарных дней с даты опубликования). До этой даты приведённый график ставок не применяется.${auditNote('uae')}</div></div>`;
   }
 
   // Преференциальная ставка по Временному торговому соглашению ЕАЭС-Монголия (только для товаров, происходящих из Монголии)
@@ -6164,7 +6165,7 @@ function render(q,boxId){
       rows+=`<div class="usir-row"><div class="un">${esc(fmtCode(mc))} — ${esc(mn)}</div><div class="uu">${rateHtml}</div></div>`;
     }
     const moreNote=mnList.length>20?`<div class="ett-more">Показаны первые 20 из ${mnList.length} позиций — введите больше цифр кода, чтобы уточнить</div>`:'';
-    html+=`<div class="card c-ett"><div class="rh"><div class="ico">🇲🇳</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень товаров, происходящих из Монголии, к которым применяется преференциальная ставка ввозной пошлины</div><div class="tags"><span class="tag t-ett">🇲🇳 Ставка ЕАЭС-Монголия</span></div><div class="usir-list">${rows}</div>${moreNote}<div class="det"><strong>Важно:</strong> применяется только к товарам, ПРОИСХОДЯЩИМ из Монголии (нужен сертификат происхождения по Соглашению), и только если пошлина по этой ставке НЕ ниже пошлины по обычному ЕТТ — иначе применяется ставка ЕТТ. Источник: ${docLink('Решение Коллегии ЕЭК №74 от 16.06.2026','https://docs.eaeunion.org/documents/463/10743/')} — перечень товаров с преференциальными ставками по Временному торговому соглашению ЕАЭС-Монголия от 27.06.2025. Сводная публикация ЕЭК: ${docLink('Перечень_Монголия на 22-07-2026 (PDF)','https://eec.eaeunion.org/comission/department/catr/ttr/Preferences/Mongolia/%D0%9F%D0%B5%D1%80%D0%B5%D1%87%D0%B5%D0%BD%D1%8C_%D0%9C%D0%BE%D0%BD%D0%B3%D0%BE%D0%BB%D0%B8%D1%8F%20%D0%BD%D0%B0%2022-07-2026.pdf')}.${auditNote('mn')}</div></div>`;
+    html+=`<div class="card c-ett" data-dir="im" data-kind="tariff" data-cty="монголия"><div class="rh"><div class="ico">🇲🇳</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень товаров, происходящих из Монголии, к которым применяется преференциальная ставка ввозной пошлины</div><div class="tags"><span class="tag t-ett">🇲🇳 Ставка ЕАЭС-Монголия</span></div><div class="usir-list">${rows}</div>${moreNote}<div class="det"><strong>Важно:</strong> применяется только к товарам, ПРОИСХОДЯЩИМ из Монголии (нужен сертификат происхождения по Соглашению), и только если пошлина по этой ставке НЕ ниже пошлины по обычному ЕТТ — иначе применяется ставка ЕТТ. Источник: ${docLink('Решение Коллегии ЕЭК №74 от 16.06.2026','https://docs.eaeunion.org/documents/463/10743/')} — перечень товаров с преференциальными ставками по Временному торговому соглашению ЕАЭС-Монголия от 27.06.2025. Сводная публикация ЕЭК: ${docLink('Перечень_Монголия на 22-07-2026 (PDF)','https://eec.eaeunion.org/comission/department/catr/ttr/Preferences/Mongolia/%D0%9F%D0%B5%D1%80%D0%B5%D1%87%D0%B5%D0%BD%D1%8C_%D0%9C%D0%BE%D0%BD%D0%B3%D0%BE%D0%BB%D0%B8%D1%8F%20%D0%BD%D0%B0%2022-07-2026.pdf')}.${auditNote('mn')}</div></div>`;
   }
 
   // Пониженная ставка ЕТТ по Соглашению о свободной торговле ЕАЭС-Иран от 25.12.2023
@@ -6176,7 +6177,7 @@ function render(q,boxId){
       rows+=`<div class="usir-row"><div class="un">${esc(fmtCode(ic))} — ${esc(iname)}</div><div class="uu">${esc(irate)}</div></div>`;
     }
     const moreNote=iranList.length>20?`<div class="ett-more">Показаны первые 20 из ${iranList.length} позиций — введите больше цифр кода, чтобы уточнить</div>`:'';
-    html+=`<div class="card c-ett"><div class="rh"><div class="ico">🇮🇷</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень товаров, происходящих из Ирана, к которым применяется пониженная ставка ввозной пошлины</div><div class="tags"><span class="tag t-ett">🇮🇷 Ставка ЕАЭС-Иран</span></div><div class="usir-list">${rows}</div>${moreNote}<div class="det"><strong>Важно:</strong> применяется только к товарам, ПРОИСХОДЯЩИМ из Ирана (нужен сертификат происхождения по Соглашению о свободной торговле ЕАЭС-Иран от 25.12.2023), и только если пошлина по этой ставке НЕ ниже пошлины по обычному ЕТТ — иначе применяется ставка ЕТТ. По остальным кодам ТН ВЭД (не входящим в этот перечень и не в списке тарифных квот) Соглашение обычную ставку ЕТТ не меняет. Источник: ${docLink('Решение Коллегии ЕЭК №1 от 14.01.2025 (в ред. Решения №43 от 07.04.2026) — перечень товаров со ставками по Соглашению ЕАЭС-Иран','https://eec.eaeunion.org/comission/department/catr/ttr/Preferences/Iran/%D0%BF%D0%B5%D1%80%D0%B5%D1%87%D0%B5%D0%BD%D1%8C%20%D0%98%D0%A0%D0%90%D0%9D%20%D0%BD%D0%B0%2001-07-2026.pdf')}.${auditNote('ir')}</div></div>`;
+    html+=`<div class="card c-ett" data-dir="im" data-kind="tariff" data-cty="иран"><div class="rh"><div class="ico">🇮🇷</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень товаров, происходящих из Ирана, к которым применяется пониженная ставка ввозной пошлины</div><div class="tags"><span class="tag t-ett">🇮🇷 Ставка ЕАЭС-Иран</span></div><div class="usir-list">${rows}</div>${moreNote}<div class="det"><strong>Важно:</strong> применяется только к товарам, ПРОИСХОДЯЩИМ из Ирана (нужен сертификат происхождения по Соглашению о свободной торговле ЕАЭС-Иран от 25.12.2023), и только если пошлина по этой ставке НЕ ниже пошлины по обычному ЕТТ — иначе применяется ставка ЕТТ. По остальным кодам ТН ВЭД (не входящим в этот перечень и не в списке тарифных квот) Соглашение обычную ставку ЕТТ не меняет. Источник: ${docLink('Решение Коллегии ЕЭК №1 от 14.01.2025 (в ред. Решения №43 от 07.04.2026) — перечень товаров со ставками по Соглашению ЕАЭС-Иран','https://eec.eaeunion.org/comission/department/catr/ttr/Preferences/Iran/%D0%BF%D0%B5%D1%80%D0%B5%D1%87%D0%B5%D0%BD%D1%8C%20%D0%98%D0%A0%D0%90%D0%9D%20%D0%BD%D0%B0%2001-07-2026.pdf')}.${auditNote('ir')}</div></div>`;
   }
 
   // Пониженная ставка ЕТТ по Соглашению о свободной торговле ЕАЭС-Вьетнам от 29.05.2015
@@ -6188,7 +6189,7 @@ function render(q,boxId){
       rows+=`<div class="usir-row"><div class="un">${esc(fmtCode(vc))} — ${esc(vname)}</div><div class="uu">${esc(vrate)}</div></div>`;
     }
     const moreNote=vnList.length>20?`<div class="ett-more">Показаны первые 20 из ${vnList.length} позиций — введите больше цифр кода, чтобы уточнить</div>`:'';
-    html+=`<div class="card c-ett"><div class="rh"><div class="ico">🇻🇳</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень товаров, происходящих из Вьетнама, к которым применяется пониженная ставка ввозной пошлины</div><div class="tags"><span class="tag t-ett">🇻🇳 Ставка ЕАЭС-Вьетнам</span></div><div class="usir-list">${rows}</div>${moreNote}<div class="det"><strong>Важно:</strong> применяется только к товарам, ПРОИСХОДЯЩИМ из Вьетнама (нужен сертификат происхождения по Соглашению о свободной торговле ЕАЭС-Вьетнам от 29.05.2015), и только если пошлина по этой ставке НЕ ниже пошлины по обычному ЕТТ — иначе применяется ставка ЕТТ. По остальным кодам ТН ВЭД (не входящим в этот перечень) Соглашение обычную ставку ЕТТ не меняет; для отдельных товарных позиций (одежда/трикотаж 6103/6104/6110/6203/6204) с 23.05.2026 по 23.11.2026 льгота ВРЕМЕННО не действует (защитная мера, Решение №47 от 20.04.2026, см. карточку триггерной меры). Источник: ${docLink('Решение Коллегии ЕЭК №36 от 19.04.2016 (в ред. Решения №119 от 29.10.2024) — перечень товаров со ставками по Соглашению ЕАЭС-Вьетнам','https://eec.eaeunion.org/comission/department/catr/ttr/Preferences/Vietnam/%D0%BF%D0%B5%D1%80%D0%B5%D1%87%D0%B5%D0%BD%D1%8C%20%D0%92%D1%8C%D0%B5%D1%82%D0%BD%D0%B0%D0%BC%20%D0%BD%D0%B0%2022-01-2026.pdf')}.${auditNote('vn')}</div></div>`;
+    html+=`<div class="card c-ett" data-dir="im" data-kind="tariff" data-cty="вьетнам"><div class="rh"><div class="ico">🇻🇳</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень товаров, происходящих из Вьетнама, к которым применяется пониженная ставка ввозной пошлины</div><div class="tags"><span class="tag t-ett">🇻🇳 Ставка ЕАЭС-Вьетнам</span></div><div class="usir-list">${rows}</div>${moreNote}<div class="det"><strong>Важно:</strong> применяется только к товарам, ПРОИСХОДЯЩИМ из Вьетнама (нужен сертификат происхождения по Соглашению о свободной торговле ЕАЭС-Вьетнам от 29.05.2015), и только если пошлина по этой ставке НЕ ниже пошлины по обычному ЕТТ — иначе применяется ставка ЕТТ. По остальным кодам ТН ВЭД (не входящим в этот перечень) Соглашение обычную ставку ЕТТ не меняет; для отдельных товарных позиций (одежда/трикотаж 6103/6104/6110/6203/6204) с 23.05.2026 по 23.11.2026 льгота ВРЕМЕННО не действует (защитная мера, Решение №47 от 20.04.2026, см. карточку триггерной меры). Источник: ${docLink('Решение Коллегии ЕЭК №36 от 19.04.2016 (в ред. Решения №119 от 29.10.2024) — перечень товаров со ставками по Соглашению ЕАЭС-Вьетнам','https://eec.eaeunion.org/comission/department/catr/ttr/Preferences/Vietnam/%D0%BF%D0%B5%D1%80%D0%B5%D1%87%D0%B5%D0%BD%D1%8C%20%D0%92%D1%8C%D0%B5%D1%82%D0%BD%D0%B0%D0%BC%20%D0%BD%D0%B0%2022-01-2026.pdf')}.${auditNote('vn')}</div></div>`;
   }
 
   // Изъятие из режима свободной торговли ЕАЭС-Сербия (для товаров из Сербии по умолчанию 0%, кроме этого перечня)
@@ -6202,7 +6203,7 @@ function render(q,boxId){
       rows+=`<div class="usir-row"><div class="un">${esc(fmtCode(rc))} — ${esc(rn)}</div><div class="uu">${esc(rr)}</div>${rMapped}${noteHtml}${rLegacy}</div>`;
     }
     const moreNote=rsList.length>20?`<div class="ett-more">Показаны первые 20 из ${rsList.length} позиций — введите больше цифр кода, чтобы уточнить</div>`:'';
-    html+=`<div class="card c-ett"><div class="rh"><div class="ico">🇷🇸</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень ИЗЪЯТИЙ из режима свободной торговли ЕАЭС-Сербия — для товаров, происходящих из Сербии, по этому коду преференция 0% НЕ действует</div><div class="tags"><span class="tag t-ett">🇷🇸 Изъятие ЕАЭС-Сербия</span></div><div class="usir-list">${rows}</div>${moreNote}<div class="det"><strong>Важно:</strong> для товаров, происходящих из Республики Сербии, по Соглашению о зоне свободной торговли от 25.10.2019 действует общая преференция 0% пошлины — КРОМЕ товаров из этого перечня изъятий, где применяется обычная ставка ЕТТ (у части позиций — с дополнительными оговорками по квоте/сертификату/для бывших в эксплуатации ТС, см. примечание). Источник: перечень, утверждённый Решением Коллегии ЕЭК №122 от 06.10.2020, в редакции решений Коллегии ЕЭК №123 от 21.09.2021 и №81 от 23.09.2025 (сводная публикация ЕЭК от 22.01.2026), с расщеплением кода 5804 21 900 0 по Решению №94 от 14.07.2026.${auditNote('rs')}</div></div>`;
+    html+=`<div class="card c-ett" data-dir="im" data-kind="tariff" data-cty="сербия"><div class="rh"><div class="ico">🇷🇸</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень ИЗЪЯТИЙ из режима свободной торговли ЕАЭС-Сербия — для товаров, происходящих из Сербии, по этому коду преференция 0% НЕ действует</div><div class="tags"><span class="tag t-ett">🇷🇸 Изъятие ЕАЭС-Сербия</span></div><div class="usir-list">${rows}</div>${moreNote}<div class="det"><strong>Важно:</strong> для товаров, происходящих из Республики Сербии, по Соглашению о зоне свободной торговли от 25.10.2019 действует общая преференция 0% пошлины — КРОМЕ товаров из этого перечня изъятий, где применяется обычная ставка ЕТТ (у части позиций — с дополнительными оговорками по квоте/сертификату/для бывших в эксплуатации ТС, см. примечание). Источник: перечень, утверждённый Решением Коллегии ЕЭК №122 от 06.10.2020, в редакции решений Коллегии ЕЭК №123 от 21.09.2021 и №81 от 23.09.2025 (сводная публикация ЕЭК от 22.01.2026), с расщеплением кода 5804 21 900 0 по Решению №94 от 14.07.2026.${auditNote('rs')}</div></div>`;
   }
 
   // Тарифные преференции ЕАЭС развивающимся и наименее развитым странам (ЕСТП)
@@ -6237,7 +6238,7 @@ function render(q,boxId){
     };
     const devRate=ettR===null?'75% от ставки ЕТТ':(ettR===0?'75% от ставки ЕТТ, но ставка ЕТТ по этому коду и так 0% — преференция ничего не меняет':'75% от ставки ЕТТ, то есть '+pct(ettR*0.75)+'% вместо '+pct(ettR)+'%');
     const cList=(a,t)=>`<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11px;color:var(--indigo)">${esc(t)} (${a.length})</summary><div style="margin-top:6px;font-size:11px;line-height:1.55">${a.map(esc).join(' · ')}</div></details>`;
-    html+=`<div class="card c-ett"><div class="rh"><div class="ico">🌍</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Единая система тарифных преференций ЕАЭС — пониженная ставка для товаров из развивающихся и наименее развитых стран</div><div class="tags"><span class="tag t-ett">🌍 Преференция ЕСТП</span></div><div class="ett-rate">${esc(headTxt)}</div><div class="usir-list">${block(devH,'Развивающиеся страны ('+PREF_DEV_C.length+')',devRate)}${block(ldcH,'Наименее развитые страны ('+PREF_LDC_C.length+')','0% — пошлина не взимается')}</div><div class="det"><strong>Важно:</strong> преференция применяется не к коду как таковому, а только к товару, ПРОИСХОДЯЩЕМУ из страны-пользователя ЕСТП. По пункту 65 Правил определения происхождения одновременно должны выполняться четыре условия: товар включён в перечень преференциальных товаров; происхождение подтверждено сертификатом (по форме приложения № 2 к Правилам; срок применения — 12 месяцев с даты выдачи), а при таможенной стоимости партии не более 5 000 евро — декларацией о происхождении товара; соблюдено требование прямой поставки (пункты 67–70: перевозка через третьи страны допускается, если товар был под таможенным контролем, не продавался и не подвергался операциям, кроме сохранности и перегрузки); страна-пользователь соблюдает требования административного сотрудничества. <strong>Прямой закупки не требуется</strong> — по пункту 66 товар можно приобрести и у лица, зарегистрированного в любой другой стране. Критерий достаточной переработки: стоимость непроисходящих материалов не более 50% (развивающиеся страны) или 60% (наименее развитые) стоимости товара на условиях «франко-завод». Иран и Монголия входят в перечень развивающихся стран и одновременно имеют собственные соглашения с ЕАЭС — по ним смотрите отдельные карточки.<br>${cList(PREF_DEV_C,'Перечень развивающихся стран')}${cList(PREF_LDC_C,'Перечень наименее развитых стран')}<strong>Источники:</strong> ${docLink('пункты 2 и 3 статьи 36 Договора о ЕАЭС от 29.05.2014',DOC_SOURCES.eaeuTreaty)} (ставки 75% и 0%); ${docLink('перечень преференциальных товаров — Решение Совета ЕЭК №8 от 13.01.2017, сводная публикация ЕЭК по состоянию на 08.03.2026',DOC_SOURCES.prefGoods)}; ${docLink('перечни стран — приложения 2 и 3 к Решению КТС №130 в ред. Решения Совета ЕЭК №8 от 28.01.2026, сводная публикация ЕЭК от 15.05.2026',DOC_SOURCES.prefCountries)}; ${docLink('Положение о ЕСТП — Решение Совета ЕЭК №47 от 06.04.2016 в ред. №122 от 19.12.2019 и №102 от 27.11.2025',DOC_SOURCES.prefPolozhenie)}; ${docLink('Правила определения происхождения товаров из развивающихся и наименее развитых стран — Решение Совета ЕЭК №60 от 14.06.2018 в ред. №49 от 14.05.2024',DOC_SOURCES.prefRules)}.${auditNote('pref')}</div></div>`;
+    html+=`<div class="card c-ett" data-dir="im" data-kind="tariff" data-cty="estp"><div class="rh"><div class="ico">🌍</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Единая система тарифных преференций ЕАЭС — пониженная ставка для товаров из развивающихся и наименее развитых стран</div><div class="tags"><span class="tag t-ett">🌍 Преференция ЕСТП</span></div><div class="ett-rate">${esc(headTxt)}</div><div class="usir-list">${block(devH,'Развивающиеся страны ('+PREF_DEV_C.length+')',devRate)}${block(ldcH,'Наименее развитые страны ('+PREF_LDC_C.length+')','0% — пошлина не взимается')}</div><div class="det"><strong>Важно:</strong> преференция применяется не к коду как таковому, а только к товару, ПРОИСХОДЯЩЕМУ из страны-пользователя ЕСТП. По пункту 65 Правил определения происхождения одновременно должны выполняться четыре условия: товар включён в перечень преференциальных товаров; происхождение подтверждено сертификатом (по форме приложения № 2 к Правилам; срок применения — 12 месяцев с даты выдачи), а при таможенной стоимости партии не более 5 000 евро — декларацией о происхождении товара; соблюдено требование прямой поставки (пункты 67–70: перевозка через третьи страны допускается, если товар был под таможенным контролем, не продавался и не подвергался операциям, кроме сохранности и перегрузки); страна-пользователь соблюдает требования административного сотрудничества. <strong>Прямой закупки не требуется</strong> — по пункту 66 товар можно приобрести и у лица, зарегистрированного в любой другой стране. Критерий достаточной переработки: стоимость непроисходящих материалов не более 50% (развивающиеся страны) или 60% (наименее развитые) стоимости товара на условиях «франко-завод». Иран и Монголия входят в перечень развивающихся стран и одновременно имеют собственные соглашения с ЕАЭС — по ним смотрите отдельные карточки.<br>${cList(PREF_DEV_C,'Перечень развивающихся стран')}${cList(PREF_LDC_C,'Перечень наименее развитых стран')}<strong>Источники:</strong> ${docLink('пункты 2 и 3 статьи 36 Договора о ЕАЭС от 29.05.2014',DOC_SOURCES.eaeuTreaty)} (ставки 75% и 0%); ${docLink('перечень преференциальных товаров — Решение Совета ЕЭК №8 от 13.01.2017, сводная публикация ЕЭК по состоянию на 08.03.2026',DOC_SOURCES.prefGoods)}; ${docLink('перечни стран — приложения 2 и 3 к Решению КТС №130 в ред. Решения Совета ЕЭК №8 от 28.01.2026, сводная публикация ЕЭК от 15.05.2026',DOC_SOURCES.prefCountries)}; ${docLink('Положение о ЕСТП — Решение Совета ЕЭК №47 от 06.04.2016 в ред. №122 от 19.12.2019 и №102 от 27.11.2025',DOC_SOURCES.prefPolozhenie)}; ${docLink('Правила определения происхождения товаров из развивающихся и наименее развитых стран — Решение Совета ЕЭК №60 от 14.06.2018 в ред. №49 от 14.05.2024',DOC_SOURCES.prefRules)}.${auditNote('pref')}</div></div>`;
   }
 
 
@@ -6251,7 +6252,7 @@ function render(q,boxId){
       rowsHtml+=`<div class="usir-row"><div class="un">п.${esc(rn)} — ${esc(rname)}</div><div class="uu">Коды по акту: ${esc(rcodes)} · налоговая база: ${esc(runit)}</div><div class="uvals"><span class="usir-val"><b>Базовая ставка:</b> ${esc(String(rrate))} сом / ${esc(runit)}</span></div>${schedHtml}${noteHtml}</div>`;
     }
     const many=exciseList.length>1?'<div class="ett-more">Коду отвечает несколько пунктов статьи 336: акт различает их по виду товара, а не по коду, — выберите пункт по описанию своего товара.</div>':'';
-    html+=`<div class="card c-ex"><div class="rh"><div class="ico">🍶</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Товар подакцизный — найдено пунктов: ${exciseList.length}</div><div class="tags"><span class="tag t-ex">🍶 Акциз (ст.334, 336 НК КР)</span></div><div class="usir-list">${rowsHtml}</div>${many}<div class="det">Акциз платят и производитель в Кыргызской Республике, и импортёр (ст.331, 333 НК КР); налоговая база — физический объём товара (ст.335), а не его стоимость. Ставка считается сверх пошлины и <strong>входит в облагаемую стоимость импорта</strong>, то есть увеличивает и НДС: ст.310 для ввоза из третьих стран, ч.4 ст.311 для ввоза из ЕАЭС. Приведена <em>базовая</em> ставка: по ч.2 ст.336 Кабинет Министров вправе установить ставку ниже её в пределах базовой, поэтому перед уплатой стоит проверить действующий размер. Источник — ${docLink('Налоговый кодекс КР, ст.336',DOC_SOURCES.nk)}.</div>${auditNote('excise')}</div>`;
+    html+=`<div class="card c-ex" data-dir="im"><div class="rh"><div class="ico">🍶</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Товар подакцизный — найдено пунктов: ${exciseList.length}</div><div class="tags"><span class="tag t-ex">🍶 Акциз (ст.334, 336 НК КР)</span></div><div class="usir-list">${rowsHtml}</div>${many}<div class="det">Акциз платят и производитель в Кыргызской Республике, и импортёр (ст.331, 333 НК КР); налоговая база — физический объём товара (ст.335), а не его стоимость. Ставка считается сверх пошлины и <strong>входит в облагаемую стоимость импорта</strong>, то есть увеличивает и НДС: ст.310 для ввоза из третьих стран, ч.4 ст.311 для ввоза из ЕАЭС. Приведена <em>базовая</em> ставка: по ч.2 ст.336 Кабинет Министров вправе установить ставку ниже её в пределах базовой, поэтому перед уплатой стоит проверить действующий размер. Источник — ${docLink('Налоговый кодекс КР, ст.336',DOC_SOURCES.nk)}.</div>${auditNote('excise')}</div>`;
   }
 
   // Налоговая база НДС с признаками риска (перечень ГНС по ст.307 НК КР)
@@ -6263,7 +6264,7 @@ function render(q,boxId){
       rowsHtml+=`<div class="usir-row"><div class="un">${rn?'поз. '+rn+' — ':''}${esc(fmtCode(rc))} — ${esc(trunc(rname,120))}</div><div class="uu">Единица измерения по акту: ${esc(runit)}</div><div class="uvals"><span class="usir-val"><b>Налоговая база НДС:</b> ${esc(String(rval))} сом / ${esc(runit.toLowerCase())}</span></div></div>`;
     }
     const moreNote=nbndsList.length>shown.length?`<div class="ett-more">Показаны первые ${shown.length} из ${nbndsList.length} позиций — введите больше цифр кода, чтобы уточнить</div>`:'';
-    html+=`<div class="card c-usir"><div class="rh"><div class="ico">🧾</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Установлена налоговая база НДС, имеющая признаки риска — найдено ${nbndsList.length} позиций</div><div class="tags"><span class="tag t-usir">🧾 НБ НДС · ввоз из ЕАЭС</span></div><div class="usir-list">${rowsHtml}</div>${moreNote}<div class="det"><strong>Что это значит.</strong> При ввозе товара из государств-членов ЕАЭС, если цена в договоре и товаросопроводительных документах <em>ниже</em> указанной базы, НДС исчисляется по ней, а не по заявленной цене; если цена выше — по заявленной (п.11 Порядка). То же правило действует для облагаемой поставки товара производителем внутри Кыргызской Республики (п.13). К крупным налогоплательщикам база с признаками риска не применяется (п.19). Импортёр, не согласный с базой, вправе обратиться в налоговый орган по месту налоговой регистрации; подтверждение цены компетентным налоговым органом страны экспортёра действует последующие 6 месяцев (п.21, п.23).<br><br><strong>Границы применения.</strong> Это <em>налоговая</em> база НДС по взаимной торговле в ЕАЭС, а не таможенная стоимость: на импорт из третьих стран, оформляемый таможней, перечень не распространяется. Сама база определяется как среднеарифметическая цена по заявлениям о ввозе за последние 60 дней, уменьшенная на 30 % (п.6 и п.8 Порядка), и пересматривается ежеквартально, а по обращениям налогоплательщиков и бизнес-ассоциаций — ежемесячно (п.9), поэтому перед декларированием значение стоит сверить с действующей редакцией приказа: ${docLink('перечень на sti.gov.kg','https://sti.gov.kg/section/0/%D0%B5%D0%B2%D1%80%D0%B0%D0%B7%D0%B8%D0%B9%D1%81%D0%BA%D0%B8%D0%B9_%D1%8D%D0%BA%D0%BE%D0%BD%D0%BE%D0%BC%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9_%D1%81%D0%BE%D1%8E%D0%B7')}, ${docLink('Порядок (пост. КМ КР № 60)',DOC_SOURCES.pkm60)}.</div>${auditNote('nbnds')}</div>`;
+    html+=`<div class="card c-usir" data-dir="im"><div class="rh"><div class="ico">🧾</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Установлена налоговая база НДС, имеющая признаки риска — найдено ${nbndsList.length} позиций</div><div class="tags"><span class="tag t-usir">🧾 НБ НДС · ввоз из ЕАЭС</span></div><div class="usir-list">${rowsHtml}</div>${moreNote}<div class="det"><strong>Что это значит.</strong> При ввозе товара из государств-членов ЕАЭС, если цена в договоре и товаросопроводительных документах <em>ниже</em> указанной базы, НДС исчисляется по ней, а не по заявленной цене; если цена выше — по заявленной (п.11 Порядка). То же правило действует для облагаемой поставки товара производителем внутри Кыргызской Республики (п.13). К крупным налогоплательщикам база с признаками риска не применяется (п.19). Импортёр, не согласный с базой, вправе обратиться в налоговый орган по месту налоговой регистрации; подтверждение цены компетентным налоговым органом страны экспортёра действует последующие 6 месяцев (п.21, п.23).<br><br><strong>Границы применения.</strong> Это <em>налоговая</em> база НДС по взаимной торговле в ЕАЭС, а не таможенная стоимость: на импорт из третьих стран, оформляемый таможней, перечень не распространяется. Сама база определяется как среднеарифметическая цена по заявлениям о ввозе за последние 60 дней, уменьшенная на 30 % (п.6 и п.8 Порядка), и пересматривается ежеквартально, а по обращениям налогоплательщиков и бизнес-ассоциаций — ежемесячно (п.9), поэтому перед декларированием значение стоит сверить с действующей редакцией приказа: ${docLink('перечень на sti.gov.kg','https://sti.gov.kg/section/0/%D0%B5%D0%B2%D1%80%D0%B0%D0%B7%D0%B8%D0%B9%D1%81%D0%BA%D0%B8%D0%B9_%D1%8D%D0%BA%D0%BE%D0%BD%D0%BE%D0%BC%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B9_%D1%81%D0%BE%D1%8E%D0%B7')}, ${docLink('Порядок (пост. КМ КР № 60)',DOC_SOURCES.pkm60)}.</div>${auditNote('nbnds')}</div>`;
   }
 
   // УСИР — стоимостные индикаторы риска
@@ -6284,7 +6285,7 @@ function render(q,boxId){
       rowsHtml+=`<div class="usir-row${note&&note.hide?' usir-bad':''}"><div class="un">${esc(trunc(un,90))}</div><div class="uu">Ед.изм.: ${esc(uu||'—')} · ${esc(usrc)}${tag?' · '+esc(tag):''}</div>${valsHtml?`<div class="uvals">${valsHtml}</div>`:''}${note?`<div class="uwarn">${note.hide?'⚠️':'ℹ️'} ${esc(note.w)}</div>`:''}</div>`;
     }
     const moreNote=usirList.length>shown.length?`<div class="ett-more">Показаны первые ${shown.length} из ${usirList.length} позиций — введите больше цифр кода, чтобы уточнить</div>`:'';
-    html+=`<div class="card c-usir"><div class="rh"><div class="ico">📊</div><div><div class="rc">${esc(fmtCode(usirList[0][0]))}</div></div></div><div class="rn">УСИР — стоимостные индикаторы риска, найдено ${usirList.length} позиций</div><div class="tags"><span class="tag t-usir">📊 УСИР ЕАЭС</span></div><div class="usir-list">${rowsHtml}</div>${moreNote}<div class="det"><strong>Важно:</strong> заявленная таможенная стоимость ниже индикатора не означает нарушение — это лишь основание для дополнительной проверки декларации.</div></div>`;
+    html+=`<div class="card c-usir" data-dir="im" data-kind="tariff"><div class="rh"><div class="ico">📊</div><div><div class="rc">${esc(fmtCode(usirList[0][0]))}</div></div></div><div class="rn">УСИР — стоимостные индикаторы риска, найдено ${usirList.length} позиций</div><div class="tags"><span class="tag t-usir">📊 УСИР ЕАЭС</span></div><div class="usir-list">${rowsHtml}</div>${moreNote}<div class="det"><strong>Важно:</strong> заявленная таможенная стоимость ниже индикатора не означает нарушение — это лишь основание для дополнительной проверки декларации.</div></div>`;
   }
 
   // Антидемпинг
@@ -6296,7 +6297,7 @@ function render(q,boxId){
       const decisionHtml=decision?(url?docLink(decision,url):esc(decision)):'';
       rows+=`<div class="usir-row"><div class="un">${esc(product)}</div><div class="uu">${country?('Страна: '+esc(country)+' · '):''}${rate?('Ставка: '+esc(rate)+' · '):''}${decisionHtml}</div></div>`;
     }
-    html+=`<div class="card c-ex"><div class="rh"><div class="ico">⚠️</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень товаров, по которым применялись/применяются антидемпинговые меры ЕАЭС</div><div class="tags"><span class="tag t-ex">⚠️ Антидемпинг</span></div><div class="usir-list">${rows}</div><div class="det"><strong>Важно:</strong> база сверена по первоисточникам и независимым таможенным изданиям 27.08.2026 (см. session.md), но не охватывает все действующие меры защиты рынка ЕЭК (их ~28) — перед декларированием сверьте по действующему решению на remedies.eaeunion.org. Позиции с пометкой ⚠️ «требует уточнения» — код найден в исходном перечне, но конкретная мера/страна не установлены.</div></div>`;
+    html+=`<div class="card c-ex" data-dir="im" data-kind="tariff" data-cty="${esc(adList.map(r=>String(r[1]||"")).join(" ").toLowerCase())}"><div class="rh"><div class="ico">⚠️</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень товаров, по которым применялись/применяются антидемпинговые меры ЕАЭС</div><div class="tags"><span class="tag t-ex">⚠️ Антидемпинг</span></div><div class="usir-list">${rows}</div><div class="det"><strong>Важно:</strong> база сверена по первоисточникам и независимым таможенным изданиям 27.08.2026 (см. session.md), но не охватывает все действующие меры защиты рынка ЕЭК (их ~28) — перед декларированием сверьте по действующему решению на remedies.eaeunion.org. Позиции с пометкой ⚠️ «требует уточнения» — код найден в исходном перечне, но конкретная мера/страна не установлены.</div></div>`;
   }
   // Тарифные квоты (объёмы льготного ввоза по странам ЕАЭС на конкретный год)
   if(quotaList.length>0){
@@ -6309,7 +6310,7 @@ function render(q,boxId){
       const noteHtml=note?docLink(note,url):'';
       rows+=`<div class="usir-row"><div class="un">${esc(name)} — квота на ${year} год</div>${kgHtml}${othersHtml}<div class="uu" style="margin-top:6px">${noteHtml}</div></div>`;
     }
-    html+=`<div class="card c-eec"><div class="rh"><div class="ico">📦</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень товаров с установленной тарифной квотой ЕАЭС</div><div class="tags"><span class="tag t-eec">📦 Тарифная квота</span></div><div class="usir-list">${rows}</div><div class="det"><strong>Важно:</strong> квота — это объём, в пределах которого при ввозе применяется пониженная (обычно нулевая или сниженная) ставка пошлины; сверх объёма квоты действует обычная ставка ЕТТ. Распределение квоты между участниками ВЭД внутри страны устанавливается национальным уполномоченным органом КР — уточняйте актуальный остаток там же.</div>${auditNote('quota')}</div>`;
+    html+=`<div class="card c-eec" data-dir="im" data-kind="tariff"><div class="rh"><div class="ico">📦</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Код входит в перечень товаров с установленной тарифной квотой ЕАЭС</div><div class="tags"><span class="tag t-eec">📦 Тарифная квота</span></div><div class="usir-list">${rows}</div><div class="det"><strong>Важно:</strong> квота — это объём, в пределах которого при ввозе применяется пониженная (обычно нулевая или сниженная) ставка пошлины; сверх объёма квоты действует обычная ставка ЕТТ. Распределение квоты между участниками ВЭД внутри страны устанавливается национальным уполномоченным органом КР — уточняйте актуальный остаток там же.</div>${auditNote('quota')}</div>`;
   }
 
   // Триггерная защитная мера (временная отмена тарифной преференции по ЗСТ)
@@ -6324,7 +6325,7 @@ function render(q,boxId){
       rows+=`<div class="usir-row"><div class="un">${esc(product)} — ${badge}</div><div class="uu">${country?('Страна: '+esc(country)+' · '):''}${noteHtml}</div></div>`;
     }
     const trigActive=triggerList.some(r=>r[5]);
-    html+=`<div class="card c-ex"><div class="rh"><div class="ico">⏸️</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">${trigActive?'Код входит в перечень товаров, по которым временно приостановлена тарифная преференция (триггерная защитная мера)':'По этому коду триггерная защитная мера вводилась, но сейчас не действует'}</div><div class="tags"><span class="tag t-ex">⏸️ Триггерная защитная мера</span></div><div class="usir-list">${rows}</div><div class="det"><strong>Важно:</strong> это не антидемпинговая пошлина и не постоянная мера — на срок действия решения (обычно 6 месяцев) вместо льготной ставки по соглашению о свободной торговле применяется обычная ставка ЕТТ ЕАЭС; по истечении срока преференция восстанавливается автоматически. Сроки в записях посчитаны от даты вступления решения в силу по сроку, который назван в самом решении, — в тексте решения конечная дата не пишется, поэтому перед декларированием сверьте её. Меры по одежде из Вьетнама вводились четырежды: № 20 от 07.02.2018, № 85 от 06.07.2021, № 74 от 26.08.2025 и № 47 от 20.04.2026.${auditNote('trigger')}</div></div>`;
+    html+=`<div class="card c-ex" data-dir="im" data-kind="tariff" data-cty="${esc(triggerList.map(r=>String(r[1]||"")).join(" ").toLowerCase())}"><div class="rh"><div class="ico">⏸️</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">${trigActive?'Код входит в перечень товаров, по которым временно приостановлена тарифная преференция (триггерная защитная мера)':'По этому коду триггерная защитная мера вводилась, но сейчас не действует'}</div><div class="tags"><span class="tag t-ex">⏸️ Триггерная защитная мера</span></div><div class="usir-list">${rows}</div><div class="det"><strong>Важно:</strong> это не антидемпинговая пошлина и не постоянная мера — на срок действия решения (обычно 6 месяцев) вместо льготной ставки по соглашению о свободной торговле применяется обычная ставка ЕТТ ЕАЭС; по истечении срока преференция восстанавливается автоматически. Сроки в записях посчитаны от даты вступления решения в силу по сроку, который назван в самом решении, — в тексте решения конечная дата не пишется, поэтому перед декларированием сверьте её. Меры по одежде из Вьетнама вводились четырежды: № 20 от 07.02.2018, № 85 от 06.07.2021, № 74 от 26.08.2025 и № 47 от 20.04.2026.${auditNote('trigger')}</div></div>`;
   }
 
   // Товарные знаки в таможенном реестре ОИС (ТРОИС ГТС)
@@ -6352,7 +6353,7 @@ function render(q,boxId){
 
   // Коэффициент для товаров из КНР
   if(kefHit){
-    html+=`<div class="card c-usir"><div class="rh"><div class="ico">🇨🇳</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Коэффициент для товаров из КНР: ×${esc(String(kefHit.coef))}</div><div class="tags"><span class="tag t-usir">🇨🇳 ${esc(kefHit.group)}</span></div><div class="det">Применяется как множитель к риск-индикатору при поставках из Китая.</div></div>`;
+    html+=`<div class="card c-usir" data-dir="im" data-kind="tariff" data-cty="китай кнр"><div class="rh"><div class="ico">🇨🇳</div><div><div class="rc">${esc(fmtCode(qt))}</div></div></div><div class="rn">Коэффициент для товаров из КНР: ×${esc(String(kefHit.coef))}</div><div class="tags"><span class="tag t-usir">🇨🇳 ${esc(kefHit.group)}</span></div><div class="det">Применяется как множитель к риск-индикатору при поставках из Китая.</div></div>`;
   }
 
   // Запреты/льготы
@@ -6416,7 +6417,7 @@ function render(q,boxId){
     // Все попадания — строки перечня вида «Из NNNN»? Тогда освобождена не вся
     // товарная позиция, и заголовок карточки не должен утверждать обратное.
     const lsPartial=lsList.every(e=>VATFREE_PARTIAL[String(e.code).replace(/\D/g,'')]);
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">💊</div><div><div class="rc">${esc(displayCode.slice(0,4))}…</div></div></div><div class="rn">Лекарственные средства — освобождение от НДС${lsPartial?' (только для названных в перечне)':''}</div><div class="tags"><span class="tag t-ls">💊 ${lsPartial?'НДС 0% — только для названных МНН':'НДС 0% при поставке и импорте'}</span></div><div class="det"><div><strong>МНН (действующие вещества):</strong> ${esc(allNames.join(', '))}${lsList.length>1?' и другие':''}</div><div><strong>Льгота:</strong> Освобождение от НДС при поставке и импорте на территорию КР</div><div><strong>Документ:</strong> Постановление КМ КР № 596 от 02.09.2026 (https://cbd.minjust.gov.kg/7-57612/edition/58090/ru) · Приложение 1 · Перечень ЛС</div><div><strong>Совпадающих кодов в перечне:</strong> ${lsList.length}</div>${lsPartial?'<div><strong>Внимание:</strong> в перечне вместо кода стоит «Из '+esc(displayCode)+'», то есть освобождена не вся товарная позиция, а только перечисленные препараты. Калькулятор по такому попаданию НДС не обнуляет.</div>':''}</div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">💊</div><div><div class="rc">${esc(displayCode.slice(0,4))}…</div></div></div><div class="rn">Лекарственные средства — освобождение от НДС${lsPartial?' (только для названных в перечне)':''}</div><div class="tags"><span class="tag t-ls">💊 ${lsPartial?'НДС 0% — только для названных МНН':'НДС 0% при поставке и импорте'}</span></div><div class="det"><div><strong>МНН (действующие вещества):</strong> ${esc(allNames.join(', '))}${lsList.length>1?' и другие':''}</div><div><strong>Льгота:</strong> Освобождение от НДС при поставке и импорте на территорию КР</div><div><strong>Документ:</strong> Постановление КМ КР № 596 от 02.09.2026 (https://cbd.minjust.gov.kg/7-57612/edition/58090/ru) · Приложение 1 · Перечень ЛС</div><div><strong>Совпадающих кодов в перечне:</strong> ${lsList.length}</div>${lsPartial?'<div><strong>Внимание:</strong> в перечне вместо кода стоит «Из '+esc(displayCode)+'», то есть освобождена не вся товарная позиция, а только перечисленные препараты. Калькулятор по такому попаданию НДС не обнуляет.</div>':''}</div></div>`;
   }
 
 
@@ -6424,7 +6425,7 @@ function render(q,boxId){
   if(sertList.length>0){
     const names=[...new Set(sertList.map(e=>e.name))];
     const dispCode=sertList[0].code;
-    html+=`<div class="card c-srt"><div class="rh"><div class="ico">📋</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Продукция, подлежащая обязательному подтверждению соответствия</div><div class="tags"><span class="tag t-srt">📋 Сертификация / Декларирование</span></div><div class="det"><div><strong>Вид продукции:</strong> ${esc(names.slice(0,3).join('; '))}</div><div><strong>Требование:</strong> Обязательная сертификация или декларирование соответствия при ввозе и реализации на территории КР</div><div><strong>Документ:</strong> ${names.some(n=>n.includes('стройматериал')) ? docLink('Закон КР № 18 от 29.01.2010 «Технический регламент «Безопасность строительных материалов, изделий и конструкций»» · Приложение 2',DOC_SOURCES.stroymat18)+' (статус на cbd.minjust.gov.kg — «утратил силу»; см. примечание в session.md)' : docLink('Пост. КМ КР от 20.05.2022 № 267 (ред. от 22.05.2024 № 260) · Приложение 2',DOC_SOURCES.sert267)}</div>${auditNote('sert')}</div></div>`;
+    html+=`<div class="card c-srt" data-dir="im"><div class="rh"><div class="ico">📋</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Продукция, подлежащая обязательному подтверждению соответствия</div><div class="tags"><span class="tag t-srt">📋 Сертификация / Декларирование</span></div><div class="det"><div><strong>Вид продукции:</strong> ${esc(names.slice(0,3).join('; '))}</div><div><strong>Требование:</strong> Обязательная сертификация или декларирование соответствия при ввозе и реализации на территории КР</div><div><strong>Документ:</strong> ${names.some(n=>n.includes('стройматериал')) ? docLink('Закон КР № 18 от 29.01.2010 «Технический регламент «Безопасность строительных материалов, изделий и конструкций»» · Приложение 2',DOC_SOURCES.stroymat18)+' (статус на cbd.minjust.gov.kg — «утратил силу»; см. примечание в session.md)' : docLink('Пост. КМ КР от 20.05.2022 № 267 (ред. от 22.05.2024 № 260) · Приложение 2',DOC_SOURCES.sert267)}</div>${auditNote('sert')}</div></div>`;
   }
 
   // ТР ЕАЭС — единые перечни продукции для таможенного декларирования
@@ -6438,7 +6439,7 @@ function render(q,boxId){
       const formLabel=forms.includes('dekl_gosreg')&&forms.length===1?'Декларация о соответствии, или свидетельство о госрегистрации, или сведения о госрегистрации в едином реестре (любой из документов по выбору)':forms.includes('class')&&forms.length===1?'Классификационное свидетельство (обязательно)':forms.includes('pasport')&&forms.length===1?'Паспорт продукции, оформляемый изготовителем (обязательно)':forms.includes('gosreg_dekl')&&forms.length===1?'Свидетельство о государственной регистрации И декларация о соответствии (оба документа обязательны одновременно)':forms.includes('ottc')&&forms.length===1?'Одобрение типа ТС / одобрение типа шасси / свидетельство о безопасности конструкции ТС':forms.includes('gosreg')&&forms.length===1?'Свидетельство о государственной регистрации (обязательно)':forms.includes('sert')&&!forms.includes('dekl_sert')&&!forms.includes('dekl_only')&&!forms.includes('gosreg')&&!forms.includes('ottc')&&!forms.includes('gosreg_dekl')&&!forms.includes('class')&&!forms.includes('dekl_gosreg')?'Сертификат соответствия ЕАЭС (обязательно)':forms.includes('dekl_only')&&!forms.includes('sert')&&!forms.includes('gosreg')&&!forms.includes('ottc')?'Декларация о соответствии ЕАЭС (обязательно)':forms.includes('dekl_sert')?'Декларация о соответствии ЕАЭС или сертификат (по выбору заявителя)':'Смешанная форма — см. позиции ниже';
       const partialHit=items.some(e=>e.partial);
       const notes=[...new Set(items.map(e=>e.note).filter(Boolean))];
-      html+=`<div class="card c-tr"><div class="rh"><div class="ico">🇪🇦</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">${esc(items[0].trName)}</div><div class="tags"><span class="tag t-tr">🇪🇦 ТР ЕАЭС — оценка соответствия</span></div><div class="det"><div><strong>Позиция(и) перечня:</strong> ${esc(positions.slice(0,3).join('; '))}${positions.length>3?` (+ ещё ${positions.length-3})`:''}</div><div><strong>Форма подтверждения:</strong> ${formLabel}</div>${notes.length?`<div><strong>Примечание:</strong> ${esc(notes.join('; '))}</div>`:''}<div><strong>Документ-основание:</strong> ${docLink(items[0].act,items[0].url)}</div>${items[0].transition?`<div><strong>Переходный период:</strong> ${esc(items[0].transition)}</div>`:''}${partialHit?'<div style="color:#b8860b"><strong>⚠ Частичное совпадение ("из ...")</strong> — требуется проверка по наименованию товара, код указывает лишь товарную позицию/субпозицию целиком</div>':''}<div style="color:var(--hint);margin-top:4px">Отдельно от национального перечня сертификации КР (Пост. №267) — союзный документ ЕАЭС + маркировка EAC, проверяется дополнительно.</div>${auditNote('tr')}</div></div>`;
+      html+=`<div class="card c-tr" data-dir="im"><div class="rh"><div class="ico">🇪🇦</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">${esc(items[0].trName)}</div><div class="tags"><span class="tag t-tr">🇪🇦 ТР ЕАЭС — оценка соответствия</span></div><div class="det"><div><strong>Позиция(и) перечня:</strong> ${esc(positions.slice(0,3).join('; '))}${positions.length>3?` (+ ещё ${positions.length-3})`:''}</div><div><strong>Форма подтверждения:</strong> ${formLabel}</div>${notes.length?`<div><strong>Примечание:</strong> ${esc(notes.join('; '))}</div>`:''}<div><strong>Документ-основание:</strong> ${docLink(items[0].act,items[0].url)}</div>${items[0].transition?`<div><strong>Переходный период:</strong> ${esc(items[0].transition)}</div>`:''}${partialHit?'<div style="color:#b8860b"><strong>⚠ Частичное совпадение ("из ...")</strong> — требуется проверка по наименованию товара, код указывает лишь товарную позицию/субпозицию целиком</div>':''}<div style="color:var(--hint);margin-top:4px">Отдельно от национального перечня сертификации КР (Пост. №267) — союзный документ ЕАЭС + маркировка EAC, проверяется дополнительно.</div>${auditNote('tr')}</div></div>`;
     }
   }
 
@@ -6446,31 +6447,31 @@ function render(q,boxId){
   if(medList.length>0){
     const names=[...new Set(medList.map(e=>e.name))].slice(0,6);
     const medPartial=medList.every(e=>VATFREE_PARTIAL[String(e.code).replace(/\D/g,'')]);
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">🏥</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Медицинское изделие — освобождение от НДС${medPartial?' (только для названных в перечне)':''}</div><div class="tags"><span class="tag t-ls">🏥 ${medPartial?'НДС 0% — только для названных изделий':'НДС 0% при поставке и импорте'}</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div><strong>Льгота:</strong> Освобождение от НДС при поставке и импорте на территорию КР</div><div><strong>Документ:</strong> Постановление КМ КР № 596 от 02.09.2026 (https://cbd.minjust.gov.kg/7-57612/edition/58090/ru) · Приложение 2 · Перечень медицинских изделий</div><div><strong>Совпадающих позиций:</strong> ${medList.length}</div>${medPartial?'<div><strong>Внимание:</strong> в перечне вместо кода стоит «Из …» — освобождена не вся товарная позиция, а только перечисленные изделия. Калькулятор по такому попаданию НДС не обнуляет.</div>':''}</div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">🏥</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Медицинское изделие — освобождение от НДС${medPartial?' (только для названных в перечне)':''}</div><div class="tags"><span class="tag t-ls">🏥 ${medPartial?'НДС 0% — только для названных изделий':'НДС 0% при поставке и импорте'}</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div><strong>Льгота:</strong> Освобождение от НДС при поставке и импорте на территорию КР</div><div><strong>Документ:</strong> Постановление КМ КР № 596 от 02.09.2026 (https://cbd.minjust.gov.kg/7-57612/edition/58090/ru) · Приложение 2 · Перечень медицинских изделий</div><div><strong>Совпадающих позиций:</strong> ${medList.length}</div>${medPartial?'<div><strong>Внимание:</strong> в перечне вместо кода стоит «Из …» — освобождена не вся товарная позиция, а только перечисленные изделия. Калькулятор по такому попаданию НДС не обнуляет.</div>':''}</div></div>`;
   }
 
   // Сырьё для производства ЛС/медизделий (НДС 0% только при импорте) — Пост. № 596, Приложение 3
   if(matList.length>0){
     const names=[...new Set(matList.map(e=>e.name))].slice(0,6);
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">🧪</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Сырьё для производства ЛС/медизделий — освобождение от НДС</div><div class="tags"><span class="tag t-ls">🧪 НДС 0% только при импорте</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div><strong>Льгота:</strong> Освобождение от НДС при импорте на территорию КР для использования в производстве лекарственных средств и медицинских изделий (льгота обусловлена целевым использованием, а не только кодом, поэтому калькулятор по такому попаданию НДС не обнуляет, а показывает предупреждение)</div><div><strong>Документ:</strong> Постановление КМ КР № 596 от 02.09.2026 (https://cbd.minjust.gov.kg/7-57612/edition/58090/ru) · Приложение 3 · Перечень исходных материалов</div><div><strong>Совпадающих позиций:</strong> ${matList.length}</div></div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">🧪</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Сырьё для производства ЛС/медизделий — освобождение от НДС</div><div class="tags"><span class="tag t-ls">🧪 НДС 0% только при импорте</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div><strong>Льгота:</strong> Освобождение от НДС при импорте на территорию КР для использования в производстве лекарственных средств и медицинских изделий (льгота обусловлена целевым использованием, а не только кодом, поэтому калькулятор по такому попаданию НДС не обнуляет, а показывает предупреждение)</div><div><strong>Документ:</strong> Постановление КМ КР № 596 от 02.09.2026 (https://cbd.minjust.gov.kg/7-57612/edition/58090/ru) · Приложение 3 · Перечень исходных материалов</div><div><strong>Совпадающих позиций:</strong> ${matList.length}</div></div></div>`;
   }
 
   // Ст. 297 ч.1 НК КР — самоисполнимые льготы (коды прямо в Кодексе, без перечня КМ)
   if(art297List.length>0){
     const notes=[...new Set(art297List.map(e=>e.note))];
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">⚡</div><div><div class="rc">${esc(art297List[0].code.slice(0,4))}…</div></div></div><div class="rn">Освобождение от НДС при импорте — ст. 297 ч.1 НК КР</div><div class="tags"><span class="tag t-ls">⚡ НДС 0% (код указан прямо в Кодексе)</span></div><div class="det">${notes.map(n=>`<div>• ${esc(n)}</div>`).join('')}<div><strong>Документ:</strong> Налоговый кодекс КР от 18.01.2022 № 3, ст. 297 ч.1 (перечень Кабинета Министров не требуется, т.к. пункт не входит в перечень ч.2 ст.297)</div></div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">⚡</div><div><div class="rc">${esc(art297List[0].code.slice(0,4))}…</div></div></div><div class="rn">Освобождение от НДС при импорте — ст. 297 ч.1 НК КР</div><div class="tags"><span class="tag t-ls">⚡ НДС 0% (код указан прямо в Кодексе)</span></div><div class="det">${notes.map(n=>`<div>• ${esc(n)}</div>`).join('')}<div><strong>Документ:</strong> Налоговый кодекс КР от 18.01.2022 № 3, ст. 297 ч.1 (перечень Кабинета Министров не требуется, т.к. пункт не входит в перечень ч.2 ст.297)</div></div></div>`;
   }
 
   // Ст. 300 НК КР — временный ввоз воздушных судов
   if(art300List.length>0){
     const notes=[...new Set(art300List.map(e=>e.note))];
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">✈️</div><div><div class="rc">${esc(art300List[0].code.slice(0,4))}…</div></div></div><div class="rn">Освобождение от НДС — временный ввоз (ст. 300 НК КР)</div><div class="tags"><span class="tag t-ls">✈️ НДС 0% только при временном ввозе</span></div><div class="det">${notes.map(n=>`<div>• ${esc(n)}</div>`).join('')}<div style="color:#b8860b"><strong>⚠ Это не льгота на импорт для реализации</strong> — освобождение действует только в рамках таможенной процедуры временного ввоза</div><div><strong>Документ:</strong> Налоговый кодекс КР от 18.01.2022 № 3, ст. 300</div></div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">✈️</div><div><div class="rc">${esc(art300List[0].code.slice(0,4))}…</div></div></div><div class="rn">Освобождение от НДС — временный ввоз (ст. 300 НК КР)</div><div class="tags"><span class="tag t-ls">✈️ НДС 0% только при временном ввозе</span></div><div class="det">${notes.map(n=>`<div>• ${esc(n)}</div>`).join('')}<div style="color:#b8860b"><strong>⚠ Это не льгота на импорт для реализации</strong> — освобождение действует только в рамках таможенной процедуры временного ввоза</div><div><strong>Документ:</strong> Налоговый кодекс КР от 18.01.2022 № 3, ст. 300</div></div></div>`;
   }
 
   // Ст. 301 НК КР — ввоз основных средств плательщиками НДС / субъектами УСН (патент)
   if(art301Hit){
     const groupNote=art301Hit.g1&&art301Hit.g2?'Входит в товарные группы п.1 и п.2 ст.301':art301Hit.g2?'Входит в товарные группы п.2 ст.301 (только нефтепереработка/химия/нефтехимия)':'Входит в товарные группы п.1 ст.301';
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">🏭</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Возможное освобождение от НДС — ввоз основного средства (ст. 301 НК КР)</div><div class="tags"><span class="tag t-ls">🏭 НДС 0% при выполнении условий</span></div><div class="det"><div><strong>${esc(groupNote)}</strong> — совпадение по коду является необходимым, но не достаточным условием</div><div><strong>Путь 1 — общий (ч.1-2 ст.301):</strong><ul class="note-list"><li>стоимость товара ≥ 5000 расчётных показателей;</li><li>ввозится плательщиком НДС или субъектом упрощённой системы (патент) как основное средство для собственных производственных целей, либо приобретено банком/лизинговой компанией для мурабаха, иджара мунтахийя биттамлик или финансового лизинга;</li>${art301Hit.g2?'<li>только для субъектов нефтеперерабатывающего, химического и нефтехимического производства;</li>':''}<li>по группе 8702 — исключая микроавтобусы; по группе 8903 — только парусные суда без двигателя или суда на электродвигателе.</li></ul></div><div><strong>Путь 2 — по статусу субъекта (ч.3 ст.301, независимо от того, является ли субъект плательщиком НДС):</strong> льгота действует на те же товарные группы (п.1 и п.2 ч.2) при ввозе для собственных производственных целей: сельскохозяйственным производителем, сельскохозяйственным кооперативом (в т.ч. для целей членов кооператива), машинно-тракторной станцией, торгово-логистическим центром сельхозназначения, либо производителем ювелирных изделий. <strong>Для сельхозпроизводителя и сельхозкооператива порог 5000 расчётных показателей по ч.6 ст.301 не применяется.</strong></div><div><strong>Документ:</strong> Налоговый кодекс КР от 18.01.2022 № 3, ст. 301 (в ред. законов № 78 от 03.04.2023, № 37 от 12.02.2025, № 185 от 31.07.2025, № 243 от 29.10.2025)</div></div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">🏭</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Возможное освобождение от НДС — ввоз основного средства (ст. 301 НК КР)</div><div class="tags"><span class="tag t-ls">🏭 НДС 0% при выполнении условий</span></div><div class="det"><div><strong>${esc(groupNote)}</strong> — совпадение по коду является необходимым, но не достаточным условием</div><div><strong>Путь 1 — общий (ч.1-2 ст.301):</strong><ul class="note-list"><li>стоимость товара ≥ 5000 расчётных показателей;</li><li>ввозится плательщиком НДС или субъектом упрощённой системы (патент) как основное средство для собственных производственных целей, либо приобретено банком/лизинговой компанией для мурабаха, иджара мунтахийя биттамлик или финансового лизинга;</li>${art301Hit.g2?'<li>только для субъектов нефтеперерабатывающего, химического и нефтехимического производства;</li>':''}<li>по группе 8702 — исключая микроавтобусы; по группе 8903 — только парусные суда без двигателя или суда на электродвигателе.</li></ul></div><div><strong>Путь 2 — по статусу субъекта (ч.3 ст.301, независимо от того, является ли субъект плательщиком НДС):</strong> льгота действует на те же товарные группы (п.1 и п.2 ч.2) при ввозе для собственных производственных целей: сельскохозяйственным производителем, сельскохозяйственным кооперативом (в т.ч. для целей членов кооператива), машинно-тракторной станцией, торгово-логистическим центром сельхозназначения, либо производителем ювелирных изделий. <strong>Для сельхозпроизводителя и сельхозкооператива порог 5000 расчётных показателей по ч.6 ст.301 не применяется.</strong></div><div><strong>Документ:</strong> Налоговый кодекс КР от 18.01.2022 № 3, ст. 301 (в ред. законов № 78 от 03.04.2023, № 37 от 12.02.2025, № 185 от 31.07.2025, № 243 от 29.10.2025)</div></div></div>`;
   }
 
   // Ст. 297 ч.1 НК КР — товары по перечню КМ (Пост. № 131, Приложения 1,2,3,4,5,11)
@@ -6479,7 +6480,7 @@ function render(q,boxId){
     for(const e of art297PerechenList){(byApp[e.app]=byApp[e.app]||{p:e.p,title:e.title,names:[]}).names.push(e.name)}
     for(const e of art297PerechenList){if(e.unver)byApp[e.app].unver=true}
     const parts=Object.values(byApp).map(g=>`<div><strong>п.${esc(g.p)} ч.1 ст.297</strong> (Приложение ${g.unver?'':'к '}Пост. №131): ${esc([...new Set(g.names)].slice(0,5).join('; '))}${g.unver?' <span style="color:var(--red)">— приложения 11 в действующей редакции постановления № 131 (ред. 22.10.2025) нет: при построчной сверке 05.09.2026 ни само приложение, ни ссылка на него в тексте не найдены, происхождение перечня не подтверждено</span>':''}</div>`).join('');
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">📦</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Освобождение от НДС при импорте — ст. 297 ч.1 НК КР (перечень КМ)</div><div class="tags"><span class="tag t-ls">📦 НДС 0% по перечню КМ</span></div><div class="det">${parts}<div><strong>Документ:</strong> Постановление КМ КР № 131 от 11.03.2022 (в ред. от 22.10.2025)</div>${auditNote('nalog')}</div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">📦</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Освобождение от НДС при импорте — ст. 297 ч.1 НК КР (перечень КМ)</div><div class="tags"><span class="tag t-ls">📦 НДС 0% по перечню КМ</span></div><div class="det">${parts}<div><strong>Документ:</strong> Постановление КМ КР № 131 от 11.03.2022 (в ред. от 22.10.2025)</div>${auditNote('nalog')}</div></div>`;
   }
 
   // Ст. 298 НК КР — племенные животные / семена / удобрения / средства защиты растений
@@ -6487,37 +6488,37 @@ function render(q,boxId){
     const byApp={};
     for(const e of art298List){(byApp[e.app]=byApp[e.app]||{title:e.title,names:[]}).names.push(e.name)}
     const parts=Object.values(byApp).map(g=>`<div><strong>${esc(g.title)}</strong>: ${esc([...new Set(g.names)].slice(0,5).join('; '))}</div>`).join('');
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">🌾</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Освобождение от НДС при импорте — ст. 298 НК КР</div><div class="tags"><span class="tag t-ls">🌾 НДС 0% до 01.01.2030</span></div><div class="det">${parts}<div><strong>Документ:</strong> Постановление КМ КР № 131 от 11.03.2022 (в ред. от 22.10.2025)</div>${auditNote('nalog')}</div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">🌾</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Освобождение от НДС при импорте — ст. 298 НК КР</div><div class="tags"><span class="tag t-ls">🌾 НДС 0% до 01.01.2030</span></div><div class="det">${parts}<div><strong>Документ:</strong> Постановление КМ КР № 131 от 11.03.2022 (в ред. от 22.10.2025)</div>${auditNote('nalog')}</div></div>`;
   }
 
   // Ст. 299 НК КР — вооружение, военная техника, спецсредства
   if(art299List.length>0){
     const names=[...new Set(art299List.map(e=>e.name))].slice(0,5);
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">🛡️</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Возможное освобождение от НДС — ст. 299 НК КР</div><div class="tags"><span class="tag t-ls">🛡️ НДС 0% только для гос. органов</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div><strong>Условие:</strong> льгота — только для товаров, ввозимых государственными органами/организациями КР, финансируемыми из госбюджета, в целях обороноспособности, нацбезопасности и правопорядка</div><div><strong>Документ:</strong> Постановление КМ КР № 131 от 11.03.2022 (в ред. от 22.10.2025) · Приложение 12</div></div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">🛡️</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Возможное освобождение от НДС — ст. 299 НК КР</div><div class="tags"><span class="tag t-ls">🛡️ НДС 0% только для гос. органов</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div><strong>Условие:</strong> льгота — только для товаров, ввозимых государственными органами/организациями КР, финансируемыми из госбюджета, в целях обороноспособности, нацбезопасности и правопорядка</div><div><strong>Документ:</strong> Постановление КМ КР № 131 от 11.03.2022 (в ред. от 22.10.2025) · Приложение 12</div></div></div>`;
   }
 
   // Вакцины и лекарства для животных (Пост. № 131, Приложение 6)
   if(app6VetList.length>0){
     const names=[...new Set(app6VetList.map(e=>e.name))].slice(0,6);
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">🐄</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Вакцины/лекарственные средства для животных — освобождение от НДС</div><div class="tags"><span class="tag t-ls">🐄 НДС 0% при поставке и импорте</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div><strong>Документ:</strong> Постановление КМ КР № 131 от 11.03.2022 (в ред. от 22.10.2025) · Приложение 6 (может частично пересекаться с Пост. № 596 от 02.09.2026, специально посвящённым п.13 ч.1 ст.297)</div></div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">🐄</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Вакцины/лекарственные средства для животных — освобождение от НДС</div><div class="tags"><span class="tag t-ls">🐄 НДС 0% при поставке и импорте</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div><strong>Документ:</strong> Постановление КМ КР № 131 от 11.03.2022 (в ред. от 22.10.2025) · Приложение 6 (может частично пересекаться с Пост. № 596 от 02.09.2026, специально посвящённым п.13 ч.1 ст.297)</div></div></div>`;
   }
 
   // Ст. 297 ч.1 п.20 НК КР — оборудование для ВИЭ (ВЭС/СЭС/МГЭС) — Пост. №196 от 04.10.2021 (в ред. №272 от 22.04.2026)
   if(art297P20List.length>0){
     const names=[...new Set(art297P20List.map(e=>e.name))].slice(0,6);
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">🌬️</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Оборудование для энергоустановок на ВИЭ — освобождение от НДС при импорте (п.20 ч.1 ст. 297 НК КР)</div><div class="tags"><span class="tag t-ls">🌬️ НДС 0% при импорте</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div><strong>Документ:</strong> Постановление КМ КР № 196 от 04.10.2021 (в актуальной редакции с изм. от 22.04.2026 № 272) · Перечень специализированных товаров и оборудования для строительства ВЭС/СЭС/МГЭС и прочего оборудования</div></div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">🌬️</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Оборудование для энергоустановок на ВИЭ — освобождение от НДС при импорте (п.20 ч.1 ст. 297 НК КР)</div><div class="tags"><span class="tag t-ls">🌬️ НДС 0% при импорте</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div><strong>Документ:</strong> Постановление КМ КР № 196 от 04.10.2021 (в актуальной редакции с изм. от 22.04.2026 № 272) · Перечень специализированных товаров и оборудования для строительства ВЭС/СЭС/МГЭС и прочего оборудования</div></div></div>`;
   }
 
   // Ст. 297 ч.1 п.26 НК КР — товары для развития спорта — Пост. №709 от 22.11.2024 (в актуализированной ред.)
   if(art297P26List.length>0){
     const names=[...new Set(art297P26List.map(e=>e.name))].slice(0,6);
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">🏅</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Товары для развития спорта — освобождение от НДС (п.26 ч.1 ст. 297 НК КР)</div><div class="tags"><span class="tag t-ls">🏅 НДС 0% только для субъектов из перечня</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div style="color:#b8860b"><strong>⚠ Условие:</strong> льгота применяется только при поставке/импорте лицами, включёнными в отдельные перечни субъектов-поставщиков и субъектов-импортёров (утверждены тем же постановлением) — совпадение по коду не означает автоматическое освобождение</div><div><strong>Документ:</strong> Постановление КМ КР № 709 от 22.11.2024 «О мерах по реализации требований статей 296, 297 и 364 НК КР» (Перечень товаров, в актуальной редакции)</div></div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">🏅</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Товары для развития спорта — освобождение от НДС (п.26 ч.1 ст. 297 НК КР)</div><div class="tags"><span class="tag t-ls">🏅 НДС 0% только для субъектов из перечня</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div style="color:#b8860b"><strong>⚠ Условие:</strong> льгота применяется только при поставке/импорте лицами, включёнными в отдельные перечни субъектов-поставщиков и субъектов-импортёров (утверждены тем же постановлением) — совпадение по коду не означает автоматическое освобождение</div><div><strong>Документ:</strong> Постановление КМ КР № 709 от 22.11.2024 «О мерах по реализации требований статей 296, 297 и 364 НК КР» (Перечень товаров, в актуальной редакции)</div></div></div>`;
   }
 
   // Ст. 297 ч.1 п.30 НК КР — оборудование для ювелирного производства — Пост. №366 от 25.05.2026
   if(art297P30List.length>0){
     const names=[...new Set(art297P30List.map(e=>e.name))].slice(0,6);
-    html+=`<div class="card c-ls"><div class="rh"><div class="ico">💍</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Оборудование/технологии/реактивы для ювелирного производства — освобождение от НДС (п.30 ч.1 ст. 297 НК КР)</div><div class="tags"><span class="tag t-ls">💍 НДС 0% только для субъектов из перечня</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div style="color:#b8860b"><strong>⚠ Условие:</strong> льгота применяется только при импорте субъектами, включёнными в перечень субъектов ювелирного производства (Приложение 1 к тому же постановлению) — совпадение по коду не означает автоматическое освобождение</div><div><strong>Документ:</strong> Постановление КМ КР № 366 от 25.05.2026 · Приложение 2 (действует с 05.06.2026)</div></div></div>`;
+    html+=`<div class="card c-ls" data-dir="im"><div class="rh"><div class="ico">💍</div><div><div class="rc">${esc(norm(qt).slice(0,4))}…</div></div></div><div class="rn">Оборудование/технологии/реактивы для ювелирного производства — освобождение от НДС (п.30 ч.1 ст. 297 НК КР)</div><div class="tags"><span class="tag t-ls">💍 НДС 0% только для субъектов из перечня</span></div><div class="det"><div><strong>Наименование:</strong> ${esc(names.join('; '))}</div><div style="color:#b8860b"><strong>⚠ Условие:</strong> льгота применяется только при импорте субъектами, включёнными в перечень субъектов ювелирного производства (Приложение 1 к тому же постановлению) — совпадение по коду не означает автоматическое освобождение</div><div><strong>Документ:</strong> Постановление КМ КР № 366 от 25.05.2026 · Приложение 2 (действует с 05.06.2026)</div></div></div>`;
   }
 
   // ЕАЭС Решение №30 - запреты и разрешительный порядок ЕЭК (источник: NTM_DB)
@@ -8564,18 +8565,128 @@ function notesIconHtml(code){
   return `<span class="notes-ico" title="Пояснения к группе ${esc(code.slice(0,2))}" onclick="event.stopPropagation();openNotesForCode('${code}')">📖</span>`;
 }
 
-// ─── Справка по товару: наименование/код + направление + дата ───
+// ─── Справка по товару: направление → страна → товар ───
+// Порядок полей повторяет порядок таможенного решения: сначала что с товаром
+// делают (ввоз, вывоз или транзит), потом откуда он, и только потом сам товар.
+// Первые два ответа решают, какие карточки базы вообще относятся к делу:
+// ставка ЕТТ, преференции, льготы по НДС, УСИР, антидемпинг, квоты — это меры
+// при ВВОЗЕ, а преференция вдобавок привязана к стране происхождения.
+// Признаки проставлены самим карточкам в render() (data-dir, data-cty,
+// data-kind). Карточка без этих атрибутов показывается при любом направлении:
+// умолчание намеренно «показать» — скрыть ограничение опаснее, чем показать
+// лишнее, поэтому все запреты, разрешительный порядок и виды контроля видны
+// всегда, а прячутся только тарифные и налоговые меры, которых при выбранном
+// направлении физически не возникает.
+const LK_DIRS={im:'Ввоз',ex:'Вывоз',tr:'Транзит'};
+// Государства-члены ЕАЭС: их товар — товар Союза, и во взаимной торговле
+// ввозная пошлина ЕТТ, тарифные преференции и защитные меры не применяются.
+const LK_EAEU=['Армения','Беларусь','Казахстан','Россия'];
+const LK_CN=['Китай','КНР','Китайская Народная Республика'];
+const LK_CTY_LABEL={im:'Страна происхождения товара',ex:'Страна назначения',tr:'Страна отправления / назначения'};
+// Причина, по которой карточка ушла в скрытый блок. Текст один на причину —
+// он же объясняет пользователю, почему справка короче, чем обычный поиск.
+const LK_WHY={
+  ex:'мера применяется при ввозе — к вывозу не относится',
+  tr:'при таможенном транзите таможенные пошлины и налоги не уплачиваются (п.1 ст.142 ТК ЕАЭС)',
+  eaeu:'товар из государства-члена ЕАЭС: взаимная торговля, тарифные меры ЕТТ не применяются',
+  cty:'мера привязана к другой стране происхождения'
+};
+
+// Страна разбирается теми же средствами, что и карточка «преференция по
+// стране»: prefCountryHit() ловит «Гвинея» в «Гвинейской Республике» и не
+// путает «камеру» с Камеруном, а PREF_C_ALIAS держит обиходные названия.
+// Отдельно опознаются только те страны, которых нет ни в ЕСТП, ни в списке
+// соглашений: государства-члены ЕАЭС и Китай.
+function lkCountry(txt){
+  const raw=(txt||'').trim();
+  const q=prefNormC(raw);
+  if(q.length<3||/^\d+$/.test(q))return null;
+  const alias=PREF_C_ALIAS[q];
+  for(const n of LK_EAEU)if(n===alias||prefCountryHit(n,q))return{name:n,names:[n],eaeu:true};
+  for(const n of LK_CN)if(prefCountryHit(n,q))return{name:'Китай (КНР)',names:LK_CN};
+  const pref=findPrefByCountry(raw);
+  if(pref.length)return{name:pref.map(p=>p.name).join(', '),names:pref.map(p=>p.name),
+    estp:pref.some(p=>p.dev||p.ldc),fta:pref.some(p=>p.fta)};
+  return{name:raw,names:[raw],other:true};
+}
+// Карточка помечена страной так, как страна названа в самом акте («кнр»,
+// «оаэ», «япония, таиланд…»), а пользователь вводит обиходное имя. Поэтому
+// сравниваем не строки, а каждый токен метки — запросом к названию страны.
+function lkCtyMatch(cardCty,cty){
+  if(cardCty==='estp')return !!cty.estp;
+  const toks=String(cardCty||'').split(/[\s,;]+/).filter(Boolean);
+  return toks.some(t=>{const q=prefNormC(t);return q.length>=2&&cty.names.some(n=>prefCountryHit(n,q))});
+}
+function lkFilter(dir,cty){
+  const box=document.getElementById('lookupCards');
+  if(!box)return;
+  const hidden=[];
+  Array.prototype.slice.call(box.querySelectorAll(':scope > .card')).forEach(card=>{
+    const d=card.getAttribute('data-dir'),cc=card.getAttribute('data-cty');
+    let why='';
+    if(d&&d.split(' ').indexOf(dir)<0)why=LK_WHY[dir]||LK_WHY.ex;
+    else if(dir==='im'&&cty&&cty.eaeu&&card.getAttribute('data-kind')==='tariff')why=LK_WHY.eaeu;
+    else if(dir==='im'&&cty&&cc&&!lkCtyMatch(cc,cty))why=LK_WHY.cty;
+    if(why){card.dataset.lkWhy=why;hidden.push(card)}
+  });
+  if(!hidden.length)return;
+  const det=document.createElement('details');
+  det.className='lk-hidden';
+  det.innerHTML='<summary>Не относится к выбранным условиям: '+hidden.length+' — открыть</summary>';
+  hidden.forEach(c=>{
+    const note=document.createElement('div');
+    note.className='lk-why';
+    note.textContent='Скрыто: '+(c.dataset.lkWhy||'');
+    det.appendChild(note);
+    det.appendChild(c);
+  });
+  box.appendChild(det);
+}
+function lkHeadHtml(dir,cty){
+  const tk=docLink('ТК ЕАЭС',DOC_SOURCES.tkEaes);
+  let dh='';
+  if(dir==='ex')dh=`<div class="calc-warn w-yellow">Направление: <b>вывоз из Кыргызской Республики</b>. Показаны запреты и разрешительный порядок вывоза, экспортный контроль (НКС), ветеринарные, фитосанитарные и санитарные требования, товарные знаки. Ввозные ставки, налоги и льготы к вывозу не относятся и убраны в отдельный блок внизу.</div>`;
+  else if(dir==='tr')dh=`<div class="calc-warn w-yellow">Направление: <b>таможенный транзит</b>. Товары перевозятся без уплаты таможенных пошлин, налогов, специальных, антидемпинговых и компенсационных пошлин (п.1 ст.142 ${tk}), но условиями помещения под процедуру остаются обеспечение уплаты этих платежей и соблюдение запретов и ограничений (подпункты 1, 2 и 5 пункта 1 статьи 143 и статья 7 ${tk}). Поэтому тарифные и налоговые карточки убраны вниз, а запреты, разрешительный порядок и виды контроля показаны полностью.</div>`;
+  else dh=`<div class="calc-warn w-blue">Направление: <b>ввоз в Кыргызскую Республику</b>. Показаны меры при ввозе: ставка и преференции, налоги и льготы, разрешительный порядок, виды контроля.</div>`;
+  let ch='';
+  if(cty){
+    if(cty.eaeu)ch=`<div class="calc-warn w-blue">Страна: <b>${esc(cty.name)}</b> — государство-член ЕАЭС. Это взаимная торговля: ввозная пошлина ЕТТ, тарифные преференции и защитные меры к товару Союза не применяются, косвенные налоги взимает налоговый орган, а не таможня. Тарифные карточки убраны вниз; запреты, разрешительный порядок и контроль остаются.</div>`;
+    else if(dir!=='im')ch=`<div class="calc-warn w-blue">Страна: <b>${esc(cty.name)}</b>. При выбранном направлении база отбирает карточки по направлению: страна учитывается только при ввозе — тарифные преференции и защитные меры привязаны к происхождению товара.</div>`;
+    else if(cty.estp||cty.fta)ch=`<div class="calc-warn w-blue">Страна происхождения: <b>${esc(cty.name)}</b>${cty.estp?' — пользователь единой системы тарифных преференций ЕАЭС':''}${cty.fta?(cty.estp?', и с ней действует собственное соглашение с ЕАЭС':' — с ней действует собственное соглашение с ЕАЭС'):''}. Преференция даётся не стране, а товару этой страны и требует подтверждения происхождения — карточки ниже показывают, что действует по вашему коду.</div>`;
+    else ch=`<div class="calc-warn w-blue">Страна происхождения: <b>${esc(cty.name)}</b> — не пользователь ЕСТП и не партнёр ЕАЭС по соглашению о свободной торговле, поэтому преференциальные ставки к товару не применяются и их карточки убраны вниз. Если страна названа иначе (например, официальным именем), уточните ввод.</div>`;
+  }
+  return dh+ch;
+}
+function lkDirChanged(){
+  const d=document.getElementById('lookupDir');
+  const l=document.getElementById('lookupCtyLbl');
+  if(d&&l)l.textContent=LK_CTY_LABEL[d.value]||LK_CTY_LABEL.im;
+}
+// Список стран для подсказки — ровно те, про которые база может что-то
+// ответить: члены ЕАЭС, Китай, партнёры по соглашениям и пользователи ЕСТП.
+// Поле остаётся свободным вводом: чужая страна — это тоже ответ (обычная
+// ставка ЕТТ без преференций).
+function lkCountryOptions(){
+  const seen={};let out='';
+  for(const n of LK_EAEU.concat(['Китай'],PREF_FTA.map(f=>f.n),PREF_DEV_C,PREF_LDC_C)){
+    if(seen[n])continue;seen[n]=1;out+=`<option value="${esc(n)}"></option>`;
+  }
+  return out;
+}
 function renderLookupForm(){
   const box=document.getElementById('pageLookup');
   const today=new Date().toISOString().slice(0,10);
   box.innerHTML='<div class="calc-card">'
     +'<div class="calc-row">'
+      +'<div class="calc-field"><label>Направление перемещения</label><select id="lookupDir" onchange="lkDirChanged()"><option value="im">Ввоз</option><option value="ex">Вывоз</option><option value="tr">Транзит</option></select></div>'
+      +`<div class="calc-field"><label id="lookupCtyLbl">${LK_CTY_LABEL.im}</label><input type="text" id="lookupCty" list="lkCtyList" placeholder="например: Китай, Бангладеш, Казахстан — можно не указывать"><datalist id="lkCtyList">${lkCountryOptions()}</datalist></div>`
+    +'</div>'
+    +'<div class="calc-row">'
       +'<div class="calc-field"><label>Наименование товара</label><input type="text" id="lookupName" placeholder="например: смартфон, дизельное топливо, саженцы яблони"></div>'
       +'<div class="calc-field"><label>Код ТН ВЭД (если известен)</label><input type="text" id="lookupCode" placeholder="например: 8517 12 0000"></div>'
     +'</div>'
     +'<div class="calc-row">'
-      +'<div class="calc-field"><label>Направление перемещения</label><select id="lookupDir"><option value="im">Ввоз в Кыргызскую Республику (импорт)</option><option value="ex">Вывоз из Кыргызской Республики (экспорт)</option></select></div>'
-      +`<div class="calc-field"><label>Дата</label><input type="date" id="lookupDate" value="${today}"></div>`
+      +`<div class="calc-field" style="max-width:320px"><label>Дата</label><input type="date" id="lookupDate" value="${today}"></div>`
     +'</div>'
     +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="calc-btn" type="button" style="width:auto;flex:1;min-width:200px" onclick="submitLookup()">Показать справку</button><button class="qa-btn" type="button" onclick="window.print()">🖨️ Распечатать</button></div>'
     +'<div class="det" style="margin-top:10px">Показаны действующие на сегодня данные базы. Поле «Дата» влияет только на подпись результата — исторические версии ставок и запретов на прошлые даты в базе не хранятся.</div>'
@@ -8585,14 +8696,14 @@ function submitLookup(){
   const name=document.getElementById('lookupName').value.trim();
   const code=document.getElementById('lookupCode').value.trim();
   const dir=document.getElementById('lookupDir').value;
+  const ctyTxt=document.getElementById('lookupCty').value;
   const q=code||name;
   const resBox=document.getElementById('lookupResultBox');
   if(!q){resBox.innerHTML='<div class="nf"><div class="big">✏️</div>Введите наименование товара или код ТН ВЭД</div>';return;}
-  const dirNote=dir==='ex'
-    ?'<div class="calc-warn w-red">Направление: <b>вывоз (экспорт)</b> — обращайте внимание на карточки «Запрет на вывоз»; карточки о запрете на ввоз к этому направлению не относятся.</div>'
-    :'<div class="calc-warn w-yellow">Направление: <b>ввоз (импорт)</b> — обращайте внимание на карточки «Запрет на ввоз» и на НДС при ввозе; карточки о запрете на вывоз к этому направлению не относятся.</div>';
-  resBox.innerHTML=dirNote+'<div id="lookupCards"></div>';
+  const cty=lkCountry(ctyTxt);
+  resBox.innerHTML=lkHeadHtml(dir,cty)+'<div id="lookupCards"></div>';
   render(q,'lookupCards');
+  lkFilter(dir,cty);
 }
 
 function setSearchMode(m){
