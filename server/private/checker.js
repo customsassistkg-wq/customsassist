@@ -8675,6 +8675,10 @@ function lkCountryOptions(){
 }
 function renderLookupForm(){
   const box=document.getElementById('pageLookup');
+  // Форма строится один раз. setPage('lookup') вызывается при каждом возврате
+  // на страницу (например, из пояснений к группе), и перерисовка стирала бы и
+  // заполненные поля, и уже полученную справку.
+  if(box.querySelector('#lookupQuery'))return;
   const today=new Date().toISOString().slice(0,10);
   box.innerHTML='<div class="calc-card">'
     +'<div class="calc-row">'
@@ -8682,8 +8686,7 @@ function renderLookupForm(){
       +`<div class="calc-field"><label id="lookupCtyLbl">${LK_CTY_LABEL.im}</label><input type="text" id="lookupCty" list="lkCtyList" placeholder="например: Китай, Бангладеш, Казахстан — можно не указывать"><datalist id="lkCtyList">${lkCountryOptions()}</datalist></div>`
     +'</div>'
     +'<div class="calc-row">'
-      +'<div class="calc-field"><label>Наименование товара</label><input type="text" id="lookupName" placeholder="например: смартфон, дизельное топливо, саженцы яблони"></div>'
-      +'<div class="calc-field"><label>Код ТН ВЭД (если известен)</label><input type="text" id="lookupCode" placeholder="например: 8517 12 0000"></div>'
+      +'<div class="calc-field"><label>Товар: код ТН ВЭД или наименование</label><input type="text" id="lookupQuery" placeholder="8517 12 0000, смартфон, дизельное топливо, саженцы яблони" onkeydown="if(event.key===\'Enter\')submitLookup()"></div>'
     +'</div>'
     +'<div class="calc-row">'
       +`<div class="calc-field" style="max-width:320px"><label>Дата</label><input type="date" id="lookupDate" value="${today}"></div>`
@@ -8693,13 +8696,13 @@ function renderLookupForm(){
     +'</div><div id="lookupResultBox"></div>';
 }
 function submitLookup(){
-  const name=document.getElementById('lookupName').value.trim();
-  const code=document.getElementById('lookupCode').value.trim();
+  // Поле одно: render() сначала ищет по коду, а если не нашёл — по
+  // наименованию, поэтому делить ввод на два поля было незачем.
+  const q=document.getElementById('lookupQuery').value.trim();
   const dir=document.getElementById('lookupDir').value;
   const ctyTxt=document.getElementById('lookupCty').value;
-  const q=code||name;
   const resBox=document.getElementById('lookupResultBox');
-  if(!q){resBox.innerHTML='<div class="nf"><div class="big">✏️</div>Введите наименование товара или код ТН ВЭД</div>';return;}
+  if(!q){resBox.innerHTML='<div class="nf"><div class="big">✏️</div>Введите код ТН ВЭД или наименование товара</div>';return;}
   const cty=lkCountry(ctyTxt);
   resBox.innerHTML=lkHeadHtml(dir,cty)+'<div id="lookupCards"></div>';
   render(q,'lookupCards');
@@ -9182,6 +9185,18 @@ function renderSpecies(q){
 }
 
 function goToCode(code){
+  // Переход по коду из справки остаётся в справке: направление и страна уже
+  // выбраны, а общий поиск про них не знает — уводить туда значит терять
+  // весь контекст ответа. Список «найдено по наименованию» кликабелен, и
+  // именно он выбрасывал человека со страницы.
+  const lq=document.getElementById('lookupQuery');
+  if(currentPage==='lookup'&&lq){
+    lq.value=code;
+    submitLookup();
+    const rb=document.getElementById('lookupResultBox');
+    if(rb&&rb.scrollIntoView)rb.scrollIntoView({behavior:'smooth',block:'start'});
+    return;
+  }
   setPage('search');
   setSearchMode('code');
   document.getElementById('inp').value=code;
@@ -9218,21 +9233,21 @@ document.getElementById('inp').addEventListener('input',function(){clearTimeout(
 // Быстрые кнопки — Запреты
 [['7204','Лом металлов'],['4403','Бревна'],['0102','КРС'],['2404 12','Эл. сигареты'],['6809','Гипсокартон'],['3102','Удобрения'],['4707','Макулатура'],['0201','Мясо КРС']].forEach(([c,l])=>{
   const b=document.createElement('button');b.className='btn';b.textContent=`${c} · ${l}`;
-  b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
+  b.onclick=()=>goToCode(c);
   document.getElementById('sg1').appendChild(b);
 });
 
 // Быстрые кнопки — НКС
 [['3002 90 500 0','Патогены'],['2931 00 950 0','Зарин/Зоман'],['2844','Уран/Изотопы'],['3601','Взрывчатка'],['8802','Авиация'],['8401','Ядерный реактор']].forEach(([c,l])=>{
   const b=document.createElement('button');b.className='btn nb';b.textContent=`${c} · ${l}`;
-  b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
+  b.onclick=()=>goToCode(c);
   document.getElementById('sg2').appendChild(b);
 });
 
 // Быстрые кнопки — Лекарственные средства
 [['3004 90','Готовые препараты'],['2937 12','Инсулин'],['2939 11','Морфин/Кодеин'],['3002 41','Вакцины'],['2941 10','Антибиотики/цитостатики'],['2936 29','Витамины'],['2924 29','Парацетамол/Лидокаин'],['3006 70','Хлоргексидин']].forEach(([c,l])=>{
   const b=document.createElement('button');b.className='btn lb';b.textContent=`${c} · ${l}`;
-  b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
+  b.onclick=()=>goToCode(c);
   document.getElementById('sg3').appendChild(b);
 });
 
@@ -9240,7 +9255,7 @@ document.getElementById('inp').addEventListener('input',function(){clearTimeout(
   const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,149,0,.3);color:var(--orange)';b.textContent=`${c} · ${l}`;
   b.onmouseover=()=>{b.style.background='rgba(255,149,0,.06)'};
   b.onmouseout=()=>{b.style.background=''};
-  b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
+  b.onclick=()=>goToCode(c);
   document.getElementById('sg4').appendChild(b);
 });
 
@@ -9248,27 +9263,27 @@ document.getElementById('inp').addEventListener('input',function(){clearTimeout(
   const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,149,0,.3);color:var(--orange)';b.textContent=`${c} · ${l}`;
   b.onmouseover=()=>{b.style.background='rgba(255,149,0,.06)'};
   b.onmouseout=()=>{b.style.background=''};
-  b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
+  b.onclick=()=>goToCode(c);
   document.getElementById('sg4').appendChild(b);
 });
 
 [['9018 31','Шприцы/иглы'],['9018 90','Медоборудование'],['9019 20','ИВЛ/кислород'],['9021 50','Кардиостимулятор'],['3005','Перевязочный материал'],['3002 41','Вакцины'],['3004 10','Антибиотики (ЛС)'],['9018 12','УЗИ аппараты']].forEach(([c,l])=>{
   const b=document.createElement('button');b.className='btn lb';b.textContent=`${c} · ${l}`;
-  b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
+  b.onclick=()=>goToCode(c);
   document.getElementById('sg3').appendChild(b);
 });
 
 [['2903 77','ХФУ/фреоны (ОРВ)'],['3824 71','Охлаждающие смеси ОРВ'],['8418','Холодильники с ОРВ'],['3808 92','Запрещённые пестициды'],['4303 10','Одежда из тюленя'],['9306 21','Патроны оружие'],['0106 19','Соболи живые'],['3825','Опасные отходы']].forEach(([c,l])=>{
   const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(0,180,216,.35);color:var(--cyan)';b.textContent=`${c} · ${l}`;
   b.onmouseover=()=>{b.style.background='rgba(0,180,216,.06)'};b.onmouseout=()=>{b.style.background=''};
-  b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
+  b.onclick=()=>goToCode(c);
   document.getElementById('sg4').appendChild(b);
 });
 // Быстрые кнопки — ЕТТ (ставка пошлины)
 [['8703 23','Авто 1.5-3л бензин'],['8517 13','Смартфоны'],['1701 99','Сахар белый'],['2208 30','Виски'],['2402 20','Сигареты'],['8471 30','Компьютеры/ноутбуки'],['8450 11','Стиральные машины'],['6403 91','Обувь кожаная']].forEach(([c,l])=>{
   const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,79,163,.3);color:var(--pink)';b.textContent=`${c} · ${l}`;
   b.onmouseover=()=>{b.style.background='rgba(255,79,163,.06)'};b.onmouseout=()=>{b.style.background=''};
-  b.onclick=()=>{setSearchMode('code');document.getElementById('inp').value=c;render(c)};
+  b.onclick=()=>goToCode(c);
   document.getElementById('sg5').appendChild(b);
 });
 

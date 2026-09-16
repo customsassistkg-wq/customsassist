@@ -1558,6 +1558,7 @@ function resetAppView(){
   const clear=(id)=>{const el=document.getElementById(id); if(el) el.innerHTML='';};
   clear('result'); clear('resultSummary'); clear('adminResult');
   clear('userBar'); clear('accountPanel'); clear('calcPrintArea');
+  clear('pageLookup');
   const inp=document.getElementById('inp'); if(inp) inp.value='';
   const sp=document.getElementById('speciesResult'); if(sp) sp.innerHTML='';
   const vb=document.getElementById('verifyBar'); if(vb) vb.style.display='none';

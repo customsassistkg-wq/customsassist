@@ -97,14 +97,14 @@ app.get('/', (req,res)=>res.type('html').send(html));
 
     // Поля идут в порядке принятия решения: направление, страна, товар.
     assert.deepEqual(await page.evaluate(()=>Array.from(document.querySelectorAll('#pageLookup select,#pageLookup input')).map(e=>e.id)),
-      ['lookupDir','lookupCty','lookupName','lookupCode','lookupDate']);
+      ['lookupDir','lookupCty','lookupQuery','lookupDate']);
     assert.deepEqual(await page.evaluate(()=>Array.from(document.querySelectorAll('#lookupDir option')).map(o=>o.textContent)),
       ['Ввоз','Вывоз','Транзит']);
 
     const run=async(dir,cty,q)=>{
       await page.selectOption('#lookupDir',dir);
       await page.fill('#lookupCty',cty);
-      await page.fill('#lookupCode',q);
+      await page.fill('#lookupQuery',q);
       await page.click('#pageLookup .calc-btn');
       await page.locator('#lookupCards .card').first().waitFor();
       return page.evaluate(()=>({
@@ -141,6 +141,37 @@ app.get('/', (req,res)=>res.type('html').send(html));
     // Без страны и при ввозе не скрывается ничего.
     await run('im','','8517130000');
     assert.equal(await page.evaluate(()=>document.querySelectorAll('.lk-hidden').length),0);
+
+    // Поиск по наименованию: список кандидатов кликабелен, и клик обязан
+    // остаться в справке — раньше goToCode() уводил в общий поиск ТН ВЭД.
+    await page.selectOption('#lookupDir','im');
+    await page.fill('#lookupCty','');
+    await page.fill('#lookupQuery','смартфон');
+    await page.click('#pageLookup .calc-btn');
+    await page.locator('#lookupCards .card').first().waitFor();
+    await page.locator('#lookupCards [onclick^="goToCode"]').first().click();
+    await page.locator('#lookupCards .card').first().waitFor();
+    assert.equal(await page.evaluate(()=>currentPage),'lookup');
+    assert.equal(await page.locator('#pageSearch').isVisible(),false);
+    assert.match(await page.inputValue('#lookupQuery'),/^\d{4}/);
+
+    // Чипы «Быстрого поиска» в правой колонке видны и на странице справки —
+    // из неё они тоже должны работать внутри справки.
+    await page.locator('#sg1 button').first().click();
+    await page.locator('#lookupCards .card').first().waitFor();
+    assert.equal(await page.evaluate(()=>currentPage),'lookup');
+    assert.equal(await page.locator('#pageSearch').isVisible(),false);
+
+    // Уход на другую страницу и возврат не стирают уже полученную справку.
+    await page.click('#navTreeBtn');
+    await page.click('#navLookupBtn');
+    assert.equal(await page.inputValue('#lookupDir'),'im');
+    assert.ok(await page.evaluate(()=>document.querySelectorAll('#lookupCards > .card').length>0));
+
+    await page.click('#navSearchBtn');
+    await page.locator('#sg1 button').first().click();
+    await page.locator('#result .card').first().waitFor();
+    assert.equal(await page.evaluate(()=>currentPage),'search');
 
     assert.deepEqual(errors,[]);
     console.log('PASS: браузер — порядок полей, три направления, страна происхождения, ЕАЭС');
