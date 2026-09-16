@@ -235,4 +235,33 @@ router.delete('/users/:id', async (req, res, next) => {
   }
 });
 
+// Журнал AI-помощника: расход по пользователям за 30 дней и последние вопросы.
+// ?rating=-1 — только ответы с 👎: из них собирается контрольный набор.
+router.get('/assistant', async (req, res, next) => {
+  try {
+    const onlyBad = req.query.rating === '-1';
+    const [totals, recent] = await Promise.all([
+      pool.query(
+        `select u.email, count(*)::int as questions, sum(l.input_tokens)::int as input_tokens,
+                sum(l.output_tokens)::int as output_tokens,
+                count(*) filter (where l.rating = 1)::int as good, count(*) filter (where l.rating = -1)::int as bad,
+                count(*) filter (where l.error is not null)::int as errors, max(l.created_at) as last_at
+           from assistant_log l join users u on u.id = l.user_id
+          where l.created_at > now() - interval '30 days'
+          group by u.email order by questions desc`
+      ),
+      pool.query(
+        `select l.id, u.email, l.created_at, l.question, l.answer, l.searched, l.unverified, l.rating, l.comment,
+                l.error, l.input_tokens, l.output_tokens, l.duration_ms
+           from assistant_log l join users u on u.id = l.user_id
+          ${onlyBad ? 'where l.rating = -1' : ''}
+          order by l.created_at desc limit 100`
+      ),
+    ]);
+    res.json({ totals: totals.rows, recent: recent.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

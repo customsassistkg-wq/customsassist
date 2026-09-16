@@ -8431,13 +8431,21 @@ function updateNavActive(){
   document.getElementById('navAiBtn').classList.toggle('active',currentPage==='ai');
 }
 // ─── AI-помощник ───
-// Переписка живёт только здесь, в памяти страницы: сервер получает её хвост с
-// каждым вопросом и ничего не хранит. Ответ модели — Markdown; перед разметкой
-// всё экранируется через esc(), ссылки пропускаются только http(s).
+// Переписка живёт в памяти страницы и в sessionStorage вкладки (переживает
+// перезагрузку, но не выход): сервер получает её хвост с каждым вопросом.
+// Ответ модели — Markdown; перед разметкой всё экранируется через esc(),
+// ссылки пропускаются только http(s), коды ТН ВЭД становятся переходом к карточке.
 let aiHistory=[],aiBusy=false;
+function aiStoreKey(){return currentUser&&currentUser.id?'ca-ai-'+currentUser.id:''}
+function aiSave(){try{const k=aiStoreKey();if(k)sessionStorage.setItem(k,JSON.stringify(aiHistory.slice(-40)))}catch(e){}}
+function aiLoad(){try{const k=aiStoreKey();const v=k&&sessionStorage.getItem(k);const a=v?JSON.parse(v):[];return Array.isArray(a)?a:[]}catch(e){return []}}
+function aiForget(){try{for(let i=sessionStorage.length-1;i>=0;i--){const k=sessionStorage.key(i);if(k&&k.indexOf('ca-ai-')===0)sessionStorage.removeItem(k)}}catch(e){}}
 function aiMd(t){
+  const codes=s=>s.replace(/(^|[^\d])(\d{4})[  ]?(\d{2})[  ]?(\d{3})[  ]?(\d)(?!\d)/g,
+    (m,pre,a,b,c,d)=>pre+'<a href="#" class="ai-code" data-code="'+a+b+c+d+'">'+a+' '+b+' '+c+' '+d+'</a>');
   const inl=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .split(/(<a [^>]*>[\s\S]*?<\/a>)/).map((p,i)=>i%2?p:codes(p)).join('');
   let html='',list=false;
   for(const line of String(t).split('\n')){
     const h=line.match(/^#{1,6}\s+(.*)/),li=line.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)/);
@@ -8452,25 +8460,65 @@ function aiMd(t){
 function renderAiPage(){
   const box=document.getElementById('pageAi');
   if(box.querySelector('#aiLog'))return;
-  box.innerHTML='<div class="card"><div class="rn">🤖 AI-помощник CustomsAssistKG</div>'
-    +'<div class="det">Опишите товар или назовите код ТН ВЭД. Помощник сначала ищет в базе CustomsAssistKG и отвечает по найденным карточкам. Это предварительный анализ, а не решение таможенного органа.</div>'
+  if(!aiHistory.length)aiHistory=aiLoad();
+  box.innerHTML='<div class="card"><div class="ai-head"><div class="rn">🤖 AI-помощник CustomsAssistKG</div>'
+    +'<button class="btn" type="button" id="aiNewBtn">Новый диалог</button></div>'
+    +'<div class="det">Опишите товар или назовите код ТН ВЭД, можно со страной и стоимостью. Помощник сначала ищет в базе CustomsAssistKG и отвечает по найденным карточкам. Это предварительный анализ, а не решение таможенного органа.</div>'
     +'<div class="ai-log" id="aiLog"></div>'
-    +'<form class="ai-form" id="aiForm"><textarea id="aiInput" rows="2" placeholder="Например: какая пошлина и ограничения на смартфоны из Китая?"></textarea>'
+    +'<form class="ai-form" id="aiForm"><textarea id="aiInput" rows="2" placeholder="Например: смартфоны из Китая, 200 шт. на 30 000 USD — сколько платить и что нужно?"></textarea>'
     +'<button class="calc-btn" id="aiSendBtn" type="submit">Спросить</button></form>'
-    +'<div class="ai-note">Enter — отправить, Shift+Enter — новая строка.</div></div>';
+    +'<div class="ai-note">Enter — отправить, Shift+Enter — новая строка. Коды в ответе открывают карточку.</div></div>';
   document.getElementById('aiForm').addEventListener('submit',aiSend);
   document.getElementById('aiInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey)aiSend(e)});
-  for(const m of aiHistory)aiAppend(m.role,m.content);
+  document.getElementById('aiNewBtn').addEventListener('click',()=>{if(aiBusy)return;aiHistory=[];aiSave();document.getElementById('aiLog').innerHTML=''});
+  document.getElementById('aiLog').addEventListener('click',aiLogClick);
+  for(const m of aiHistory)aiAppend(m);
 }
-function aiAppend(role,content,extra){
+function aiAppend(m){
   const log=document.getElementById('aiLog');
   const d=document.createElement('div');
-  d.className='ai-msg '+(role==='user'?'u':'a')+(extra&&extra.err?' err':'');
-  if(role==='user')d.textContent=content;
-  else d.innerHTML=aiMd(content)+(extra&&extra.src?'<div class="ai-src">Поиск в базе: '+esc(extra.src)+'</div>':'');
+  d.className='ai-msg '+(m.role==='user'?'u':'a')+(m.err?' err':'');
+  if(m.role==='user'){d.textContent=m.content}
+  else{
+    let html=aiMd(m.content);
+    if(m.unverified&&m.unverified.length)html+='<div class="ai-warn">⚠️ Не подтверждено базой: '+m.unverified.map(esc).join(', ')+' — проверьте код перед использованием.</div>';
+    if(m.src)html+='<div class="ai-src">Поиск в базе: '+esc(m.src)+'</div>';
+    if(m.id)html+='<div class="ai-rate" data-id="'+m.id+'"><button type="button" class="btn ai-up'+(m.rating===1?' on':'')+'" aria-label="Полезный ответ">👍</button><button type="button" class="btn ai-down'+(m.rating===-1?' on':'')+'" aria-label="Ответ с ошибкой">👎</button></div>';
+    d.innerHTML=html;
+  }
   log.appendChild(d);
   d.scrollIntoView({block:'nearest',behavior:'smooth'});
   return d;
+}
+const AI_STEP={search_base:s=>'🔎 Ищу в базе: '+(s.query||''),calc_payments:s=>'🧮 Считаю платежи по '+(s.code||''),
+  group_notes:s=>'📖 Читаю примечания к группе '+(s.chapter||''),verify:s=>'✔ Проверяю коды: '+((s.codes||[]).join(', '))};
+async function aiRate(box,rating,comment){
+  const id=Number(box.dataset.id);
+  const m=aiHistory.find(x=>x.id===id);
+  try{
+    const res=await apiFetch('/api/assistant/rate',{method:'POST',body:JSON.stringify({id:id,rating:rating,comment:comment||undefined})});
+    if(!res.ok)return;
+  }catch(e){return}
+  if(m){m.rating=rating;aiSave()}
+  box.querySelector('.ai-up').classList.toggle('on',rating===1);
+  box.querySelector('.ai-down').classList.toggle('on',rating===-1);
+}
+function aiLogClick(e){
+  const code=e.target.closest('.ai-code');
+  if(code){e.preventDefault();goToCode(code.dataset.code);return}
+  const box=e.target.closest('.ai-rate');
+  if(!box)return;
+  if(e.target.closest('.ai-up')){aiRate(box,1);return}
+  if(e.target.closest('.ai-down')){
+    aiRate(box,-1);
+    if(!box.parentNode.querySelector('.ai-why')){
+      const f=document.createElement('form');
+      f.className='ai-why';
+      f.innerHTML='<input type="text" maxlength="1000" placeholder="Что не так? (необязательно)"><button class="btn" type="submit">Отправить</button>';
+      f.addEventListener('submit',ev=>{ev.preventDefault();const v=f.querySelector('input').value.trim();if(v)aiRate(box,-1,v);f.innerHTML='<span class="ai-src">Спасибо, учтём.</span>'});
+      box.after(f);
+    }
+  }
 }
 const AI_ERR={rate_limited:'Дневной лимит вопросов исчерпан. Попробуйте завтра.',
   ai_balance:'Помощник временно недоступен: закончился баланс API.',
@@ -8483,23 +8531,65 @@ async function aiSend(e){
   aiBusy=true;inp.value='';
   const ver=appViewVersion,btn=document.getElementById('aiSendBtn');
   btn.disabled=true;
-  aiHistory.push({role:'user',content:q});aiAppend('user',q);
-  const wait=aiAppend('assistant','⏳ Ищу в базе и готовлю ответ…');
+  const um={role:'user',content:q};
+  aiHistory.push(um);aiSave();aiAppend(um);
+  const wait=aiAppend({role:'assistant',content:'⏳ Готовлю ответ…'});
+  const fail=(msg)=>{wait.remove();aiHistory.pop();aiSave();aiAppend({role:'assistant',content:msg,err:true})};
   try{
-    const res=await fetch('/api/assistant',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:aiHistory})});
-    const data=await res.json().catch(()=>({}));
-    if(ver!==appViewVersion)return; // пользователь вышел, пока шёл ответ
+    const res=await fetch('/api/assistant',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:aiHistory.map(m=>({role:m.role,content:m.content}))})});
+    if(ver!==appViewVersion)return;
+    if(!res.ok){const data=await res.json().catch(()=>({}));fail(AI_ERR[data.error]||'Ошибка: '+(data.error||res.status));return}
+    const reader=res.body.getReader(),dec=new TextDecoder();
+    let buf='',final=null;
+    for(;;){
+      const {done,value}=await reader.read();
+      if(ver!==appViewVersion){reader.cancel();return} // пользователь вышел, пока шёл ответ
+      if(value)buf+=dec.decode(value,{stream:!done});
+      let nl;
+      while((nl=buf.indexOf('\n'))>=0){
+        const line=buf.slice(0,nl);buf=buf.slice(nl+1);
+        if(!line.trim())continue;
+        const msg=JSON.parse(line);
+        if(msg.step){const f=AI_STEP[msg.step.tool];if(f)wait.innerHTML=aiMd('⏳ '+f(msg.step.input||{}))}
+        else final=msg;
+      }
+      if(done)break;
+    }
+    if(!final||final.error){fail(AI_ERR[final&&final.error]||'Ответ не получен. Попробуйте ещё раз.');return}
     wait.remove();
-    if(!res.ok){aiHistory.pop();aiAppend('assistant',AI_ERR[data.error]||'Ошибка: '+(data.error||res.status),{err:true});return}
-    aiHistory.push({role:'assistant',content:data.answer});
-    aiAppend('assistant',data.answer,{src:(data.searched||[]).join(', ')});
+    const am={role:'assistant',content:final.answer,id:final.id,src:(final.searched||[]).join(', '),unverified:final.unverified||[]};
+    aiHistory.push(am);aiSave();aiAppend(am);
   }catch(err){
     if(ver!==appViewVersion)return;
-    wait.remove();aiHistory.pop();aiAppend('assistant','Нет связи с сервером.',{err:true});
+    fail('Нет связи с сервером.');
   }finally{
     aiBusy=false;
     if(ver===appViewVersion)btn.disabled=false;
   }
+}
+// Журнал помощника для администратора: расход по пользователям и последние вопросы.
+async function openAssistantLog(onlyBad){
+  let data;
+  try{
+    const res=await apiFetch('/api/admin/assistant'+(onlyBad?'?rating=-1':''));
+    if(!res.ok)throw new Error(res.status);
+    data=await res.json();
+  }catch(e){openModal('<h2>Журнал помощника</h2><div class="calc-warn w-red">Не удалось загрузить журнал</div><div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');return}
+  const n=v=>(v||0).toLocaleString('ru-RU');
+  const totals=data.totals.map(t=>'<tr><td>'+esc(t.email)+'</td><td>'+n(t.questions)+'</td><td>'+n(t.input_tokens)+' / '+n(t.output_tokens)+'</td><td>'+n(t.good)+' / '+n(t.bad)+'</td><td>'+n(t.errors)+'</td></tr>').join('');
+  const recent=data.recent.map(r=>'<details class="ai-logrow"><summary>'+(r.rating===1?'👍 ':r.rating===-1?'👎 ':'')+(r.error?'⚠️ ':'')
+    +esc(new Date(r.created_at).toLocaleString('ru-RU'))+' · '+esc(r.email)+' — '+esc(trunc(r.question,90))+'</summary>'
+    +'<div class="det"><b>Вопрос:</b> '+esc(r.question)+'</div>'
+    +(r.comment?'<div class="det"><b>Комментарий:</b> '+esc(r.comment)+'</div>':'')
+    +(r.error?'<div class="det"><b>Ошибка:</b> '+esc(r.error)+'</div>':'<div class="det"><b>Поиски:</b> '+esc((r.searched||[]).join(', '))+(r.unverified&&r.unverified.length?' · <b>не подтверждены:</b> '+esc(r.unverified.join(', ')):'')+' · '+n(r.duration_ms)+' мс</div><div class="ai-msg a">'+aiMd(r.answer||'')+'</div>')
+    +'</details>').join('');
+  openModal('<div class="ai-log-modal"></div><h2>Журнал помощника</h2>'
+    +'<div class="det">За 30 дней. Токены — вход / выход; оценки — 👍 / 👎.</div>'
+    +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Вопросов</th><th>Токены</th><th>Оценки</th><th>Ошибок</th></tr></thead><tbody>'+(totals||'<tr><td colspan="5">Вопросов пока не было</td></tr>')+'</tbody></table></div>'
+    +'<div style="display:flex;gap:8px;margin:14px 0 8px"><button class="btn" type="button" onclick="openAssistantLog(false)">Все</button><button class="btn" type="button" onclick="openAssistantLog(true)">Только 👎</button></div>'
+    +(recent||'<div class="det">Записей нет</div>')
+    +'<div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');
 }
 function setPage(p){
   currentPage=p;
@@ -9255,6 +9345,7 @@ async function renderAdminPanel(){
         +'<button class="qa-btn no-print" id="adminBackBtn" type="button">← На главную</button>'
         +'<button class="qa-btn no-print" id="adminPrintBtn" type="button">🖨️ Печать</button>'
         +'<button class="qa-btn no-print" id="adminExportBtn" type="button">⬇️ Экспорт CSV</button>'
+        +'<button class="qa-btn no-print" id="adminAiLogBtn" type="button">🤖 Журнал помощника</button>'
         +'<button class="calc-btn" id="adminCreateBtn" style="width:auto;padding:10px 18px" type="button">+ Новый пользователь</button>'
       +'</div>'
     +'</div>'
@@ -9271,6 +9362,7 @@ document.getElementById('adminResult').addEventListener('click',function(e){
   if(e.target.closest('#adminCreateBtn')){openCreateUserModal();return;}
   if(e.target.closest('#adminPrintBtn')){window.print();return;}
   if(e.target.closest('#adminExportBtn')){exportAdminUsersCSV();return;}
+  if(e.target.closest('#adminAiLogBtn')){openAssistantLog(false);return;}
   const row=e.target.closest('.admin-tr');
   if(!row)return;
   const u=adminUserById(row.dataset.userId);
