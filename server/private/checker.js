@@ -8609,7 +8609,8 @@ async function openAssistantLog(onlyBad){
     data=await res.json();
   }catch(e){openModal('<h2>Журнал помощника</h2><div class="calc-warn w-red">Не удалось загрузить журнал</div><div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');return}
   const n=v=>(v||0).toLocaleString('ru-RU');
-  const totals=data.totals.map(t=>'<tr><td>'+esc(t.email)+'</td><td>'+n(t.questions)+'</td><td>'+n(t.input_tokens)+' / '+n(t.output_tokens)+'</td><td>'+n(t.good)+' / '+n(t.bad)+'</td><td>'+n(t.errors)+'</td></tr>').join('');
+  const usd=v=>'$'+(v||0).toFixed(4);
+  const totals=data.totals.map(t=>'<tr><td>'+esc(t.email)+'</td><td>'+n(t.questions)+'</td><td>'+n(t.input_tokens)+' / '+n(t.output_tokens)+'</td><td>'+usd(t.cost_usd)+'</td><td>'+n(t.good)+' / '+n(t.bad)+'</td><td>'+n(t.errors)+'</td></tr>').join('');
   const recent=data.recent.map(r=>'<details class="ai-logrow"><summary>'+(r.rating===1?'👍 ':r.rating===-1?'👎 ':'')+(r.error?'⚠️ ':'')
     +esc(new Date(r.created_at).toLocaleString('ru-RU'))+' · '+esc(r.email)+' — '+esc(trunc(r.question,90))+'</summary>'
     +'<div class="det"><b>Вопрос:</b> '+esc(r.question)+'</div>'
@@ -8617,11 +8618,51 @@ async function openAssistantLog(onlyBad){
     +(r.error?'<div class="det"><b>Ошибка:</b> '+esc(r.error)+'</div>':'<div class="det"><b>Поиски:</b> '+esc((r.searched||[]).join(', '))+(r.unverified&&r.unverified.length?' · <b>не подтверждены:</b> '+esc(r.unverified.join(', ')):'')+' · '+n(r.duration_ms)+' мс</div><div class="ai-msg a">'+aiMd(r.answer||'')+'</div>')
     +'</details>').join('');
   openModal('<div class="ai-log-modal"></div><h2>Журнал помощника</h2>'
-    +'<div class="det">За 30 дней. Токены — вход / выход; оценки — 👍 / 👎.</div>'
-    +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Вопросов</th><th>Токены</th><th>Оценки</th><th>Ошибок</th></tr></thead><tbody>'+(totals||'<tr><td colspan="5">Вопросов пока не было</td></tr>')+'</tbody></table></div>'
+    +'<div class="det">За 30 дней. Токены — вход без кэша / выход; стоимость — по ценам DeepSeek в момент вопроса; оценки — 👍 / 👎.</div>'
+    +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Вопросов</th><th>Токены</th><th>Стоимость</th><th>Оценки</th><th>Ошибок</th></tr></thead><tbody>'+(totals||'<tr><td colspan="6">Вопросов пока не было</td></tr>')+'</tbody></table></div>'
+    +'<h3 style="margin:18px 0 8px">Расход за месяц — для счёта</h3>'
+    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="month" id="aiBillMonth" value="'+new Date(Date.now()+6*3600e3).toISOString().slice(0,7)+'" class="ai-bill-month"><button class="btn" type="button" onclick="loadAssistantBilling()">Показать</button><button class="btn" type="button" onclick="exportAssistantBilling()">⬇️ CSV</button></div>'
+    +'<div id="aiBilling"></div>'
     +'<div style="display:flex;gap:8px;margin:14px 0 8px"><button class="btn" type="button" onclick="openAssistantLog(false)">Все</button><button class="btn" type="button" onclick="openAssistantLog(true)">Только 👎</button></div>'
     +(recent||'<div class="det">Записей нет</div>')
     +'<div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');
+}
+// Месячный расход помощника по пользователям — основа счёта. Стоимость в $ посчитана
+// сервером в момент каждого вопроса; сомы — по сегодняшнему курсу НБКР (указан в таблице).
+let aiBillingData=null;
+async function loadAssistantBilling(){
+  const box=document.getElementById('aiBilling');
+  const month=(document.getElementById('aiBillMonth')||{}).value||'';
+  box.innerHTML='<div class="det">Загрузка…</div>';
+  try{
+    const res=await apiFetch('/api/admin/assistant/billing?month='+encodeURIComponent(month));
+    if(!res.ok)throw new Error(res.status);
+    aiBillingData=await res.json();
+  }catch(e){box.innerHTML='<div class="calc-warn w-red">Не удалось загрузить расход</div>';return}
+  const d=aiBillingData,n=v=>(v||0).toLocaleString('ru-RU'),rate=d.usdRate||0;
+  const som=v=>rate?(v*rate).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' сом':'—';
+  let sum=0,q=0;
+  const rows=d.rows.map(r=>{sum+=r.cost_usd;q+=r.questions;
+    return '<tr><td>'+esc(r.email)+'</td><td>'+n(r.questions)+'</td><td>'+n(r.input_tokens)+' / '+n(r.cache_read_tokens)+' / '+n(r.output_tokens)+'</td><td>$'+r.cost_usd.toFixed(4)+'</td><td>'+som(r.cost_usd)+'</td></tr>'}).join('');
+  box.innerHTML='<div class="det">'+esc(d.month)+' по времени Бишкека. Токены — вход / из кэша / выход. Курс НБКР: '+(rate?rate+' сом за $ на '+esc(d.rateDate||''):'недоступен')+'.</div>'
+    +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Вопросов</th><th>Токены</th><th>Стоимость, $</th><th>В сомах</th></tr></thead><tbody>'
+    +(rows||'<tr><td colspan="5">За этот месяц вопросов не было</td></tr>')
+    +(rows?'<tr><td><b>Итого</b></td><td><b>'+n(q)+'</b></td><td></td><td><b>$'+sum.toFixed(4)+'</b></td><td><b>'+som(sum)+'</b></td></tr>':'')
+    +'</tbody></table></div>';
+}
+function exportAssistantBilling(){
+  const d=aiBillingData;
+  if(!d||!d.rows.length){loadAssistantBilling();return}
+  const rate=d.usdRate||0;
+  const cell=v=>'"'+String(v).replace(/"/g,'""')+'"';
+  const lines=[['Месяц','Пользователь','Вопросов','Вход без кэша','Вход из кэша','Выход','Стоимость USD','Курс НБКР','Стоимость сом']]
+    .concat(d.rows.map(r=>[d.month,r.email,r.questions,r.input_tokens,r.cache_read_tokens,r.output_tokens,r.cost_usd.toFixed(6).replace('.',','),String(rate).replace('.',','),(r.cost_usd*rate).toFixed(2).replace('.',',')]));
+  // «;» и запятая в дробях — так CSV открывается в Excel с русской локалью без мастера импорта
+  const csv='\ufeff'+lines.map(l=>l.map(cell).join(';')).join('\r\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='ai-rashod-'+d.month+'.csv';
+  document.body.appendChild(a);a.click();a.remove();
 }
 function setPage(p){
   currentPage=p;

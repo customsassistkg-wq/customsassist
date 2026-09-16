@@ -235,6 +235,32 @@ router.delete('/users/:id', async (req, res, next) => {
   }
 });
 
+// Расход AI-помощника за календарный месяц по времени Бишкека (UTC+6) — основа
+// счёта. Стоимость в $ берётся из журнала (посчитана в момент вопроса по ценам и
+// часу пик DeepSeek), в сомах — по сегодняшнему курсу НБКР; курс в ответе, чтобы
+// было видно, по какому пересчитано.
+router.get('/assistant/billing', async (req, res, next) => {
+  try {
+    const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? req.query.month : new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 7);
+    const [y, m] = month.split('-').map(Number);
+    const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+    const { rows } = await pool.query(
+      `select u.email, count(*)::int as questions,
+              count(*) filter (where l.error is not null)::int as errors,
+              sum(l.input_tokens)::int as input_tokens, sum(l.cache_read_tokens)::int as cache_read_tokens,
+              sum(l.output_tokens)::int as output_tokens, round(sum(l.cost_usd), 6)::float as cost_usd
+         from assistant_log l join users u on u.id = l.user_id
+        where l.created_at >= $1::timestamptz and l.created_at < $2::timestamptz
+        group by u.email order by cost_usd desc`,
+      [`${month}-01T00:00:00+06:00`, `${next}-01T00:00:00+06:00`]
+    );
+    const rates = await require('../services/nbkrRates').getRates().catch(() => null);
+    res.json({ month, usdRate: rates?.usd || null, rateDate: rates?.date || null, rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Журнал AI-помощника: расход по пользователям за 30 дней и последние вопросы.
 // ?rating=-1 — только ответы с 👎: из них собирается контрольный набор.
 router.get('/assistant', async (req, res, next) => {
@@ -245,7 +271,7 @@ router.get('/assistant', async (req, res, next) => {
         `select u.email, count(*)::int as questions, sum(l.input_tokens)::int as input_tokens,
                 sum(l.output_tokens)::int as output_tokens,
                 count(*) filter (where l.rating = 1)::int as good, count(*) filter (where l.rating = -1)::int as bad,
-                count(*) filter (where l.error is not null)::int as errors, max(l.created_at) as last_at
+                count(*) filter (where l.error is not null)::int as errors, max(l.created_at) as last_at, round(sum(l.cost_usd), 4)::float as cost_usd
            from assistant_log l join users u on u.id = l.user_id
           where l.created_at > now() - interval '30 days'
           group by u.email order by questions desc`

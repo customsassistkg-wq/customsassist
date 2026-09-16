@@ -68,6 +68,18 @@ const a = require('../src/services/assistant');
   assert.match(await a.calcPayments({ code: '1', value: 1, currency: 'USD' }), /не найден в ЕТТ/);
   console.log('PASS: calc_payments — пошлина «не менее», НДС, сбор, ЕАЭС, ОАЭ');
 
+  // ── стоимость раунда по ценам DeepSeek ──
+  const u = { input_tokens: 1e6, cache_read_input_tokens: 1e6, output_tokens: 1e6 };
+  const peak = new Date('2026-09-16T07:00:00Z');    // среда 07:00 UTC — пик
+  const off = new Date('2026-09-16T12:00:00Z');     // среда 12:00 UTC — вне пика
+  const sat = new Date('2026-09-19T07:00:00Z');     // суббота — вне пика в любой час
+  assert.equal(a.roundCost(u, 'deepseek-v4-flash', peak).toFixed(3), (0.30 + 0.006 + 1.20).toFixed(3));
+  assert.equal(a.roundCost(u, 'deepseek-v4-flash', off).toFixed(3), ((0.30 + 0.006 + 1.20) / 2).toFixed(3));
+  assert.equal(a.roundCost(u, 'deepseek-v4-flash', sat).toFixed(3), ((0.30 + 0.006 + 1.20) / 2).toFixed(3));
+  assert.equal(a.roundCost(u, 'deepseek-v4-pro', peak).toFixed(3), (1.32 + 0.044 + 3.96).toFixed(3));
+  assert.equal(a.roundCost(undefined, 'x', peak), 0);
+  console.log('PASS: стоимость — пик, вне пика, выходные, кэш, pro');
+
   // ── служебные проверки ответа ──
   assert.deepEqual([...a.codesIn('8517 13 000 0 и 0207142001, но не 12345678901 и 8517 13')], ['8517130000', '0207142001']);
   assert.equal(a.keepKnownLinks('[ЕТТ](https://customs.gov.kg) и [№30](https://docs.eaeunion.org/d/1/)', 'текст [№30](https://docs.eaeunion.org/d/1/)'),
@@ -90,7 +102,9 @@ const a = require('../src/services/assistant');
   assert.equal(r.answer, 'Код 8517 13 000 0, ставка 0%. ЕТТ');      // выдуманная ссылка стала текстом
   assert.deepEqual(r.searched, ['8517130000']);
   assert.deepEqual(r.unverified, []);
-  assert.deepEqual(r.usage, { input: 20, output: 10 });
+  assert.equal(r.usage.input, 20);
+  assert.equal(r.usage.output, 10);
+  assert.ok(r.usage.costUsd > 0);
   assert.deepEqual(steps, [{ tool: 'search_base', input: { query: '8517130000' } }]);
   assert.deepEqual(calls[0].tool_choice, { type: 'tool', name: 'search_base' }); // без поиска ответить нельзя
   assert.equal(calls[1].tool_choice, undefined);

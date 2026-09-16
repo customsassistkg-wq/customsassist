@@ -29,10 +29,11 @@ function guard(req, res) {
 async function logQuestion(row) {
   try {
     const { rows } = await pool.query(
-      `insert into assistant_log (user_id, question, answer, searched, unverified, model, input_tokens, output_tokens, duration_ms, error)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
+      `insert into assistant_log (user_id, question, answer, searched, unverified, model, input_tokens, output_tokens, duration_ms, error, cache_read_tokens, cost_usd)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning id`,
       [row.userId, row.question, row.answer || null, JSON.stringify(row.searched || []), JSON.stringify(row.unverified || []),
-        process.env.AI_MODEL || 'deepseek-chat', row.usage?.input || 0, row.usage?.output || 0, row.ms, row.error || null]
+        process.env.AI_MODEL || 'deepseek-chat', row.usage?.input || 0, row.usage?.output || 0, row.ms, row.error || null,
+        row.usage?.cacheRead || 0, row.usage?.costUsd || 0]
     );
     return rows[0].id;
   } catch (err) {

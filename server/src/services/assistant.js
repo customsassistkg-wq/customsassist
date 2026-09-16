@@ -409,6 +409,25 @@ function tools() {
   return list;
 }
 
+// Цены DeepSeek, $ за 1 млн токенов, в часы пик (api-docs.deepseek.com/quick_start/pricing,
+// 16.09.2026). Вне пика — половина. Меняются — задать AI_PRICES в .env тем же JSON:
+// стоимость пишется в журнал в момент вопроса, прошлые записи не пересчитываются.
+const PRICES = Object.assign({
+  flash: { cacheHit: 0.006, cacheMiss: 0.30, output: 1.20 },
+  pro: { cacheHit: 0.044, cacheMiss: 1.32, output: 3.96 },
+}, process.env.AI_PRICES ? JSON.parse(process.env.AI_PRICES) : {});
+// Пик — 01:00–04:00 и 06:00–10:00 UTC с понедельника по пятницу.
+function isPeak(d) {
+  const day = d.getUTCDay(), h = d.getUTCHours();
+  return day >= 1 && day <= 5 && ((h >= 1 && h < 4) || (h >= 6 && h < 10));
+}
+function roundCost(u, model, at = new Date()) {
+  if (!u) return 0;
+  const p = PRICES[/pro/i.test(String(model || MODEL)) ? 'pro' : 'flash'];
+  const k = isPeak(at) ? 1 : 0.5;
+  return k * ((u.input_tokens || 0) * p.cacheMiss + (u.cache_read_input_tokens || 0) * p.cacheHit + (u.output_tokens || 0) * p.output) / 1e6;
+}
+
 async function callModel(messages, toolChoice) {
   const res = await fetch(API_URL, {
     method: 'POST',
@@ -470,7 +489,7 @@ async function ask(history, { onStep = () => {}, images = [] } = {}) {
   const seen = new Set();
   const seenText = [];
   for (const m of history) for (const code of codesIn(m.content)) seen.add(code);
-  const usage = { input: 0, output: 0 };
+  const usage = { input: 0, output: 0, cacheRead: 0, costUsd: 0 };
   let verified = false;
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
     // Первый раунд — только поиск: ответить, не заглянув в базу, модель не может.
@@ -481,6 +500,8 @@ async function ask(history, { onStep = () => {}, images = [] } = {}) {
     const data = await callModel(messages, choice);
     usage.input += data.usage?.input_tokens || 0;
     usage.output += data.usage?.output_tokens || 0;
+    usage.cacheRead += data.usage?.cache_read_input_tokens || 0;
+    usage.costUsd += roundCost(data.usage, data.model);
     const content = data.content || [];
     const uses = content.filter((b) => b.type === 'tool_use');
     if (!uses.length) {
@@ -515,4 +536,4 @@ async function ask(history, { onStep = () => {}, images = [] } = {}) {
   }
 }
 
-module.exports = { ask, searchBase, calcPayments, groupNotes, cardsToText, splitDivs, codesIn, keepKnownLinks, checker };
+module.exports = { ask, searchBase, calcPayments, groupNotes, cardsToText, splitDivs, codesIn, keepKnownLinks, checker, roundCost };
