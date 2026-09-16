@@ -112,11 +112,17 @@ async function callModel(messages, forceTool) {
     headers: { 'content-type': 'application/json', 'x-api-key': process.env.AI_API_KEY, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({
       model: MODEL, max_tokens: 4000, tools: TOOLS, messages,
+      // deepseek-v4-pro по умолчанию «думает», а в этом режиме принудительный
+      // tool_choice отвергается (400). flash параметр принимает без последствий.
+      thinking: { type: 'disabled' },
       // Первый раунд — только поиск: ответить, не заглянув в базу, модель не может.
       // Именно type:'tool' с именем: DeepSeek молча игнорирует type:'any' (проверено
       // 16.09.2026 — на «ping» пришёл текст без вызова), а именованный выбор соблюдает.
       ...(forceTool ? { tool_choice: { type: 'tool', name: 'search_base' } } : {}),
-      system: PROMPT + `\n\n---\nСегодня ${new Date().toISOString().slice(0, 10)}.`,
+      // Напоминание в самом конце: flash-модель лучше держит последние строки промта,
+      // и без него в ответах оставались «в базе не приведено», «не требуется».
+      system: PROMPT + `\n\n---\nСегодня ${new Date().toISOString().slice(0, 10)}.\n`
+        + 'Перед отправкой удали из ответа каждую строку о том, чего нет, что не найдено, не требуется или не применяется, и каждую меру, не относящуюся к направлению перемещения.',
     }),
     signal: AbortSignal.timeout(90000),
   });
