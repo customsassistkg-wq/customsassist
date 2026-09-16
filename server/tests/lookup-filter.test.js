@@ -24,8 +24,8 @@ const sandbox = {console, setTimeout, clearTimeout, addEventListener:noop, local
   document:{getElementById:el, querySelector:el, querySelectorAll:()=>[], createElement:el, addEventListener:noop, body:el()}};
 sandbox.window = sandbox;
 vm.createContext(sandbox);
-new vm.Script(code + '\nthis.__lk={lkCountry,lkCtyMatch,LK_EAEU};').runInContext(sandbox);
-const {lkCountry, lkCtyMatch} = sandbox.__lk;
+new vm.Script(code + '\nthis.__lk={lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB};').runInContext(sandbox);
+const {lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB} = sandbox.__lk;
 
 assert.equal(lkCountry(''), null);
 assert.equal(lkCountry('Ки'), null);              // слишком коротко — не гадаем
@@ -57,6 +57,36 @@ assert.ok(code.includes('data-dir="im" data-kind="tariff" data-cty="оаэ эм�
 assert.ok(code.includes('data-cty="estp"'));
 assert.equal(code.split('data-dir="im"').length - 1, 30);
 console.log('PASS: признаки направления проставлены 30 карточкам');
+
+// ── Ставка для страны происхождения (правила — по текстам решений ЕЭК) ──
+const ettOf = c => (ETT_DB.find(r => r[0] === c) || [])[3];
+const rate = (c, cty, date) => lkPrefRates(c, ettOf(c), lkCountry(cty), date);
+// перечни внесены целиком, со строками «ставка ЕТТ»: без них код перечня
+// не отличить от кода вне перечня, где действует 0%
+assert.equal(ETT_VN_DB.length, 604);
+assert.equal(ETT_IRAN_DB.length, 1736);
+// пример владельца: говядина из ОАЭ — 13,1% по графику на 2026 год,
+// но только с 06.10.2026; до этой даты — ставка ЕТТ и указание даты
+let r = rate('0201100001', 'ОАЭ', '2026-09-16');
+assert.equal(r[0].rate, '13,1%'); assert.equal(r[0].pending, '06.10.2026');
+r = rate('0201100001', 'ОАЭ', '2026-10-06');
+assert.equal(r[0].rate, '13,1%'); assert.equal(r[0].pending, undefined);
+assert.equal(rate('0201100001', 'ОАЭ', '2027-03-01')[0].rate, '11,3%');
+assert.equal(rate('0201100001', 'ОАЭ', '2035-01-01')[0].rate, '0%');
+assert.equal(rate('8517130000', 'ОАЭ', '2026-10-10')[0].rate, '0%');           // вне перечня
+assert.equal(rate('0201100001', 'Вьетнам', '2026-09-16')[0].rate, '15%');     // «ставка ЕТТ» по позиции 0201
+assert.equal(rate('8471300000', 'Вьетнам', '2026-09-16')[0].rate, '0%');      // вне перечня — 0%, а не ЕТТ
+assert.equal(rate('3304300000', 'Вьетнам', '2026-09-16')[0].rate, '6,5%');    // ставка перечня 11,3% выше ЕТТ
+assert.match(rate('6103430001', 'Вьетнам', '2026-09-16')[0].basis, /триггерн/);
+assert.equal(rate('0701905000', 'Иран', '2026-09-16')[0].rate, '7,5%');
+assert.equal(rate('8471300000', 'Иран', '2026-09-16')[0].rate, '0%');
+assert.equal(rate('8517130000', 'Сербия', '2026-09-16')[0].rate, '0%');
+assert.equal(rate('0406900100', 'Монголия', '2026-09-16')[0].rate, '7%, но не менее 0,14 евро за 1 кг');  // скидка 50%
+assert.equal(rate('2208601100', 'Монголия', '2026-09-16')[0].rate, '1,125 евро за 1 л 100% спирта');     // «100%» не масштабируется
+assert.equal(rate('0201100001', 'Бангладеш', '2026-09-16')[0].rate, '0%');
+assert.equal(rate('0201100001', 'Египет', '2026-09-16')[0].rate, '11,25%');
+assert.equal(rate('0201100001', 'Германия', '2026-09-16').length, 0);
+console.log('PASS: ставка по стране происхождения — ОАЭ, Вьетнам, Иран, Сербия, Монголия, ЕСТП');
 
 if (!process.env.PLAYWRIGHT_MODULE) {
   console.log('SKIP: браузерная часть (задайте PLAYWRIGHT_MODULE)');
@@ -172,6 +202,20 @@ app.get('/', (req,res)=>res.type('html').send(html));
     await page.locator('#sg1 button').first().click();
     await page.locator('#result .card').first().waitFor();
     assert.equal(await page.evaluate(()=>currentPage),'search');
+
+    // Ставка для ОАЭ в карточке ЕТТ: до 06.10.2026 — ЕТТ и дата, с 06.10.2026 — 13,1%
+    await page.click('#navLookupBtn');
+    await page.selectOption('#lookupDir','im');
+    await page.fill('#lookupCty','ОАЭ');
+    await page.fill('#lookupQuery','0201100001');
+    await page.fill('#lookupDate','2026-09-16');
+    await page.click('#pageLookup .calc-btn');
+    await page.locator('#lookupCards .pref-rate').first().waitFor();
+    assert.match(await page.locator('#lookupCards .pref-rate').first().innerText(),/06\.10\.2026[\s\S]*13,1%/);
+    await page.fill('#lookupDate','2026-10-06');
+    await page.click('#pageLookup .calc-btn');
+    await page.locator('#lookupCards .ett-was').first().waitFor();
+    assert.match(await page.locator('#lookupCards .ett-rate').first().innerText(),/15%\s*13,1%/);
 
     assert.deepEqual(errors,[]);
     console.log('PASS: браузер — порядок полей, три направления, страна происхождения, ЕАЭС');
