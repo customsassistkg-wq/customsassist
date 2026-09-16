@@ -92,6 +92,12 @@
   .ai-why{display:flex;gap:6px;margin:-4px 0 0;max-width:92%;align-self:flex-start;flex-wrap:wrap}
   .ai-why input{flex:1 1 200px;min-width:0;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-md);color:var(--text);font-size:16px;padding:6px 10px}
   .modal:has(.ai-log-modal){max-width:960px}
+  .ai-form .ai-attach{min-width:52px;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:22px;padding:0 14px;cursor:pointer;border-radius:var(--radius-md)}
+  .ai-thumbs{display:flex;gap:8px;flex-wrap:wrap}
+  .ai-thumbs:not(:empty){margin-bottom:10px}
+  .ai-thumb{position:relative;display:inline-block}
+  .ai-thumb img{width:72px;height:72px;object-fit:cover;border-radius:var(--radius-md);border:1px solid var(--glass-border)}
+  .ai-thumb button{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:none;background:var(--red);color:#fff;font-size:12px;cursor:pointer;line-height:22px;padding:0}
   .ai-logrow{border-top:1px solid var(--border);padding:8px 0}
   .ai-logrow summary{cursor:pointer;font-size:13px;color:var(--text)}
   .ai-logrow .ai-msg{max-width:100%;margin-top:8px}

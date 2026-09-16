@@ -200,6 +200,7 @@ function searchBase({ query, country: countryName, date, direction } = {}) {
           + (vf.cond.length ? '; условное освобождение: ' + vf.cond.map((x) => x.why).join('; ') : '')
           + '. Другие освобождения — только если есть в карточках ниже, и с их условиями.');
     }
+    if (digits.length === 10 && dir === 'im') extra.push(...footnotesFor(digits, date));
     const cd = classDecisions.search(digits, 5);
     if (cd.total) {
       extra.push(`Предварительные решения по классификации (справочник НСИ ЕАЭС №1999), всего ${cd.total}:\n`
@@ -297,7 +298,51 @@ async function calcPayments({ code, value, currency, quantity, country: countryN
   if (c.findExcise(digits).length) lines.push('Товар подакцизный: акциз в расчёт не включён — ставка зависит от вида и объёма (ст. 336 НК КР), и он увеличивает базу НДС.');
   const warns = c.calcWarnings(digits).map((w) => cardsToText(w.text).slice(0, 500)).filter(Boolean);
   if (warns.length) lines.push('Предупреждения калькулятора:\n' + warns.join('\n'));
+  // Расчёт выше — по ставке ЕТТ. Действующая сноска может снижать её (часто до 0%
+  // на срок), а начало срока привязано к вступлению решения в силу, которое по
+  // тексту сноски не вычислить, — поэтому сноска приводится, а не применяется молча.
+  const fns = footnotesFor(digits, date);
+  if (fns.length) lines.push('ВНИМАНИЕ — к коду есть сноски ЕЭК, они могут менять ставку; расчёт выше их не учитывает:\n' + fns.join('\n'));
   return lines.join('\n');
+}
+
+let footnotes;
+function footnotesDb() {
+  const file = path.join(__dirname, '../../private/ett-footnotes.json');
+  if (footnotes === undefined) footnotes = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
+  return footnotes;
+}
+// Сноски ЕЭК к коду (tools/build-ett-footnotes.js). К ставке — только действующие для
+// Кыргызстана на дату: большинство из 124 сносок либо утратили силу, либо истекли в
+// 2022–2024 годах, либо дают ставку только при ввозе в Россию; пересказ таких модель
+// превращала бы в воду или, хуже, в неверную ставку.
+const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+const OTHER_STATE = /ввозимых в (Российскую Федерацию|Республику Беларусь|Республику Армения|Республику Казахстан)/;
+function footnotesFor(code, dateIso) {
+  const db = footnotesDb();
+  const entry = db && db.codes[code];
+  if (!entry) return [];
+  const today = dateIso || new Date().toISOString().slice(0, 10);
+  const iso = (d) => d.split('.').reverse().join('-');
+  const out = [];
+  for (const n of entry.rate) {
+    const t = db.rateNotes[n];
+    if (!t || /утратило силу/.test(t)) continue;
+    if (OTHER_STATE.test(t) && !/Кыргызск/.test(t)) continue;
+    // Срок пишется и цифрами («по 31.12.2027»), и прописью («по 30 апреля 2025 г.»).
+    const ends = [...t.matchAll(/по (\d\d\.\d\d\.\d{4}) включительно/g)].map((m) => iso(m[1]))
+      .concat([...t.matchAll(/по (\d{1,2}) ([а-я]+) (\d{4}) г\.? включительно/g)].map((m) => {
+        const mon = MONTHS.indexOf(m[2]) + 1;
+        return mon ? `${m[3]}-${String(mon).padStart(2, '0')}-${m[1].padStart(2, '0')}` : '9999';
+      }));
+    if (ends.length && ends.every((e) => e < today)) continue;
+    out.push(`Сноска ЕЭК ${n}С к ставке ЕТТ: ${t}`);
+  }
+  for (const n of entry.name) {
+    const t = db.nameNotes[n];
+    if (t) out.push(`Сноска ЕЭК ${n}) к наименованию позиции: ${t.slice(0, 1500)}`);
+  }
+  return out;
 }
 
 // Пункт N раздела «Дополнительные примечания Евразийского экономического союза» группы.
@@ -413,8 +458,14 @@ async function runTool(u) {
 
 // history — [{role:'user'|'assistant', content:string}], последняя реплика пользователя.
 // onStep получает шаги для экрана: {tool, input}.
-async function ask(history, { onStep = () => {} } = {}) {
+async function ask(history, { onStep = () => {}, images = [] } = {}) {
   const messages = history.map((m) => ({ role: m.role, content: m.content }));
+  // Фото инвойса — к последнему вопросу, перед текстом: модель сначала видит документ.
+  if (images.length) {
+    const last = messages[messages.length - 1];
+    last.content = [...images.map((img) => ({ type: 'image', source: { type: 'base64', media_type: img.media_type, data: img.data } })),
+      { type: 'text', text: last.content }];
+  }
   const searched = [];
   const seen = new Set();
   const seenText = [];
@@ -464,4 +515,4 @@ async function ask(history, { onStep = () => {} } = {}) {
   }
 }
 
-module.exports = { ask, searchBase, calcPayments, groupNotes, cardsToText, splitDivs, codesIn, keepKnownLinks };
+module.exports = { ask, searchBase, calcPayments, groupNotes, cardsToText, splitDivs, codesIn, keepKnownLinks, checker };

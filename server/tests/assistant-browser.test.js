@@ -21,9 +21,13 @@ require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async 
 } } } };
 
 let n = 0;
+let lastFirstRequest = null;
+// 2×2 PNG: браузер сожмёт его в JPEG, сервер передаст модели блоком image.
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==', 'base64');
 global.fetch = async (url, opts) => {
   n++;
   const b = JSON.parse(opts.body);
+  if (b.tool_choice) lastFirstRequest = b;
   // задержка, чтобы шаг «Ищу в базе» успел дойти до браузера раньше ответа
   if (!b.tool_choice) await new Promise((r) => setTimeout(r, 400));
   const content = b.tool_choice
@@ -64,6 +68,9 @@ app.get('/', (q, r) => r.type('html').send(html));
       await page.click('#navAiBtn');
       await page.locator('#aiInput').waitFor({ state: 'visible' });
 
+      // фото инвойса: миниатюра появляется, уходит вместе с вопросом, в пузыре — отметка
+      await page.setInputFiles('#aiFile', { name: 'invoice.png', mimeType: 'image/png', buffer: PNG });
+      await page.locator('.ai-thumb img').waitFor();
       await page.fill('#aiInput', 'Пошлина на смартфон?');
       await page.keyboard.press('Enter');
       // шаг инструмента виден, пока модель ещё отвечает
@@ -78,6 +85,12 @@ app.get('/', (q, r) => r.type('html').send(html));
       assert.match(r.h, /Поиск в базе: 8517130000/);
       assert.match(r.h, /class="ai-rate" data-id="42"/);
       assert.equal(r.msgs, 2);
+      const lastUser = lastFirstRequest.messages[lastFirstRequest.messages.length - 1];
+      assert.equal(lastUser.content[0].type, 'image');
+      assert.equal(lastUser.content[0].source.media_type, 'image/jpeg');
+      assert.equal(lastUser.content[1].text, 'Пошлина на смартфон?');
+      assert.match(await page.locator('.ai-msg.u').innerText(), /изображений: 1/);
+      assert.equal(await page.locator('.ai-thumb').count(), 0);
       assert.equal(r.over, false, 'horizontal overflow at ' + w);
       if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT + '/ai_' + w + '.png' });
 

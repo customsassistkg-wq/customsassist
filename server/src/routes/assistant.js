@@ -56,6 +56,19 @@ router.post('/', async (req, res) => {
   while (history.length && history[0].role !== 'user') history.shift();
   if (!history.length || history[history.length - 1].role !== 'user') return res.status(400).json({ error: 'bad_request' });
 
+  // Изображения (фото или скан инвойса) — только к последнему вопросу, только
+  // JPEG/PNG/WebP, не больше четырёх и не больше ~5 МБ каждое. В журнал не пишутся.
+  const rawImages = Array.isArray(req.body?.images) ? req.body.images : [];
+  if (rawImages.length > 4) return res.status(400).json({ error: 'too_many_images' });
+  const images = [];
+  for (const img of rawImages) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(img?.media_type)
+      || typeof img.data !== 'string' || img.data.length > 7_000_000 || !/^[A-Za-z0-9+/=]+$/.test(img.data)) {
+      return res.status(400).json({ error: 'bad_image' });
+    }
+    images.push({ media_type: img.media_type, data: img.data });
+  }
+
   if (!allow(req.user.id)) return res.status(429).json({ error: 'rate_limited', limit: LIMIT });
 
   res.status(200).type('application/x-ndjson');
@@ -63,9 +76,9 @@ router.post('/', async (req, res) => {
   res.set('X-Accel-Buffering', 'no');
   const send = (obj) => res.write(JSON.stringify(obj) + '\n');
   const started = Date.now();
-  const question = history[history.length - 1].content;
+  const question = history[history.length - 1].content + (images.length ? ` [изображений: ${images.length}]` : '');
   try {
-    const r = await ask(history, { onStep: (s) => send({ step: s }) });
+    const r = await ask(history, { images, onStep: (s) => send({ step: s }) });
     const id = await logQuestion({ userId: req.user.id, question, ...r, ms: Date.now() - started });
     send({ id, answer: r.answer, searched: r.searched, unverified: r.unverified });
   } catch (err) {

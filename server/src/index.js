@@ -23,6 +23,9 @@ app.disable('x-powered-by');
 // reverse proxy described in CLAUDE.md's deploy notes.
 app.set('trust proxy', 1);
 
+// Помощник принимает фото инвойсов (до 4 изображений в base64) — остальному API
+// хватает стандартных 100 КБ, и поднимать лимит для всех незачем.
+app.use('/api/assistant', express.json({ limit: '15mb' }));
 app.use(express.json());
 
 app.use(

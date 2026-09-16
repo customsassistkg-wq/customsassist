@@ -43,6 +43,18 @@ const a = require('../src/services/assistant');
   assert.match(a.groupNotes({ chapter: '1' }), /Группа 01/);
   console.log('PASS: group_notes');
 
+  // ── сноски ЕЭК к ставкам и наименованиям ──
+  // 128С: 0% с 01.07.2026 по 30.06.2027 — видна сейчас, не видна после срока
+  assert.match(a.searchBase({ query: '2710124110', date: '2026-09-16' }), /Сноска ЕЭК 128С к ставке ЕТТ: .*0 \(ноль\) %/);
+  assert.doesNotMatch(a.searchBase({ query: '2710124110', date: '2027-07-01' }), /128С/);
+  // 58С истекла «30 апреля 2025 г.» — срок прописью тоже распознаётся
+  assert.doesNotMatch(a.searchBase({ query: '1803100000' }), /58С/);
+  assert.match(a.searchBase({ query: '2519901001' }), /Сноска ЕЭК 5\) к наименованию позиции: При подтверждении/);
+  assert.match(await a.calcPayments({ code: '2710124110', value: 1000, currency: 'USD', quantity: 100 }), /ВНИМАНИЕ — к коду есть сноски ЕЭК/);
+  // ставка криолита исправлена по изображению стр. 11 группы 28: «5,5 63С)», а не «5»
+  assert.equal(a.checker().ETT_DB.find((r) => r[0] === '2826300000')[3], 5.5);
+  console.log('PASS: сноски ЕЭК — срок, чужая страна, прописью, в расчёте');
+
   // ── calc_payments ──
   t = await a.calcPayments({ code: '0207146001', value: 2000, currency: 'USD', quantity: 1000 });
   // 2000 × 87,45 = 174 900; max(25% = 43 725; 0,2 € × 1000 кг × 100,9086 = 20 181,72) = 43 725
