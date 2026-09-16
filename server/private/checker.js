@@ -8428,6 +8428,78 @@ function updateNavActive(){
   document.getElementById('navTreeBtn').classList.toggle('active',currentPage==='tree');
   document.getElementById('navNotesBtn').classList.toggle('active',currentPage==='notes');
   document.getElementById('navLookupBtn').classList.toggle('active',currentPage==='lookup');
+  document.getElementById('navAiBtn').classList.toggle('active',currentPage==='ai');
+}
+// ─── AI-помощник ───
+// Переписка живёт только здесь, в памяти страницы: сервер получает её хвост с
+// каждым вопросом и ничего не хранит. Ответ модели — Markdown; перед разметкой
+// всё экранируется через esc(), ссылки пропускаются только http(s).
+let aiHistory=[],aiBusy=false;
+function aiMd(t){
+  const inl=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  let html='',list=false;
+  for(const line of String(t).split('\n')){
+    const h=line.match(/^#{1,6}\s+(.*)/),li=line.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)/);
+    if(li){if(!list){html+='<ul>';list=true}html+='<li>'+inl(li[1])+'</li>';continue}
+    if(list){html+='</ul>';list=false}
+    if(h)html+='<h4>'+inl(h[1])+'</h4>';
+    else if(/^-{3,}$/.test(line.trim()))html+='<hr>';
+    else if(line.trim())html+='<p>'+inl(line)+'</p>';
+  }
+  return html+(list?'</ul>':'');
+}
+function renderAiPage(){
+  const box=document.getElementById('pageAi');
+  if(box.querySelector('#aiLog'))return;
+  box.innerHTML='<div class="card"><div class="rn">🤖 AI-помощник CustomsAssistKG</div>'
+    +'<div class="det">Опишите товар или назовите код ТН ВЭД. Помощник сначала ищет в базе CustomsAssistKG и отвечает по найденным карточкам. Это предварительный анализ, а не решение таможенного органа.</div>'
+    +'<div class="ai-log" id="aiLog"></div>'
+    +'<form class="ai-form" id="aiForm"><textarea id="aiInput" rows="2" placeholder="Например: какая пошлина и ограничения на смартфоны из Китая?"></textarea>'
+    +'<button class="calc-btn" id="aiSendBtn" type="submit">Спросить</button></form>'
+    +'<div class="ai-note">Enter — отправить, Shift+Enter — новая строка.</div></div>';
+  document.getElementById('aiForm').addEventListener('submit',aiSend);
+  document.getElementById('aiInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey)aiSend(e)});
+  for(const m of aiHistory)aiAppend(m.role,m.content);
+}
+function aiAppend(role,content,extra){
+  const log=document.getElementById('aiLog');
+  const d=document.createElement('div');
+  d.className='ai-msg '+(role==='user'?'u':'a')+(extra&&extra.err?' err':'');
+  if(role==='user')d.textContent=content;
+  else d.innerHTML=aiMd(content)+(extra&&extra.src?'<div class="ai-src">Поиск в базе: '+esc(extra.src)+'</div>':'');
+  log.appendChild(d);
+  d.scrollIntoView({block:'nearest',behavior:'smooth'});
+  return d;
+}
+const AI_ERR={rate_limited:'Дневной лимит вопросов исчерпан. Попробуйте завтра.',
+  ai_balance:'Помощник временно недоступен: закончился баланс API.',
+  assistant_disabled:'Помощник не настроен на сервере.',
+  ai_unavailable:'Сервис модели не ответил. Попробуйте ещё раз.'};
+async function aiSend(e){
+  e.preventDefault();
+  const inp=document.getElementById('aiInput'),q=inp.value.trim();
+  if(!q||aiBusy)return;
+  aiBusy=true;inp.value='';
+  const ver=appViewVersion,btn=document.getElementById('aiSendBtn');
+  btn.disabled=true;
+  aiHistory.push({role:'user',content:q});aiAppend('user',q);
+  const wait=aiAppend('assistant','⏳ Ищу в базе и готовлю ответ…');
+  try{
+    const res=await fetch('/api/assistant',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:aiHistory})});
+    const data=await res.json().catch(()=>({}));
+    if(ver!==appViewVersion)return; // пользователь вышел, пока шёл ответ
+    wait.remove();
+    if(!res.ok){aiHistory.pop();aiAppend('assistant',AI_ERR[data.error]||'Ошибка: '+(data.error||res.status),{err:true});return}
+    aiHistory.push({role:'assistant',content:data.answer});
+    aiAppend('assistant',data.answer,{src:(data.searched||[]).join(', ')});
+  }catch(err){
+    if(ver!==appViewVersion)return;
+    wait.remove();aiHistory.pop();aiAppend('assistant','Нет связи с сервером.',{err:true});
+  }finally{
+    aiBusy=false;
+    if(ver===appViewVersion)btn.disabled=false;
+  }
 }
 function setPage(p){
   currentPage=p;
@@ -8435,6 +8507,8 @@ function setPage(p){
   document.getElementById('pageTree').style.display=p==='tree'?'':'none';
   document.getElementById('pageNotes').style.display=p==='notes'?'':'none';
   document.getElementById('pageLookup').style.display=p==='lookup'?'':'none';
+  document.getElementById('pageAi').style.display=p==='ai'?'':'none';
+  if(p==='ai')renderAiPage();
   if(p==='tree')renderTreeRoot();
   if(p==='notes')renderNotesRoot();
   if(p==='lookup')renderLookupForm();

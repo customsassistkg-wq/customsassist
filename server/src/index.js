@@ -96,6 +96,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/class-decisions', classDecisionsRoutes);
 app.use('/api/nbkr-rates', nbkrRatesRoutes);
 app.use('/api/checker.js', require('./routes/checker'));
+app.use('/api/assistant', require('./routes/assistant'));
 
 classDecisionsService.init();
 nbkrRatesService.init();

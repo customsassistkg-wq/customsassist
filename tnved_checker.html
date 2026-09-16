@@ -68,6 +68,21 @@
   .si:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(10,132,255,0.18)}
   .sico{position:absolute;right:8px;top:8px;bottom:8px;width:46px;border-radius:calc(var(--radius-lg) - 4px);background:var(--indigo-surface);color:#fff;font-size:19px;display:flex;align-items:center;justify-content:center;pointer-events:none;box-shadow:0 4px 14px rgba(58,70,200,.45)}
   #result{min-height:60px}
+  /* AI-помощник */
+  .ai-log{display:flex;flex-direction:column;gap:12px;margin:14px 0}
+  .ai-msg{max-width:92%;padding:12px 16px;border-radius:var(--radius-md);line-height:1.55;font-size:14px;overflow-wrap:anywhere}
+  .ai-msg.u{align-self:flex-end;background:var(--indigo-surface);color:#fff;white-space:pre-wrap}
+  .ai-msg.a{align-self:flex-start;background:var(--glass);border:1px solid var(--glass-border);color:var(--text)}
+  .ai-msg.a h4{font-size:15px;margin:12px 0 6px}
+  .ai-msg.a ul{margin:4px 0 8px 20px;padding:0}
+  .ai-msg.a p{margin:0 0 8px}
+  .ai-msg.a a{color:var(--ink-link)}
+  .ai-msg .ai-src{margin-top:8px;font-size:12px;color:var(--hint)}
+  .ai-msg.err{border-color:var(--red);color:var(--red)}
+  .ai-form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+  .ai-form textarea{flex:1 1 260px;min-width:0;min-height:52px;max-height:200px;resize:vertical;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-md);color:var(--text);font-family:inherit;font-size:16px;line-height:1.4;padding:12px 14px;outline:none}
+  .ai-form textarea::placeholder{color:var(--placeholder)}
+  .ai-note{font-size:12px;color:var(--hint);margin-top:8px}
   .card{border-radius:var(--radius-xl);padding:24px 26px;margin-bottom:14px;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);box-shadow:var(--shadow-md);animation:sli .18s ease-out;overflow-wrap:anywhere}
   #result.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
   @media (max-width:640px){#result.grid{grid-template-columns:1fr}}
@@ -905,6 +920,7 @@
         <button class="nav-item" id="navTreeBtn" type="button" onclick="setPage('tree')"><span class="nav-ico">🌳</span> Классификатор ТН ВЭД</button>
         <button class="nav-item" id="navNotesBtn" type="button" onclick="setPage('notes')"><span class="nav-ico">📖</span> Пояснения и примечания</button>
         <button class="nav-item" id="navLookupBtn" type="button" onclick="setPage('lookup')"><span class="nav-ico">📋</span> Справка по товару</button>
+        <button class="nav-item" id="navAiBtn" type="button" onclick="setPage('ai')"><span class="nav-ico">🤖</span> AI-помощник</button>
         <button class="nav-item" id="navSpeciesBtn" type="button" onclick="setPage('search');setSearchMode('species')"><span class="nav-ico">🐾</span> Красная книга / СИТЕС</button>
         <button class="nav-item" id="navCalcBtn" type="button" onclick="setPage('search');setSearchMode('calc')"><span class="nav-ico">🧮</span> Таможенный калькулятор</button>
         <button class="nav-item" id="navPersonalBtn" type="button" onclick="setPage('search');setSearchMode('personal')"><span class="nav-ico">📦</span> Личные отправления</button>
@@ -984,6 +1000,7 @@
       <div id="pageTree" style="display:none"></div>
       <div id="pageNotes" style="display:none"></div>
       <div id="pageLookup" style="display:none"></div>
+      <div id="pageAi" style="display:none"></div>
 
     </div>
 
@@ -1563,7 +1580,8 @@ function resetAppView(){
   const clear=(id)=>{const el=document.getElementById(id); if(el) el.innerHTML='';};
   clear('result'); clear('resultSummary'); clear('adminResult');
   clear('userBar'); clear('accountPanel'); clear('calcPrintArea');
-  clear('pageLookup');
+  clear('pageLookup'); clear('pageAi');
+  if(typeof aiHistory!=='undefined')aiHistory=[];
   const inp=document.getElementById('inp'); if(inp) inp.value='';
   const sp=document.getElementById('speciesResult'); if(sp) sp.innerHTML='';
   const vb=document.getElementById('verifyBar'); if(vb) vb.style.display='none';
