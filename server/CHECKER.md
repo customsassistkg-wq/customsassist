@@ -36,6 +36,8 @@ node server/tests/auth-loader.test.js
 node server/tests/admin-view.test.js
 node server/tests/lookup-filter.test.js
 node server/tests/admin-invitation.test.js
+node server/tests/assistant.test.js
+node server/tests/assistant-browser.test.js
 ```
 
 Для браузерной части `checker-access.test.js` задайте `PLAYWRIGHT_MODULE`
