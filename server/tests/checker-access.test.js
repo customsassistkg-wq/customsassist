@@ -34,6 +34,8 @@ const guestPosts=[];
 app.post('/api/auth/register', (req,res)=>{guestPosts.push('register '+req.body.email);res.status(201).json({email:req.body.email,needsVerification:true});});
 app.post('/api/auth/resend-verification-public', (req,res)=>{guestPosts.push('resend '+req.body.email);res.json({ok:true});});
 app.post('/api/auth/forgot-password', (req,res)=>{guestPosts.push('forgot '+req.body.email);res.json({ok:true});});
+app.post('/api/auth/verify-email', (req,res)=>{guestPosts.push('verify '+req.body.token);res.json({ok:true,email:'new@example.test'});});
+app.post('/api/auth/reset-password', (req,res)=>{guestPosts.push('reset '+req.body.token);res.json({ok:true});});
 app.use('/api/checker.js', require('../src/routes/checker'));
 app.get('/', (req,res)=>res.type('html').send(html));
 
@@ -95,7 +97,15 @@ app.get('/', (req,res)=>res.type('html').send(html));
       await guest.locator('#authForgotEmail').fill('new@example.test');
       await guest.locator('#authForgotSubmit').click();
       await guest.locator('#authForgotInfo').waitFor({state:'visible',timeout:5000});
-      assert.deepEqual(guestPosts,['register new@example.test','resend new@example.test','forgot new@example.test']);
+      // the two links from the mails are guest paths too
+      await guest.goto(origin+'/?verify=verify-token');
+      await guest.locator('#authInfo').filter({hasText:'подтверждён'}).waitFor({timeout:5000});
+      await guest.goto(origin+'/?reset=reset-token');
+      await guest.locator('#authResetPassword').fill('new-password-1');
+      await guest.locator('#authResetPassword2').fill('new-password-1');
+      await guest.locator('#authResetSubmit').click();
+      await guest.locator('#authInfo').filter({hasText:'Пароль изменён'}).waitFor({timeout:5000});
+      assert.deepEqual(guestPosts,['register new@example.test','resend new@example.test','forgot new@example.test','verify verify-token','reset reset-token']);
       assert.equal(await guest.evaluate(()=>typeof findETT),'undefined');
       assert.deepEqual(guestErrors,[]);
       await guest.close();
