@@ -24,8 +24,27 @@ const sandbox = {console, setTimeout, clearTimeout, addEventListener:noop, local
   document:{getElementById:el, querySelector:el, querySelectorAll:()=>[], createElement:el, addEventListener:noop, body:el()}};
 sandbox.window = sandbox;
 vm.createContext(sandbox);
-new vm.Script(code + '\nthis.__lk={lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB};').runInContext(sandbox);
-const {lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB} = sandbox.__lk;
+new vm.Script(code + '\nthis.__lk={lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB};').runInContext(sandbox);
+const {lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB, banOn, BAN_DB} = sandbox.__lk;
+
+// ── Сроки запретов: последний день включительно, до даты начала — не действует ──
+{
+  const e = {ex:true, exUntil:'2026-09-10', im:true, imFrom:'2027-04-02'};
+  assert.equal(banOn(e, 'ex', '2026-09-10'), true);
+  assert.equal(banOn(e, 'ex', '2026-09-11'), false);
+  assert.equal(banOn(e, 'im', '2027-04-01'), false);
+  assert.equal(banOn(e, 'im', '2027-04-02'), true);
+  assert.equal(banOn({ex:true}, 'ex', '2099-01-01'), true);   // бессрочный
+  assert.equal(banOn({ex:false}, 'ex', '2026-01-01'), false);
+  // у каждого запрета, чей текст называет «до/по ДД.ММ.ГГГГ», есть машинный срок — иначе истёкший останется красным
+  for (const r of BAN_DB) for (const side of ['ex', 'im']) {
+    const t = r[side + 'N'] || '';
+    if (!r[side] || !/^Запрет на (вывоз|ввоз)[^·]*\s(до|по)\s\d{2}\.\d{2}\.\d{4}/.test(t)) continue;
+    if (/бессрочн/i.test(t)) continue; // срок постановления есть, но запрет продолжает бессрочный акт (7204 — Указ УП№375)
+    assert.ok(r[side + 'Until'], `нет ${side}Until у запрета ${r.codes[0]}: ${t.slice(0, 60)}`);
+  }
+  console.log('PASS: сроки запретов — последний день включительно, дата начала, у датированных запретов есть срок');
+}
 
 assert.equal(lkCountry(''), null);
 assert.equal(lkCountry('Ки'), null);              // слишком коротко — не гадаем
