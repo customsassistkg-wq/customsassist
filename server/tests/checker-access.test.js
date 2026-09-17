@@ -13,6 +13,13 @@ new vm.Script(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
 new vm.Script(code);
 assert(!html.includes('const BAN_DB='));
 assert(!html.includes('const ETT_DB='));
+// С 17.09.2026 база не уходит в браузер: checker.js — только интерфейс, данные и findX() — в base.js.
+const baseCode = fs.readFileSync(path.join(root, 'server/private/base.js'), 'utf8');
+for (const name of ['ETT_DB', 'BAN_DB', 'TNVED_MAP', 'NTM_DB', 'TROIS_DB', 'SPECIES_DB', 'USIR_DB', 'SOURCE_AUDIT', 'AUTO_DB', 'findBan', 'findETT', 'renderHtml', 'ENGINE_API']) {
+  assert.match(baseCode, new RegExp('^(const|function) ' + name + '\\b', 'm'), name + ' in base.js');
+  assert.doesNotMatch(code, new RegExp('^(const|let|var|function) ' + name + '\\b', 'm'), name + ' must not be sent to the browser');
+}
+assert(Buffer.byteLength(code) < 1024 * 1024, 'checker.js carries no data: ' + Buffer.byteLength(code) + ' bytes');
 const users = {
   valid: {id:'valid', email:'test@example.test', role:'user', active:true, email_verified_at:new Date(), last_seen_at:new Date()},
   unverified: {id:'unverified', active:true},
@@ -37,6 +44,7 @@ app.post('/api/auth/forgot-password', (req,res)=>{guestPosts.push('forgot '+req.
 app.post('/api/auth/verify-email', (req,res)=>{guestPosts.push('verify '+req.body.token);res.json({ok:true,email:'new@example.test'});});
 app.post('/api/auth/reset-password', (req,res)=>{guestPosts.push('reset '+req.body.token);res.json({ok:true});});
 app.use('/api/checker.js', require('../src/routes/checker'));
+app.use('/api/engine', require('../src/routes/engine'));
 // The page is served with the production Content-Security-Policy taken from nginx.conf, so a
 // script or connection the policy would block fails this test instead of the live site.
 const csp=fs.readFileSync(path.join(__dirname,'../nginx.conf'),'utf8').match(/add_header Content-Security-Policy "([^"]+)"/)[1];
@@ -56,6 +64,7 @@ app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send
   let browser;
   try{
     assert.equal((await fetch(origin+'/api/checker.js')).status,401);
+    assert.equal((await fetch(origin+'/api/engine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fn:'renderHtml',args:['8517130000']})})).status,401);
     for(const [user,status] of [['valid',200],['unverified',403],['disabled',401],['expired',401],['deleted',401]]){
       const login=await fetch(origin+'/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:user})});
       const cookie=login.headers.get('set-cookie').split(';')[0];

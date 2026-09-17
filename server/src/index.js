@@ -105,6 +105,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/class-decisions', classDecisionsRoutes);
 app.use('/api/nbkr-rates', nbkrRatesRoutes);
 app.use('/api/checker.js', require('./routes/checker'));
+app.use('/api/engine', require('./routes/engine'));
 app.use('/api/assistant', require('./routes/assistant'));
 
 
@@ -133,6 +134,8 @@ app.use((err, req, res, next) => {
 if (require.main === module) {
   classDecisionsService.init();
   nbkrRatesService.init();
+  // База грузится до открытия порта: первый поиск пользователя не ждёт разбора 12 МБ.
+  require('./services/base').load();
   const port = process.env.PORT || 3000;
   // Только loopback: снаружи API доступен через Nginx. На всех интерфейсах порт
   // закрывал лишь UFW, а при trust proxy прямой запрос подделал бы X-Forwarded-For

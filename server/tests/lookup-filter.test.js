@@ -12,6 +12,8 @@ const session = require('express-session');
 const root = path.join(__dirname, '../..');
 const html = fs.readFileSync(path.join(root, 'tnved_checker.html'), 'utf8');
 const code = fs.readFileSync(path.join(root, 'server/private/checker.js'), 'utf8');
+// База (карточки, перечни, ставки) с 17.09.2026 — отдельный файл только для сервера.
+const baseCode = fs.readFileSync(path.join(root, 'server/private/base.js'), 'utf8');
 
 // ── Разбор страны (чистые функции, DOM не нужен) ──
 const noop = ()=>{};
@@ -24,7 +26,8 @@ const sandbox = {console, setTimeout, clearTimeout, addEventListener:noop, local
   document:{getElementById:el, querySelector:el, querySelectorAll:()=>[], createElement:el, addEventListener:noop, body:el()}};
 sandbox.window = sandbox;
 vm.createContext(sandbox);
-new vm.Script(code + '\nthis.__lk={lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded,adActive,ANTIDUMP_DB};').runInContext(sandbox);
+new vm.Script(code).runInContext(sandbox);
+new vm.Script(baseCode + '\nthis.__lk={lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded,adActive,ANTIDUMP_DB};').runInContext(sandbox);
 const {lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB, banOn, BAN_DB, umTermEnded, adActive, ANTIDUMP_DB} = sandbox.__lk;
 
 // ── Антидемпинговые меры и тарифные льготы: машинная дата окончания у каждой ──
@@ -94,9 +97,9 @@ console.log('PASS: разбор страны и сопоставление с м
 
 // Карточки, которым проставлены признаки, должны быть именно теми мерами,
 // которые при вывозе не применяются: тарифными и налоговыми.
-assert.ok(code.includes('data-dir="im" data-kind="tariff" data-cty="оаэ эмираты"'));
-assert.ok(code.includes('data-cty="estp"'));
-assert.equal(code.split('data-dir="im"').length - 1, 30);
+assert.ok(baseCode.includes('data-dir="im" data-kind="tariff" data-cty="оаэ эмираты"'));
+assert.ok(baseCode.includes('data-cty="estp"'));
+assert.equal(baseCode.split('data-dir="im"').length - 1, 30);
 console.log('PASS: признаки направления проставлены 30 карточкам');
 
 // ── Ставка для страны происхождения (правила — по текстам решений ЕЭК) ──
@@ -147,6 +150,7 @@ app.post('/api/auth/login', (req,res)=>{req.session.userId='valid';res.json({...
 app.get('/api/nbkr-rates', (req,res)=>res.status(503).json({}));
 app.get('/api/class-decisions', (req,res)=>res.json({items:[]}));
 app.use('/api/checker.js', require('../src/routes/checker'));
+app.use('/api/engine', require('../src/routes/engine'));
 app.get('/', (req,res)=>res.type('html').send(html));
 
 (async()=>{

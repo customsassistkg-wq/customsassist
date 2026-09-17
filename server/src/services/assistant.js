@@ -1,16 +1,15 @@
 // AI-помощник: модель DeepSeek через совместимый с Anthropic API, но отвечает
-// она по нашей базе. База — это server/private/checker.js, тот же файл, что
-// получает браузер; здесь он исполняется в vm, и инструменты вызывают те же
-// функции, что рисуют карточки и считают платежи на сайте. Поэтому модель
+// она по нашей базе. База — server/private/base.js вместе с checker.js в одном
+// vm-контексте (services/base.js); инструменты вызывают те же функции, что
+// собирают карточки для сайта и считают платежи в калькуляторе. Поэтому модель
 // видит ровно то, что увидел бы пользователь, а не пересказ базы, который
 // пришлось бы держать в согласии с ~40 функциями findX().
 const fs = require('node:fs');
 const path = require('node:path');
-const vm = require('node:vm');
+const base = require('./base');
 const classDecisions = require('./classDecisions');
 const nbkrRates = require('./nbkrRates');
 
-const CHECKER = path.join(__dirname, '../../private/checker.js');
 const NOTES = path.join(__dirname, '../../private/tnved-notes.json');
 const PROMPT = fs.readFileSync(path.join(__dirname, '../assistant-prompt.md'), 'utf8');
 const API_URL = (process.env.AI_BASE_URL || 'https://api.deepseek.com/anthropic').replace(/\/+$/, '') + '/v1/messages';
@@ -19,34 +18,8 @@ const MAX_TOOL_ROUNDS = 8;
 const MAX_TOOL_CHARS = 40000; // полная выдача по коду — до ~31 тыс. знаков; 14 тыс. отрезали сертификацию
 const DIRS = { im: 'ввоз', ex: 'вывоз', tr: 'транзит' };
 
-let ctx = null;
-// Загружается при первом вопросе, а не при старте: 12 МБ кода и ~150 МБ памяти
-// не нужны процессу, пока помощником никто не пользуется.
-function checker() {
-  if (ctx) return ctx;
-  const noop = () => {};
-  const boxes = {};
-  const el = (id) => boxes[id] || (boxes[id] = {
-    id, addEventListener: noop, insertAdjacentHTML: noop, appendChild: noop, setAttribute: noop,
-    getAttribute: () => null, querySelector: () => null, querySelectorAll: () => [],
-    classList: { add: noop, remove: noop, toggle: noop, contains: () => false },
-    style: {}, dataset: {}, innerHTML: '', value: '', textContent: '',
-  });
-  const sb = {
-    console, setTimeout: noop, clearTimeout: noop, addEventListener: noop,
-    localStorage: { getItem: () => null, setItem: noop },
-    fetch: () => Promise.reject(new Error('offline')),
-    document: { getElementById: el, querySelector: () => null, querySelectorAll: () => [],
-      createElement: () => el(Symbol()), addEventListener: noop, body: el('body') },
-  };
-  sb.window = sb;
-  vm.createContext(sb);
-  new vm.Script(fs.readFileSync(CHECKER, 'utf8')
-    + '\nthis.__ai={render,findByName,lkCountry,lkCtyMatch,lkPrefRates,ETT_DB,fmtCode,fmtRate,TNVED_MAP,'
-    + 'parseRateInfo,itemDuty,vatFreeHits,customsFeeGoods,findExcise,calcWarnings};').runInContext(sb);
-  ctx = { ...sb.__ai, box: el('aiBox') };
-  return ctx;
-}
+// Тот же контекст базы, что отвечает браузеру через /api/engine.
+const checker = () => base.load();
 
 let notes;
 function notesDb() {
@@ -159,9 +132,7 @@ function searchBase({ query, country: countryName, date, direction } = {}) {
   const dir = DIRS[direction] ? direction : 'im';
   const c = checker();
   const cty = country(c, countryName);
-  c.box.innerHTML = '';
-  c.render(q, 'aiBox');
-  const html = c.box.innerHTML;
+  const html = c.renderHtml(q).html;
 
   // Поиск по наименованию: на сайте названия кандидатов обрезаны до 110 знаков,
   // а у соседних кодов (8517 13 и 8517 14) первые 110 знаков совпадают — модель

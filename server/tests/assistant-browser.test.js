@@ -49,6 +49,7 @@ app.post('/api/auth/logout', (q, r) => q.session.destroy(() => r.json({})));
 app.get('/api/nbkr-rates', (q, r) => r.status(503).json({}));
 app.get('/api/class-decisions', (q, r) => r.json({ items: [] }));
 app.use('/api/checker.js', require('../src/routes/checker'));
+app.use('/api/engine', require('../src/routes/engine'));
 app.use('/api/assistant', require('../src/routes/assistant'));
 app.get('/', (q, r) => r.type('html').send(html));
 
