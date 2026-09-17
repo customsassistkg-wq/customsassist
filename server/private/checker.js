@@ -8595,7 +8595,8 @@ const AI_ERR={rate_limited:'Дневной лимит вопросов исче�
   assistant_disabled:'Ассистент не настроен на сервере.',
   ai_unavailable:'Сервис модели не ответил. Попробуйте ещё раз.',
   bad_image:'Изображение не принято: нужен JPG, PNG или WebP.',
-  too_many_images:'Не больше 4 изображений за один вопрос.'};
+  too_many_images:'Не больше 4 изображений за один вопрос.',
+  busy:'Предыдущий вопрос ещё обрабатывается — дождитесь ответа.'};
 async function aiSend(e){
   e.preventDefault();
   const inp=document.getElementById('aiInput'),imgs=aiImages;

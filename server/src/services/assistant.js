@@ -488,7 +488,9 @@ async function ask(history, { onStep = () => {}, images = [] } = {}) {
   const searched = [];
   const seen = new Set();
   const seenText = [];
-  for (const m of history) for (const code of codesIn(m.content)) seen.add(code);
+  // Только реплики пользователя: прошлые ответы модели присылает браузер, и код,
+  // придуманный в прошлом ответе, иначе проходил бы проверку в следующем.
+  for (const m of history) if (m.role === 'user') for (const code of codesIn(m.content)) seen.add(code);
   const usage = { input: 0, output: 0, cacheRead: 0, costUsd: 0 };
   let verified = false;
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
@@ -497,7 +499,9 @@ async function ask(history, { onStep = () => {}, images = [] } = {}) {
     // 16.09.2026 — на «ping» пришёл текст без вызова), а именованный выбор соблюдает.
     // Последний раунд — без инструментов, чтобы ответ пришёл в любом случае.
     const choice = round === 0 ? { type: 'tool', name: 'search_base' } : (round === MAX_TOOL_ROUNDS ? { type: 'none' } : null);
-    const data = await callModel(messages, choice);
+    let data;
+    // Упавший на середине вопрос уже стоил денег: расход прошлых раундов уходит с ошибкой в журнал.
+    try { data = await callModel(messages, choice); } catch (e) { e.usage = usage; throw e; }
     usage.input += data.usage?.input_tokens || 0;
     usage.output += data.usage?.output_tokens || 0;
     usage.cacheRead += data.usage?.cache_read_input_tokens || 0;
@@ -534,6 +538,8 @@ async function ask(history, { onStep = () => {}, images = [] } = {}) {
     }
     messages.push({ role: 'user', content: results });
   }
+  // Модель проигнорировала tool_choice «none» в последнем раунде — ответа нет.
+  throw Object.assign(new Error('no answer after tool rounds'), { usage });
 }
 
 module.exports = { ask, searchBase, calcPayments, groupNotes, cardsToText, splitDivs, codesIn, keepKnownLinks, checker, roundCost };

@@ -122,4 +122,7 @@ app.use((err, req, res, next) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`tnved-api listening on :${port}`));
+// Только loopback: снаружи API доступен через Nginx. На всех интерфейсах порт
+// закрывал лишь UFW, а при trust proxy прямой запрос подделал бы X-Forwarded-For
+// и обошёл лимиты по IP.
+app.listen(port, '127.0.0.1', () => console.log(`tnved-api listening on 127.0.0.1:${port}`));

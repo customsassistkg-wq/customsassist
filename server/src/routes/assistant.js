@@ -60,6 +60,8 @@ async function quotaFor(user) {
   };
 }
 
+const inFlight = new Set();
+
 function guard(req, res) {
   if (!req.user) { res.status(401).json({ error: 'not authenticated', reason: req.authReason || null }); return false; }
   if (!req.user.email_verified_at) { res.status(403).json({ error: 'email_not_verified' }); return false; }
@@ -111,29 +113,38 @@ router.post('/', async (req, res) => {
     images.push({ media_type: img.media_type, data: img.data });
   }
 
-  // Проверка лимита до начала работы. Параллельные запросы у самой границы могут
-  // пройти на один-два вопроса сверх — это дешевле, чем блокировка на каждый вопрос.
-  let quota;
-  try { quota = await quotaFor(req.user); } catch (err) { console.error('assistant quota:', err.message); return res.status(500).json({ error: 'internal error' }); }
-  if (quota.remaining === 0) return res.status(429).json({ error: 'quota_exceeded', quota });
-
-  res.status(200).type('application/x-ndjson');
-  res.set('Cache-Control', 'no-store');
-  res.set('X-Accel-Buffering', 'no');
-  const send = (obj) => res.write(JSON.stringify(obj) + '\n');
-  const started = Date.now();
-  const question = history[history.length - 1].content + (images.length ? ` [изображений: ${images.length}]` : '');
+  // Один вопрос в работе на пользователя. Лимит считается по журналу, а запись
+  // появляется только после ответа модели, то есть через десятки секунд: без этого
+  // все параллельные запросы видели нетронутый лимит (10 из 10 при лимите 3 в день).
+  // has и add — до первого await, иначе два запроса проскочат между ними.
+  // ponytail: множество в памяти одного процесса; при нескольких экземплярах API — блокировка в БД.
+  if (inFlight.has(req.user.id)) return res.status(429).json({ error: 'busy' });
+  inFlight.add(req.user.id);
   try {
-    const r = await ask(history, { images, onStep: (s) => send({ step: s }) });
-    const id = await logQuestion({ userId: req.user.id, question, ...r, ms: Date.now() - started });
-    send({ id, answer: r.answer, searched: r.searched, unverified: r.unverified, quota: await quotaFor(req.user).catch(() => null) });
-  } catch (err) {
-    console.error('assistant:', err.message);
-    const error = /balance/i.test(err.message) ? 'ai_balance' : 'ai_unavailable';
-    await logQuestion({ userId: req.user.id, question, error: err.message.slice(0, 500), ms: Date.now() - started });
-    send({ error });
+    let quota;
+    try { quota = await quotaFor(req.user); } catch (err) { console.error('assistant quota:', err.message); return res.status(500).json({ error: 'internal error' }); }
+    if (quota.remaining === 0) return res.status(429).json({ error: 'quota_exceeded', quota });
+
+    res.status(200).type('application/x-ndjson');
+    res.set('Cache-Control', 'no-store');
+    res.set('X-Accel-Buffering', 'no');
+    const send = (obj) => res.write(JSON.stringify(obj) + '\n');
+    const started = Date.now();
+    const question = history[history.length - 1].content + (images.length ? ` [изображений: ${images.length}]` : '');
+    try {
+      const r = await ask(history, { images, onStep: (s) => send({ step: s }) });
+      const id = await logQuestion({ userId: req.user.id, question, ...r, ms: Date.now() - started });
+      send({ id, answer: r.answer, searched: r.searched, unverified: r.unverified, quota: await quotaFor(req.user).catch(() => null) });
+    } catch (err) {
+      console.error('assistant:', err.message);
+      const error = /balance/i.test(err.message) ? 'ai_balance' : 'ai_unavailable';
+      await logQuestion({ userId: req.user.id, question, error: err.message.slice(0, 500), usage: err.usage, ms: Date.now() - started });
+      send({ error });
+    }
+    res.end();
+  } finally {
+    inFlight.delete(req.user.id);
   }
-  res.end();
 });
 
 // Остаток вопросов по тарифу — для строки под полем ввода.

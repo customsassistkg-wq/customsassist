@@ -11,14 +11,21 @@ const a = require('../src/services/assistant');
   // ── тарифы: лимит вопросов в день и в месяц ──
   {
     let used = 0, today = 0;
+    const inserts = [];
     const user = { id: 'u1', email: 'u@x.kg', role: 'user', active: true, email_verified_at: new Date(), ai_plan: 'base' };
-    require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async (sql) => {
+    require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async (sql, args) => {
       if (/count\(\*\)::int as used/.test(sql)) return { rows: [{ used, used_today: today }] };
+      if (/insert into assistant_log/.test(sql)) { inserts.push(args); return { rows: [{ id: inserts.length }] }; }
       if (/update users set ai_plan/.test(sql)) return { rows: [{ id: 'u1', ai_plan: 'pro' }] };
       return { rows: [user] };
     } } } };
     const express = require('express');
+    // Маршрут берёт ask при загрузке: подменяем на время require, модель не нужна.
+    let askImpl = async () => ({ answer: 'ok', searched: [], unverified: [], usage: {} });
+    const realAsk = a.ask;
+    a.ask = (...args) => askImpl(...args);
     const route = require('../src/routes/assistant');
+    a.ask = realAsk;
     // граница месяца — полночь по Бишкеку: 30.09 19:00 UTC — это уже 1 октября
     assert.equal(route.bishkekMonth(new Date('2026-09-30T19:00:00Z')).start.toISOString(), '2026-09-30T18:00:00.000Z');
     assert.equal(route.bishkekMonth(new Date('2026-09-30T17:59:00Z')).start.toISOString(), '2026-08-31T18:00:00.000Z');
@@ -59,6 +66,30 @@ const a = require('../src/services/assistant');
       user.role = 'user'; user.ai_plan = 'непонятный';
       j = await (await fetch(base + '/quota')).json();
       assert.equal(j.plan, 'base');                 // неизвестный тариф — как базовый, а не без лимита
+      // второй вопрос того же пользователя, пока первый в работе, — отказ «busy»:
+      // лимит считается по журналу, а запись появляется только после ответа
+      used = 0; today = 0;
+      let release;
+      const started = new Promise((ok) => { askImpl = async () => {
+        if (release) return { answer: 'второй пропущен', searched: [], unverified: [], usage: {} }; // без занятости — сразу, а не зависание
+        ok(); await new Promise((d) => { release = d; }); return { answer: 'ok', searched: [], unverified: [], usage: {} };
+      }; });
+      const first = post();
+      await started;
+      r = await post();
+      assert.deepEqual([r.status, (await r.json()).error], [429, 'busy']);
+      release();
+      r = await first;
+      assert.equal(r.status, 200);
+      assert.match(await r.text(), /"answer":"ok"/);
+      // упавший вопрос освобождает место, а его расход попадает в журнал
+      askImpl = async () => { throw Object.assign(new Error('AI API 500: boom'), { usage: { input: 7, output: 3, cacheRead: 0, costUsd: 0.25 } }); };
+      r = await post();
+      assert.match(await r.text(), /ai_unavailable/);
+      const logged = inserts[inserts.length - 1];
+      assert.deepEqual([logged[9], logged[6], logged[11]], ['AI API 500: boom', 7, 0.25]);
+      askImpl = async () => ({ answer: 'ok2', searched: [], unverified: [], usage: {} });
+      assert.match(await (await post()).text(), /ok2/);
     } finally { server.close(); }
     console.log('PASS: тарифы — день и месяц по Бишкеку, отказ по дню и по месяцу, остаток по меньшему, админ, неизвестный тариф');
   }
@@ -177,7 +208,22 @@ const a = require('../src/services/assistant');
   assert.equal(calls.length, 3);
   assert.match(calls[2].messages[calls[2].messages.length - 1].content, /коды 9999999999 не встречались/);
   assert.deepEqual(r.unverified, ['9999999999']);
-  console.log('PASS: неподтверждённый код — повторная проверка и пометка');
+  // код из прошлого ответа модели не подтверждён: историю присылает браузер;
+  // код, который назвал сам пользователь, выдуманным не считается
+  script = (n) => (n === 1
+    ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: 'смартфон' } }]
+    : [{ type: 'text', text: 'Коды 9999 99 999 8 и 9999 99 999 9.' }]);
+  r = await a.ask([{ role: 'user', content: 'товар 9999 99 999 8' }, { role: 'assistant', content: 'Берите 9999 99 999 9.' }, { role: 'user', content: 'а ставка?' }]);
+  assert.deepEqual(r.unverified, ['9999999999']);
+  console.log('PASS: неподтверждённый код — повторная проверка и пометка, прошлый ответ модели не подтверждает');
+
+  // вопрос, упавший после оплаченного раунда, уносит расход с ошибкой
+  let n = 0;
+  global.fetch = async () => (++n === 1
+    ? { ok: true, json: async () => ({ content: [{ type: 'tool_use', id: 't1', name: 'group_notes', input: { chapter: '85' } }], usage: { input_tokens: 10, output_tokens: 5 } }) }
+    : { ok: false, status: 500, json: async () => ({ error: { message: 'boom' } }) });
+  await assert.rejects(a.ask([{ role: 'user', content: 'x' }]), (e) => e.usage.input === 10 && e.usage.costUsd > 0);
+  console.log('PASS: расход упавшего вопроса прикреплён к ошибке');
 
   global.fetch = async () => ({ ok: false, status: 402, json: async () => ({ error: { message: 'Insufficient Balance' } }) });
   await assert.rejects(a.ask([{ role: 'user', content: 'x' }]), /Insufficient Balance/);
