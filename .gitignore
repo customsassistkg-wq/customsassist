@@ -7,6 +7,11 @@ node_modules/
 .env
 server/.env
 
+# Ключ служебного аккаунта Google Cloud (распознавание Vision): живёт только на VPS,
+# /opt/tnved/server/.vision-sa.json, права 600. В репозиторий не попадает.
+*.iam.gserviceaccount.json
+customsassistkg-*.json
+
 # --- Кэш, который приложение скачивает само --------------------------------
 # server/data/class-decisions.json — 22 МБ выгрузки справочника №1999 НСИ ЕАЭС,
 # обновляется services/classDecisions.js раз в сутки и восстанавливается сам.

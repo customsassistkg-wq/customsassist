@@ -8682,3 +8682,5 @@ WebAssembly). Текстовый слой — текстом (точные ци�
 
 Выкладки: `/root/deploy_backups/20260917_165306/` (миграция, nginx, чтение при прикреплении), `…_171955/` (три чтения),
 `…_172346/` (фильтр пометок).
+
+**Ключ Google Cloud Vision (18.09.2026).** Владелец прислал ключ служебного аккаунта `customsassistkg-vision@customsassistkg.iam.gserviceaccount.com`. Авторизация переписана с API-ключа на служебный аккаунт (JWT → токен, node:crypto). Ключ установлен на сервере (`/opt/tnved/server/.vision-sa.json`, 600, владелец `tnved`) и закрыт в `.gitignore`; распознавание пока выключено — Vision отвечает 403 «requires billing to be enabled»: в проекте нет платёжного аккаунта. После подключения оплаты — замер на реальном инвойсе, строка о Google в `privacy.html` и `OCR_GOOGLE_SA` в `.env`.

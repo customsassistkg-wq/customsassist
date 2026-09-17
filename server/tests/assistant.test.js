@@ -467,10 +467,11 @@ const a = require('../src/services/assistant');
   // ── чтение страницы: положение, предел ответа, второе распознавание ──
   {
     const bodies = [];
-    let orient = 'правильно', stop = 'end_turn', vision = null;
+    let orient = 'правильно', stop = 'end_turn', vision = null, tokens = 0;
     global.fetch = async (url, opts) => {
+      if (/oauth2\.googleapis\.com/.test(url)) { tokens++; return { ok: true, json: async () => ({ access_token: 'tok', expires_in: 3600 }) }; }
+      if (/vision\.googleapis\.com/.test(url)) { bodies.push({ vision: true, auth: opts.headers.authorization }); return { ok: true, json: async () => vision }; }
       const body = JSON.parse(opts.body);
-      if (/vision\.googleapis\.com/.test(url)) { bodies.push({ vision: true, key: opts.headers['x-goog-api-key'] }); return { ok: true, json: async () => vision }; }
       bodies.push(body);
       const orientCall = /перевёрнут вверх ногами/.test(body.messages[0].content[1].text);
       return { ok: true, json: async () => ({ content: [{ type: 'text', text: orientCall ? orient : '| 19 | 6 | $41.260,35 | $247.562,10 |\nTotal 583.478,40' }],
@@ -500,19 +501,25 @@ const a = require('../src/services/assistant');
     r = await a.readPage(page);
     assert.match(r.text, /\n\[расшифровка обрезана: страница длиннее предела ответа\]$/);
     stop = 'end_turn';
-    // второе распознавание (Google Vision) — только с ключом; расходящиеся суммы названы
-    process.env.OCR_GOOGLE_KEY = 'gkey';
+    // второе распознавание (Google Vision) — только с ключом служебного аккаунта: JWT подписывается закрытым
+    // ключом, меняется на токен доступа, токен кэшируется
+    const { privateKey } = require('node:crypto').generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+    const saFile = require('node:path').join(require('node:os').tmpdir(), 'vision-sa-test.json');
+    require('node:fs').writeFileSync(saFile, JSON.stringify({ type: 'service_account', client_email: 'vision@test.iam.gserviceaccount.com', private_key: privateKey, token_uri: 'https://oauth2.googleapis.com/token' }));
+    process.env.OCR_GOOGLE_SA = saFile;
     vision = { responses: [{ fullTextAnnotation: { text: '19 6 $4.260,35 $247.562,10\nTotal 583.478,40' } }] };
     bodies.length = 0;
     r = await a.readPage(page);
-    assert.deepEqual(bodies.filter((b) => b.vision), [{ vision: true, key: 'gkey' }]);
+    assert.deepEqual(bodies.filter((b) => b.vision), [{ vision: true, auth: 'Bearer tok' }]);
     assert.match(r.text, /\[Сверка со вторым распознаванием: не подтверждены числа 41\s260,35; второе распознавание вместо них или дополнительно читает 4\s260,35\./);
     vision = { responses: [{ fullTextAnnotation: { text: '19 6 $41,260.35 $247,562.10 Total 583 478,40' } }] };
     assert.match((await a.readPage(page)).text, /\[Сверка со вторым распознаванием: все 3 чисел совпали\.\]$/);
     // сбой второго распознавания не роняет чтение
-    vision = { responses: [{ error: { message: 'API key not valid' } }] };
+    vision = { responses: [{ error: { message: 'This API method requires billing to be enabled' } }] };
     assert.doesNotMatch((await a.readPage(page)).text, /Сверка/);
-    delete process.env.OCR_GOOGLE_KEY;
+    assert.equal(tokens, 1); // токен взят один раз на все обращения
+    delete process.env.OCR_GOOGLE_SA;
+    require('node:fs').unlinkSync(saFile);
     assert.deepEqual(a.amountsIn('7.129,00 · 7,129.00 · 7 129,00 · 6 · 2026 · 13.08.2026'), ['712900c', '712900c', '712900c', '2026', '13082026']);
 
     // сверка трёх чтений: основное — полосы (parts), неподтверждённое число заменяется тем, в чём сходятся два чтения

@@ -621,14 +621,48 @@ async function readImage(media_type, data, prompt, maxTokens, usage) {
 }
 
 // Второе, независимое распознавание — Google Cloud Vision (DOCUMENT_TEXT_DETECTION), если в .env задан
-// OCR_GOOGLE_KEY. Модель и OCR ошибаются по-разному, поэтому сумма или код, прочитанные одним и не найденные
-// у другого, — повод сверить их с оригиналом. Vision обрабатывает изображение в памяти и не хранит его
-// (docs.cloud.google.com/vision/docs/data-usage); языки — русский, казахский, китайский, турецкий, кыргызский
-// (экспериментально); 1 000 страниц в месяц бесплатно, дальше $1,50 за 1 000 (cloud.google.com/vision/pricing).
+// OCR_GOOGLE_SA — путь к ключу служебного аккаунта (JSON из консоли Google Cloud; на сервере лежит вне
+// веб-корня с правами 600). Модель и OCR ошибаются по-разному, поэтому сумма или код, прочитанные одним и не
+// найденные у другого, — повод сверить их с оригиналом. Vision обрабатывает изображение в памяти и не хранит
+// его (docs.cloud.google.com/vision/docs/data-usage); языки — русский, казахский, китайский, турецкий,
+// кыргызский (экспериментально); 1 000 страниц в месяц бесплатно, дальше $1,50 за 1 000
+// (cloud.google.com/vision/pricing).
+//
+// Ключ служебного аккаунта — не пароль к API: доступ даёт токен, который выдают в обмен на JWT, подписанный
+// закрытым ключом. Библиотека google-auth-library для этого не нужна — подпись делает node:crypto, а токен
+// живёт час и кэшируется.
+let visionSa = null, visionSaFile, visionToken = null;
+function visionAccount() {
+  const file = process.env.OCR_GOOGLE_SA || '';
+  if (file !== visionSaFile) {
+    visionSaFile = file;
+    visionSa = null;
+    visionToken = null;
+    try {
+      if (file) visionSa = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (e) {
+      console.error('assistant: OCR_GOOGLE_SA unreadable:', e.message);
+    }
+  }
+  return visionSa;
+}
+async function googleToken(sa) {
+  if (visionToken && visionToken.till > Date.now() + 60e3) return visionToken.value;
+  const now = Math.floor(Date.now() / 1000);
+  const part = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const head = `${part({ alg: 'RS256', typ: 'JWT' })}.${part({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/cloud-platform', aud: sa.token_uri, exp: now + 3600, iat: now })}`;
+  const jwt = `${head}.${require('node:crypto').createSign('RSA-SHA256').update(head).sign(sa.private_key).toString('base64url')}`;
+  const res = await fetch(sa.token_uri, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }), signal: AbortSignal.timeout(30000) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.access_token) throw new Error(`Google token ${res.status}: ${data.error_description || data.error || 'unknown'}`);
+  visionToken = { value: data.access_token, till: Date.now() + (data.expires_in || 3600) * 1000 };
+  return visionToken.value;
+}
 async function googleOcr(data) {
   const res = await fetch('https://vision.googleapis.com/v1/images:annotate', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.OCR_GOOGLE_KEY },
+    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + await googleToken(visionAccount()) },
     body: JSON.stringify({ requests: [{ image: { content: data }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }] }] }),
     signal: AbortSignal.timeout(60000),
   });
@@ -736,7 +770,7 @@ async function readPage(img, { checkOrientation = true, parts = [] } = {}) {
       await reads;
       return { rotate: 180, usage };
     }
-    const ocr = process.env.OCR_GOOGLE_KEY
+    const ocr = visionAccount()
       ? googleOcr(img.data).catch((e) => { console.error('assistant: second OCR failed:', e.message); return null; })
       : null;
     const [main, ...extra] = await reads;
