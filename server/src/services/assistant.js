@@ -532,10 +532,7 @@ function roundCost(u, model, at = new Date()) {
 }
 
 async function callModel(messages, toolChoice) {
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': process.env.AI_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({
+  const body = JSON.stringify({
       model: MODEL, max_tokens: 4000, tools: tools(), messages,
       // deepseek-v4-pro по умолчанию «думает», а в этом режиме принудительный
       // tool_choice отвергается (400). flash параметр принимает без последствий.
@@ -545,9 +542,25 @@ async function callModel(messages, toolChoice) {
       // и без него в ответах оставались «в базе не приведено», «не требуется».
       system: PROMPT + `\n\n---\nСегодня ${new Date().toISOString().slice(0, 10)}.\n`
         + 'Перед отправкой удали из ответа каждую строку о том, чего нет, что не найдено, не требуется или не применяется, и каждую меру, не относящуюся к направлению перемещения.',
-    }),
-    signal: AbortSignal.timeout(90000),
   });
+  let res;
+  // Сбой сети до ответа («fetch failed» — соединение не установилось) токенов не стоил: один
+  // повтор. Прогон контрольного набора 17.09.2026 потерял так вопрос целиком через 30 секунд,
+  // а тот же вопрос минутой позже прошёл. Ответ API с ошибкой и таймаут в 90 секунд не повторяются.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': process.env.AI_API_KEY, 'anthropic-version': '2023-06-01' },
+        body,
+        signal: AbortSignal.timeout(90000),
+      });
+      break;
+    } catch (e) {
+      if (attempt > 0 || e.name === 'TimeoutError' || e.name === 'AbortError') throw e;
+      console.error('assistant: model request failed, retrying once:', e.message);
+    }
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(`AI API ${res.status}: ${data.error?.message || 'unknown'}`);

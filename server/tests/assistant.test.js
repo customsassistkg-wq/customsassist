@@ -296,6 +296,23 @@ const a = require('../src/services/assistant');
   };
   console.log('PASS: поиск по коду из вопроса без раунда модели, примечания заодно, страна и направление — модели, откат при 400');
 
+  // сбой сети до ответа — один повтор, а не «помощник недоступен»; второй сбой подряд — ошибка
+  {
+    let tries = 0;
+    global.fetch = async () => {
+      tries++;
+      if (tries === 1) throw new TypeError('fetch failed');
+      return { ok: true, json: async () => ({ content: [{ type: 'text', text: 'ок' }], usage: { input_tokens: 1, output_tokens: 1 } }) };
+    };
+    const rr = await a.ask([{ role: 'user', content: 'смартфон?' }]);
+    assert.deepEqual([rr.answer, tries], ['ок', 2]);
+    tries = 0;
+    global.fetch = async () => { tries++; throw new TypeError('fetch failed'); };
+    await assert.rejects(a.ask([{ role: 'user', content: 'смартфон?' }]), /fetch failed/);
+    assert.equal(tries, 2);
+    console.log('PASS: сбой сети до ответа модели — один повтор');
+  }
+
   // вопрос, упавший после оплаченного раунда, уносит расход с ошибкой
   let n = 0;
   global.fetch = async () => (++n === 1
