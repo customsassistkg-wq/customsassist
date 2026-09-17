@@ -1356,7 +1356,7 @@ async function submitRegister(){
   const errEl=document.getElementById('authRegisterError');
   errEl.style.display='none';
   if(!email||!password){errEl.textContent='Заполните email и пароль';errEl.style.display='block';return;}
-  if(!EMAIL_RE.test(email)){errEl.textContent='Введите корректный email (например, user@example.com)';errEl.style.display='block';return;}
+  if(!AUTH_EMAIL_RE.test(email)){errEl.textContent='Введите корректный email (например, user@example.com)';errEl.style.display='block';return;}
   if(password.length<8){errEl.textContent='Пароль должен быть не короче 8 символов';errEl.style.display='block';return;}
   const tsR=tsToken('register');
   if(tsActive()&&!tsR){errEl.textContent='Подтвердите, что вы не робот';errEl.style.display='block';return;}

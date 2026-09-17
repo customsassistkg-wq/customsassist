@@ -30,6 +30,10 @@ app.get('/api/auth/me', (req,res)=>req.user?res.json({...req.user,emailVerified:
 app.post('/api/auth/login', (req,res)=>{req.session.userId=req.body.password;res.json({...users[req.body.password], emailVerified:true});});
 app.post('/api/auth/logout', (req,res)=>req.session.destroy(()=>res.json({ok:true})));
 app.get('/api/nbkr-rates', (req,res)=>res.status(503).json({}));
+const guestPosts=[];
+app.post('/api/auth/register', (req,res)=>{guestPosts.push('register '+req.body.email);res.status(201).json({email:req.body.email,needsVerification:true});});
+app.post('/api/auth/resend-verification-public', (req,res)=>{guestPosts.push('resend '+req.body.email);res.json({ok:true});});
+app.post('/api/auth/forgot-password', (req,res)=>{guestPosts.push('forgot '+req.body.email);res.json({ok:true});});
 app.use('/api/checker.js', require('../src/routes/checker'));
 app.get('/', (req,res)=>res.type('html').send(html));
 
@@ -69,6 +73,32 @@ app.get('/', (req,res)=>res.type('html').send(html));
     assert.equal((await fetch(origin+'/server/private/checker.js')).status,404);
     if(process.env.PLAYWRIGHT_MODULE){
       browser=await require(process.env.PLAYWRIGHT_MODULE).chromium.launch({channel:'msedge',headless:true});
+      // A visitor without an account never receives checker.js, so registration,
+      // resend and password recovery may use only the page's own code. Until
+      // 17.09.2026 the register button called EMAIL_RE, declared in checker.js:
+      // it threw for every new visitor and worked only in a window where someone
+      // had already logged in and out.
+      const guest=await browser.newPage();
+      const guestErrors=[];
+      guest.on('pageerror',e=>guestErrors.push(e.message));
+      await guest.goto(origin);
+      await guest.locator('#authRegisterLink').click();
+      await guest.locator('#authRegisterEmail').fill('new@example.test');
+      await guest.locator('#authRegisterPassword').fill('long-enough-1');
+      await guest.locator('#authRegisterSubmit').click();
+      await guest.locator('#authViewVerify').waitFor({state:'visible',timeout:5000}).catch(()=>{});
+      assert.deepEqual(guestErrors,[],'register view');
+      await guest.locator('#authVerifyResend').click();
+      await guest.locator('#authVerifyInfo').waitFor({state:'visible',timeout:5000});
+      await guest.locator('#authVerifyBackLink').click();
+      await guest.locator('#authForgotLink').click();
+      await guest.locator('#authForgotEmail').fill('new@example.test');
+      await guest.locator('#authForgotSubmit').click();
+      await guest.locator('#authForgotInfo').waitFor({state:'visible',timeout:5000});
+      assert.deepEqual(guestPosts,['register new@example.test','resend new@example.test','forgot new@example.test']);
+      assert.equal(await guest.evaluate(()=>typeof findETT),'undefined');
+      assert.deepEqual(guestErrors,[]);
+      await guest.close();
       const page=await browser.newPage({viewport:{width:1280,height:900}});
       const errors=[];let requests=0;
       page.on('pageerror',e=>errors.push(e.message));
