@@ -89,16 +89,110 @@ function dropInactiveTrois(card) {
   return out;
 }
 
+// Тип карточки — по классу и тегам, которые ставит шаблон (renderHtml в private/base.js).
+// Нужен, чтобы убрать меры другого направления и поставить первыми карточки, о которых спросили.
+function cardKind(card) {
+  const head = card.slice(0, card.indexOf('>') + 1);
+  const tags = [...card.matchAll(/<span class="tag ([^"]*)">([^<]*)<\/span>/g)];
+  const cls = tags.map((m) => m[1]).join(' '), txt = tags.map((m) => m[2]).join(' ');
+  if (/\bc-ett\b/.test(head)) return /data-cty=/.test(head) ? 'pref' : 'rate';
+  if (/\bt-(ls|льг)\b/.test(cls)) return 'vat';
+  if (/Акциз/.test(txt)) return 'excise';
+  if (/\bt-usir\b/.test(cls)) return 'value';
+  if (/ТРОИС/.test(txt)) return 'trois';
+  if (/\bt-tr\b/.test(cls) || /Сертификац/.test(txt)) return 'cert';
+  // 🔐 и ❓ у t-nks — экспортный контроль (НКС); остальные t-nks — вет, фито, СЭН, госрегистрация
+  if (/\bt-nks\b/.test(cls)) return /^(🔐|❓)/.test(txt) ? 'export-control' : 'control';
+  if (/Тарифная квота/.test(txt)) return 'quota';
+  if (/истекли/.test(txt)) return 'expired';
+  if (/Ограничение в государстве-члене/.test(txt)) return 'unilateral';
+  if (/data-kind="tariff"/.test(head)) return 'tariff';
+  if (/вывоз/i.test(txt) && !/ввоз/i.test(txt.replace(/вывоз/gi, ''))) return 'ban-ex';
+  if (/Запрет/.test(txt)) return 'ban';
+  if (/\bt-eec-lic\b/.test(cls)) return 'license';
+  return 'other';
+}
+
+// Тема вопроса → какие карточки ставить первыми. Без \b: между кириллическими буквами
+// границы слова в JS нет, «\bвес» не находит ничего. Вопрос «какой НДС на …» раньше получал
+// карточки в порядке сайта, где льготы по НДС стоят в конце: у товарной позиции выдача
+// упиралась в предел и обрезалась с хвоста вместе с ними.
+const TOPICS = [
+  [/ндс|льгот|освобожд|налог|беспошлин/i, ['vat']],
+  [/акциз/i, ['excise']],
+  [/пошлин|ставк|тариф|(?<![а-яё])вес(?:а|у|ом|е)?(?![а-яё])|(?<![а-яё])кг(?![а-яё])|килограм|брутто|нетто|специфическ|единиц[а-яё]* измерен|доп\.? ?ед/i, ['rate', 'pref', 'tariff', 'quota']],
+  [/преференц|происхожд|естп|соглашени/i, ['pref', 'rate', 'tariff']],
+  [/квот/i, ['quota']],
+  [/запрет|огранич|можно ли|нельзя|лиценз|разрешени|заключени/i, ['ban', 'ban-ex', 'license', 'unilateral', 'export-control']],
+  [/сертифик|соответстви|техрегл|тр тс|тр еаэс|маркировк/i, ['cert']],
+  [/ветеринар|вет\.|фито|карантин|санитар|(?<![а-яё])сэн(?![а-яё])|госрегистрац/i, ['control']],
+  [/троис|товарн[а-яё]* знак|бренд|правообладат|контрафакт/i, ['trois']],
+  [/стоимост|усир|индикатор|(?<![а-яё])цен[аыуе](?![а-яё])|инвойс/i, ['value']],
+];
+function topicKinds(question) {
+  const kinds = new Set();
+  for (const [re, ks] of TOPICS) if (re.test(question || '')) ks.forEach((k) => kinds.add(k));
+  return kinds;
+}
+
+// Для модели карточка короче, чем для человека: объяснения, которые промт и так запрещает
+// пересказывать (процедура ТРОИС), ссылки на страницы реестра у каждой строки и истёкшие
+// односторонние меры только тратили окно и время ответа.
+function trimCard(card, kind, topics, cty) {
+  // отметка о сверке источника и кнопка «Пояснения к группе» — для человека, не для ответа
+  card = card.replace(/<details class="audit-det">[\s\S]*?<\/details>/g, '')
+    .replace(/<span class="notes-ico"[^>]*>[\s\S]*?<\/span>/g, '');
+  if (kind === 'pref') {
+    // полные перечни 79 стран ЕСТП — справка, а не ответ; страну модель передаёт в country
+    card = card.replace(/<details[^>]*><summary[^>]*>Перечень (?:развивающихся|наименее развитых) стран[\s\S]*?<\/details>/g, '');
+    // график ставок ОАЭ на восемь лет — когда страна названа или спрашивают о преференциях
+    if (!cty && !topics.has('pref')) card = card.replace(/<details[^>]*><summary[^>]*>График по всем годам[\s\S]*?<\/div><\/div><\/details>/, '');
+  }
+  if (kind === 'trois') {
+    card = card.replace(/<div style="margin-top:8px"><strong>Совпадение по коду[\s\S]*?<\/div>/, '')
+      .replace(/<div style="margin-top:8px"><strong>Если обозначение[\s\S]*?<\/div>/, '')
+      .replace(/<div style="margin-top:8px">Перечни доверенных лиц[\s\S]*?<\/div>/, '')
+      .replace(/ · <a class="lb-skip"[^>]*>[\s\S]*?<\/a>/g, '');
+  }
+  if (kind === 'unilateral') {
+    card = card.replace(/<div><strong>Срок действия истёк \(\d+\):<\/strong><\/div>[\s\S]*?(?=<div><strong>Что это значит:)/, '');
+  }
+  // УСИР — десятки моделей телефонов; нужен, когда спрашивают о стоимости
+  if (kind === 'value' && !topics.has('value')) card = limitRows(card, 5);
+  return card;
+}
+function limitRows(card, n) {
+  const at = card.indexOf('<div class="usir-list">');
+  if (at < 0) return card;
+  const open = at + '<div class="usir-list">'.length;
+  const close = at + splitDivs(card.slice(at))[0].end - '</div>'.length;
+  const inner = card.slice(open, close);
+  const rows = splitDivs(inner);
+  if (rows.length <= n) return card;
+  return card.slice(0, open) + inner.slice(0, rows[n - 1].end)
+    + `<div class="uu">…и ещё ${rows.length - n} строк — полностью по запросу о стоимости</div>` + card.slice(close);
+}
+// Одна строка вместо карточки: теги и заголовок — модель знает, что карточка есть.
+function headline(card) {
+  const tags = [...card.matchAll(/<span class="tag [^"]*">([^<]*)<\/span>/g)].map((m) => m[1].trim());
+  const rn = (card.match(/<div class="rn"[^>]*>([\s\S]*?)<\/div>/) || [])[1] || '';
+  const rate = (card.match(/<div class="ett-rate"[^>]*>([\s\S]*?)<\/div>/) || [])[1];
+  return `• ${tags.join(' · ')} — ${cardsToText(rn).slice(0, 200)}${rate ? ' — ставка: ' + cardsToText(rate) : ''}`;
+}
+
 // Тот же отбор, что делает «Справка по товару» (lkFilter): мера только на ввоз
 // не относится к вывозу и транзиту; из ЕАЭС тарифные меры не применяются;
-// мера, привязанная к стране, — только для этой страны.
+// мера, привязанная к стране, — только для этой страны. Сверх того для модели:
+// при ввозе убраны меры вывоза — экспортный контроль, запреты вывоза и односторонние
+// меры других стран (кроме ввоза из самого государства ЕАЭС): промт это запрещал
+// называть, модель называла; истёкшие меры убраны всегда.
 // ettZero — у запрошенного 10-значного кода ставка ЕТТ 0%: тогда преференциальные
 // карточки (ЕСТП, ОАЭ, Вьетнам, Иран, Сербия, Монголия) ничего не меняют, а модель
 // пересказывала их и путала, кому преференция положена.
-function filterCards(html, dir, cty, c, ettZero) {
-  let out = '';
+function filterCards(html, dir, cty, c, ettZero, topics = new Set()) {
+  const out = [];
   for (const d of splitDivs(html)) {
-    let card = html.slice(d.start, d.end);
+    const card = html.slice(d.start, d.end);
     const head = card.slice(0, card.indexOf('>') + 1);
     const attr = (n) => (head.match(new RegExp(n + '="([^"]*)"')) || [])[1];
     const dd = attr('data-dir');
@@ -106,9 +200,21 @@ function filterCards(html, dir, cty, c, ettZero) {
     if (dir === 'im' && cty && cty.eaeu && attr('data-kind') === 'tariff') continue;
     if (dir === 'im' && cty && attr('data-cty') && !c.lkCtyMatch(attr('data-cty'), cty)) continue;
     if (ettZero && /class="card c-ett"/.test(head) && attr('data-cty')) continue;
-    out += dropInactiveTrois(card);
+    const kind = cardKind(card);
+    if (kind === 'expired') continue;
+    if (dir === 'im' && (kind === 'export-control' || kind === 'ban-ex')) continue;
+    if (dir === 'im' && kind === 'unilateral' && !(cty && cty.eaeu)) continue;
+    if (kind === 'unilateral' && /действующих — 0/.test(card)) continue;
+    // «преференция не предоставляется», «госрегистрация не требуется» — то, чего нет
+    if (kind === 'pref' && /class="ett-rate"[^>]*>\s*не предоставляется/.test(card)) continue;
+    if (/<span class="tag t-ok">✓ Исключено<\/span>/.test(card)) continue;
+    const trimmed = dropInactiveTrois(trimCard(card, kind, topics, cty));
+    // Страна не названа и о преференциях не спрашивают — ставки соглашений строкой:
+    // они зависят от происхождения, а модель по ним выдумывала, кому что положено.
+    if (trimmed) out.push({ kind, html: trimmed, first: topics.has(kind), brief: kind === 'pref' && !cty && !topics.has('pref') });
   }
-  return out;
+  // нужные по вопросу — первыми, остальные в порядке сайта
+  return out.filter((x) => x.first).concat(out.filter((x) => !x.first));
 }
 
 // Модель передаёт страну и кодом ISO («KZ»), а lkCountry понимает только названия:
@@ -126,13 +232,21 @@ function clip(text) {
   return text.length > MAX_TOOL_CHARS ? text.slice(0, MAX_TOOL_CHARS) + '\n… (выдача обрезана — уточните код)' : text;
 }
 
-function searchBase({ query, country: countryName, date, direction } = {}) {
+// Сколько карточек отдавать модели целиком. Выше — не относящиеся к вопросу карточки
+// сжимаются до строки с конца списка; раньше выдача просто обрезалась с хвоста, и
+// пропадало то, что стоит в порядке сайта последним (льготы по НДС). Меньше текста —
+// быстрее и дешевле каждый следующий раунд модели.
+const CARDS_BUDGET = { topic: 18000, plain: 30000 };
+
+// hint.question — последняя реплика пользователя: по ней выбираются карточки «первыми».
+function searchBase({ query, country: countryName, date, direction, full } = {}, hint = {}) {
   const q = String(query || '').trim().slice(0, 200);
   if (!q) return 'Пустой запрос.';
   const dir = DIRS[direction] ? direction : 'im';
   const c = checker();
   const cty = country(c, countryName);
   const html = c.renderHtml(q).html;
+  const topics = topicKinds(hint.question);
 
   // Поиск по наименованию: на сайте названия кандидатов обрезаны до 110 знаков,
   // а у соседних кодов (8517 13 и 8517 14) первые 110 знаков совпадают — модель
@@ -180,17 +294,32 @@ function searchBase({ query, country: countryName, date, direction } = {}) {
   }
   const ettRow = digits.length === 10 ? c.ETT_DB.find((r) => r[0] === digits) : null;
   const ettZero = !!ettRow && (ettRow[3] === 0 || String(ettRow[3]).trim() === '0');
-  const cards = cardsToText(filterCards(html, dir, cty, c, ettZero));
+  const parts = filterCards(html, dir, cty, c, ettZero, topics).map((p) => ({ ...p, text: p.brief ? headline(p.html) : cardsToText(p.html) }));
   // Наименование «в порядке, указанном в дополнительном примечании 4 к группе 02»
   // модель толковала по памяти («договорная цена»). Текст примечания — рядом.
-  const refs = [...cards.matchAll(/дополнительном примечании(?: Евразийского экономического союза)? (\d+) к группе (\d\d)/g)]
+  const refs = [...parts.map((p) => p.text).join('\n').matchAll(/дополнительном примечании(?: Евразийского экономического союза)? (\d+) к группе (\d\d)/g)]
     .map((m) => m[1] + ' ' + m[2]);
   for (const ref of [...new Set(refs)]) {
     const [n, ch] = ref.split(' ');
     const note = additionalNote(ch, n);
     if (note) extra.push(`Дополнительное примечание ЕАЭС ${n} к группе ${ch}: ${note}`);
   }
-  return clip([...extra, cards].filter(Boolean).join('\n\n')) || 'Пусто.';
+  let shortened = 0;
+  if (!full) {
+    const budget = topics.size ? CARDS_BUDGET.topic : CARDS_BUDGET.plain;
+    let total = extra.join('\n\n').length + parts.reduce((s, p) => s + p.text.length, 0);
+    for (let i = parts.length - 1; i >= 0 && total > budget; i--) {
+      if (parts[i].first) continue;
+      const line = headline(parts[i].html);
+      if (line.length >= parts[i].text.length) continue;
+      total -= parts[i].text.length - line.length;
+      parts[i].text = line;
+      shortened++;
+    }
+  }
+  const note = shortened ? `Карточки, не относящиеся к вопросу, сокращены до строки (${shortened}). `
+    + 'Полный текст любой из них — повтори search_base по этому коду с full: true.' : '';
+  return clip([...extra, parts.map((p) => p.text).join('\n'), note].filter(Boolean).join('\n\n')) || 'Пусто.';
 }
 
 const num = (v) => {
@@ -352,6 +481,7 @@ function tools() {
         direction: { type: 'string', enum: ['im', 'ex', 'tr'], description: 'Направление: im — ввоз (по умолчанию), ex — вывоз, tr — транзит' },
         country: { type: 'string', description: 'Страна происхождения — название по-русски (Китай, Казахстан, ОАЭ)' },
         date: { type: 'string', description: 'Дата оформления YYYY-MM-DD, если названа' },
+        full: { type: 'boolean', description: 'true — все карточки целиком, без сокращения до строки' },
       },
       required: ['query'],
     },
@@ -439,12 +569,44 @@ function keepKnownLinks(answer, toolText) {
   return answer.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, text, url) => (toolText.includes(url.split('#')[0]) ? m : text));
 }
 
-async function runTool(u) {
-  if (u.name === 'search_base') return searchBase(u.input);
+async function runTool(u, hint) {
+  if (u.name === 'search_base') return searchBase(u.input, hint);
   if (u.name === 'calc_payments') return calcPayments(u.input);
   if (u.name === 'group_notes') return groupNotes(u.input);
   return 'Неизвестный инструмент.';
 }
+
+// Названа ли в вопросе страна или направление. Разбирать их из свободного текста
+// («из Китая», «вывоз в Казахстан») надёжнее модели, поэтому такой вопрос идёт
+// прежним путём — через принудительный поиск, где модель сама задаёт country и direction.
+// \b не годится: между кириллическими буквами границы слова в JS нет.
+function namesPlaceOrDirection(text) {
+  if (/вывоз|вывез|экспорт|транзит|происхожд|страна/i.test(text)) return true;
+  if (/(^|[^А-ЯЁA-Za-zа-яё])(из|в|во|от)\s+[А-ЯЁA-Z]/.test(text)) return true;
+  if (/(^|[^А-ЯЁA-Z])(США|ОАЭ|КНР|РФ|USA|UAE|PRC)(?![А-ЯЁA-Za-zа-яё])/.test(text)) return true;
+  const c = checker();
+  for (const m of text.matchAll(/(^|[^а-яё])(из|в|во|от)\s+([а-яё-]{3,})/gi)) {
+    const w = m[3].toLowerCase();
+    for (const stem of [w, w.replace(/(ами|ями|ии|ия|ию|ой|ей|ом|ем|ы|и|а|я|у|ю|е)$/, '')]) {
+      const cty = stem.length >= 3 && c.lkCountry(stem);
+      if (cty && !cty.other) return true;
+    }
+  }
+  return false;
+}
+
+// Вопрос с 10-значным кодом: принудительный первый раунд модели лишь вызвал бы
+// search_base с этим кодом — сервер делает этот поиск сам и экономит целый вызов модели.
+// Спрашивают о примечаниях — заодно примечания группы, иначе это ещё один раунд.
+function preTools(text) {
+  if (typeof text !== 'string' || namesPlaceOrDirection(text)) return [];
+  const codes = [...codesIn(text)].filter((code) => checker().ETT_DB.some((r) => r[0] === code)).slice(0, 2);
+  const list = codes.map((code) => ({ name: 'search_base', input: { query: code } }));
+  if (codes.length && /примечани|пояснени|классифик/i.test(text)) list.push({ name: 'group_notes', input: { chapter: codes[0].slice(0, 2) } });
+  return list;
+}
+const PRE_NOTE = 'Поиск выполнен по коду из вопроса без модели: направление — ввоз, страна происхождения не задана. '
+  + 'Если в вопросе они названы иначе — повтори search_base с direction/country.\n\n';
 
 // history — [{role:'user'|'assistant', content:string}], последняя реплика пользователя.
 // onStep получает шаги для экрана: {tool, input}.
@@ -463,8 +625,35 @@ async function ask(history, { onStep = () => {}, images = [] } = {}) {
   // придуманный в прошлом ответе, иначе проходил бы проверку в следующем.
   for (const m of history) if (m.role === 'user') for (const code of codesIn(m.content)) seen.add(code);
   const usage = { input: 0, output: 0, cacheRead: 0, costUsd: 0 };
+  const question = history[history.length - 1].content;
+  const hint = { question };
+  const runUses = async (uses) => {
+    const results = [];
+    for (const u of uses) {
+      onStep({ tool: u.name, input: u.input || {} });
+      let result;
+      try { result = await runTool(u, hint); } catch (e) { console.error('assistant tool', u.name, e); result = 'Ошибка инструмента.'; }
+      if (u.name === 'search_base') searched.push(String(u.input?.query || ''));
+      // «Проверен» только тот код, который вернул инструмент: запрос несуществующего
+      // кода сам по себе его не подтверждает.
+      for (const code of codesIn(result)) seen.add(code);
+      seenText.push(result);
+      results.push({ type: 'tool_result', tool_use_id: u.id, content: result });
+    }
+    return results;
+  };
   let verified = false;
-  for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+  let firstRound = 0, preAt = -1;
+  const pre = images.length ? [] : preTools(question);
+  if (pre.length) {
+    const uses = pre.map((t, i) => ({ type: 'tool_use', id: `call_pre_${i}`, name: t.name, input: t.input }));
+    const results = await runUses(uses);
+    results[0].content = PRE_NOTE + results[0].content;
+    preAt = messages.length;
+    messages.push({ role: 'assistant', content: uses }, { role: 'user', content: results });
+    firstRound = 1;
+  }
+  for (let round = firstRound; round <= MAX_TOOL_ROUNDS; round++) {
     // Первый раунд — только поиск: ответить, не заглянув в базу, модель не может.
     // Именно type:'tool' с именем: DeepSeek молча игнорирует type:'any' (проверено
     // 16.09.2026 — на «ping» пришёл текст без вызова), а именованный выбор соблюдает.
@@ -472,7 +661,21 @@ async function ask(history, { onStep = () => {}, images = [] } = {}) {
     const choice = round === 0 ? { type: 'tool', name: 'search_base' } : (round === MAX_TOOL_ROUNDS ? { type: 'none' } : null);
     let data;
     // Упавший на середине вопрос уже стоил денег: расход прошлых раундов уходит с ошибкой в журнал.
-    try { data = await callModel(messages, choice); } catch (e) { e.usage = usage; throw e; }
+    try {
+      data = await callModel(messages, choice);
+    } catch (e) {
+      // Поиск, сделанный сервером, модель ещё не видела: если API отверг такую переписку,
+      // вопрос идёт прежним путём — с принудительного поиска моделью.
+      if (e.status === 400 && preAt >= 0 && round === firstRound) {
+        console.error('assistant: pre-search rejected, falling back:', e.message);
+        messages.splice(preAt, 2);
+        preAt = -1;
+        round = -1;
+        continue;
+      }
+      e.usage = usage;
+      throw e;
+    }
     usage.input += data.usage?.input_tokens || 0;
     usage.output += data.usage?.output_tokens || 0;
     usage.cacheRead += data.usage?.cache_read_input_tokens || 0;
@@ -495,19 +698,7 @@ async function ask(history, { onStep = () => {}, images = [] } = {}) {
       return { answer: keepKnownLinks(answer, seenText.join('\n')), searched, usage, unverified };
     }
     messages.push({ role: 'assistant', content });
-    const results = [];
-    for (const u of uses) {
-      onStep({ tool: u.name, input: u.input || {} });
-      let result;
-      try { result = await runTool(u); } catch (e) { console.error('assistant tool', u.name, e); result = 'Ошибка инструмента.'; }
-      if (u.name === 'search_base') searched.push(String(u.input?.query || ''));
-      // «Проверен» только тот код, который вернул инструмент: запрос несуществующего
-      // кода сам по себе его не подтверждает.
-      for (const code of codesIn(result)) seen.add(code);
-      seenText.push(result);
-      results.push({ type: 'tool_result', tool_use_id: u.id, content: result });
-    }
-    messages.push({ role: 'user', content: results });
+    messages.push({ role: 'user', content: await runUses(uses) });
   }
   // Модель проигнорировала tool_choice «none» в последнем раунде — ответа нет.
   throw Object.assign(new Error('no answer after tool rounds'), { usage });

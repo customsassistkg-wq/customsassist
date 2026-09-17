@@ -121,6 +121,38 @@ const a = require('../src/services/assistant');
   assert.equal(a.searchBase({ query: '' }), 'Пустой запрос.');
   console.log('PASS: search_base — отбор карточек, НДС, ТРОИС, примечания, наименования');
 
+  // ── выдача для модели: меры другого направления, истёкшее, порядок по вопросу ──
+  t = a.searchBase({ query: '8517130000' });
+  assert.doesNotMatch(t, /Требует лицензии|Список 6|не подтверждено первоисточником/);   // экспортный контроль при ввозе
+  assert.doesNotMatch(t, /Ограничение в государстве-члене|Срок действия истёк/);          // запрет вывоза из Беларуси
+  assert.doesNotMatch(t, /Совпадение по коду — не совпадение|Перечни доверенных лиц|#page=/); // пояснение ТРОИС и ссылки на страницы
+  assert.match(t, /Правовая основа:/);
+  assert.match(t, /…и ещё 10 строк/);                                                       // УСИР — пять строк, если не о стоимости
+  assert.match(a.searchBase({ query: '8517130000', direction: 'ex' }), /Требует лицензии/);
+  t = a.searchBase({ query: '0207146001' });
+  assert.doesNotMatch(t, /не предоставляется|Госрегистрация не требуется|Источник сверён|Пояснения к группе|Перечень развивающихся стран/);
+  assert.match(t, /^• 🇦🇪 Ставка ЕАЭС-ОАЭ — /m);                                           // страна не названа — соглашения строкой
+  assert.doesNotMatch(t, /2033/);
+  assert.match(a.searchBase({ query: '0207146001', country: 'ОАЭ' }), /График по всем годам[\s\S]*2033/); // названа — целиком
+  assert.match(a.searchBase({ query: '0207146001' }, { question: 'какие преференции по соглашениям?' }), /2033/);
+  assert.match(a.searchBase({ query: '8517130000', country: 'Беларусь' }), /Ограничение в государстве-члене/);
+  assert.match(a.searchBase({ query: '8517130000' }, { question: 'стоимость по УСИР?' }), /APPLE IPHONE 17 PRO MAX \( 2 TB\)/);
+  // товарная позиция и вопрос о льготах: карточки НДС первыми и целиком, прочие — строкой, без обрезки хвоста
+  t = a.searchBase({ query: '8418' }, { question: 'какие льготы по НДС на холодильники 8418?' });
+  const firstCard = t.split('\n').find((l) => /НДС 0%|ЕТТ ЕАЭС/.test(l));
+  assert.match(firstCard, /НДС 0%/);
+  assert.match(t, /сокращены до строки \(\d+\)/);
+  assert.match(t, /^• \S+ .+ — /m);                                                     // сокращённая карточка — строка с тегом и заголовком
+  assert.doesNotMatch(t, /выдача обрезана/);
+  assert.ok(t.length < 20000, 'длина ' + t.length);
+  const whole = a.searchBase({ query: '8418', full: true }, { question: 'льготы по НДС' });
+  // вес и цена по-русски: без \b, которого между кириллическими буквами нет
+  const firstOf = (text, re) => text.split('\n').find((l) => re.test(l));
+  assert.match(firstOf(a.searchBase({ query: '8418' }, { question: 'сколько платить за вес 500 кг?' }), /НДС 0%|ЕТТ ЕАЭС|УСИР/), /ЕТТ ЕАЭС/);
+  assert.match(firstOf(a.searchBase({ query: '8418' }, { question: 'какая цена по индикаторам?' }), /НДС 0%|ЕТТ ЕАЭС|УСИР|НБ НДС/), /УСИР|НБ НДС/);
+  assert.doesNotMatch(whole, /сокращены до строки/);
+  console.log('PASS: выдача для модели — без мер вывоза и истёкшего, нужное по вопросу первым, прочее строкой');
+
   // ── group_notes ──
   t = a.groupNotes({ chapter: '85' });
   assert.match(t, /Раздел XVI/);
@@ -216,6 +248,47 @@ const a = require('../src/services/assistant');
   r = await a.ask([{ role: 'user', content: 'товар 9999 99 999 8' }, { role: 'assistant', content: 'Берите 9999 99 999 9.' }, { role: 'user', content: 'а ставка?' }]);
   assert.deepEqual(r.unverified, ['9999999999']);
   console.log('PASS: неподтверждённый код — повторная проверка и пометка, прошлый ответ модели не подтверждает');
+
+  // вопрос с кодом и без страны: поиск делает сервер, модель сразу получает выдачу
+  calls.length = 0;
+  script = () => [{ type: 'text', text: 'Код 8517 13 000 0.' }];
+  const preSteps = [];
+  r = await a.ask([{ role: 'user', content: 'Какой НДС на 8517130000?' }], { onStep: (s) => preSteps.push(s) });
+  assert.equal(calls.length, 1, 'один вызов модели вместо двух');
+  assert.equal(calls[0].tool_choice, undefined);
+  assert.deepEqual(calls[0].messages[1].content[0], { type: 'tool_use', id: 'call_pre_0', name: 'search_base', input: { query: '8517130000' } });
+  assert.match(calls[0].messages[2].content[0].content, /^Поиск выполнен по коду из вопроса без модели[\s\S]*НДС 0% по перечню КМ/);
+  assert.deepEqual([r.searched, preSteps.map((s) => s.tool)], [['8517130000'], ['search_base']]);
+  // про примечания — сразу и примечания группы
+  calls.length = 0;
+  await a.ask([{ role: 'user', content: 'Какое примечание определяет смартфон, 8517130000?' }]);
+  assert.deepEqual(calls[0].messages[1].content.map((u) => u.name), ['search_base', 'group_notes']);
+  // названа страна или направление — прежний путь: модель сама задаёт country и direction
+  for (const q of ['Смартфоны 8517130000 из Китая', 'смартфоны 8517130000 из китая', 'Ножки 0207146001 из США', 'Можно ли вывезти 7204100000?', '8517130000, страна происхождения Иран']) {
+    calls.length = 0;
+    script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: '8517130000' } }] : [{ type: 'text', text: 'ок' }]);
+    await a.ask([{ role: 'user', content: q }]);
+    assert.deepEqual(calls[0].tool_choice, { type: 'tool', name: 'search_base' }, q);
+  }
+  // API отверг переписку с поиском сервера — тот же вопрос прежним путём
+  calls.length = 0;
+  let rejected = false;
+  global.fetch = async (url, opts) => {
+    const body = JSON.parse(opts.body);
+    calls.push(body);
+    if (!rejected) { rejected = true; return { ok: false, status: 400, json: async () => ({ error: { message: 'bad tool_use id' } }) }; }
+    return { ok: true, json: async () => ({ content: body.tool_choice ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: '8517130000' } }] : [{ type: 'text', text: 'Код 8517 13 000 0.' }], usage: { input_tokens: 10, output_tokens: 5 } }) };
+  };
+  r = await a.ask([{ role: 'user', content: 'Пошлина на 8517130000?' }]);
+  assert.equal(r.answer, 'Код 8517 13 000 0.');
+  assert.deepEqual(calls[1].tool_choice, { type: 'tool', name: 'search_base' });
+  assert.ok(!JSON.stringify(calls[1].messages).includes('call_pre_'));
+  global.fetch = async (url, opts) => {
+    const body = JSON.parse(opts.body);
+    calls.push(body);
+    return { ok: true, json: async () => ({ content: script(calls.length), usage: { input_tokens: 10, output_tokens: 5 } }) };
+  };
+  console.log('PASS: поиск по коду из вопроса без раунда модели, примечания заодно, страна и направление — модели, откат при 400');
 
   // вопрос, упавший после оплаченного раунда, уносит расход с ошибкой
   let n = 0;
