@@ -128,6 +128,9 @@ const a = require('../src/services/assistant');
   assert.doesNotMatch(t, /Совпадение по коду — не совпадение|Перечни доверенных лиц|#page=/); // пояснение ТРОИС и ссылки на страницы
   assert.match(t, /Правовая основа:/);
   assert.match(t, /…и ещё 10 строк/);                                                       // УСИР — пять строк, если не о стоимости
+  // ТРОИС по 8471 30 — семь знаков: пять, если вопрос не о знаке, и все, если о нём
+  assert.equal((a.searchBase({ query: '8471300000' }).match(/№\d+\/ТЗ/g) || []).length, 5);
+  assert.equal((a.searchBase({ query: '8471300000' }, { question: 'какие товарные знаки?' }).match(/№\d+\/ТЗ/g) || []).length, 7);
   assert.match(a.searchBase({ query: '8517130000', direction: 'ex' }), /Требует лицензии/);
   t = a.searchBase({ query: '0207146001' });
   assert.doesNotMatch(t, /не предоставляется|Госрегистрация не требуется|Источник сверён|Пояснения к группе|Перечень развивающихся стран/);
@@ -202,6 +205,9 @@ const a = require('../src/services/assistant');
   assert.deepEqual([...a.codesIn('8517 13 000 0 и 0207142001, но не 12345678901 и 8517 13')], ['8517130000', '0207142001']);
   assert.equal(a.keepKnownLinks('[ЕТТ](https://customs.gov.kg) и [№30](https://docs.eaeunion.org/d/1/)', 'текст [№30](https://docs.eaeunion.org/d/1/)'),
     'ЕТТ и [№30](https://docs.eaeunion.org/d/1/)');
+  // голый адрес сайта, который лишь начинает адреса из выдачи, ссылкой не остаётся
+  assert.equal(a.keepKnownLinks('[Пост. № 131](https://cbd.minjust.gov.kg/)', 'Документ: [акт](https://cbd.minjust.gov.kg/7-1580/edition/641478/ru)'), 'Пост. № 131');
+  assert.equal(a.keepKnownLinks('[стр.](https://x.kg/a.pdf#page=3)', 'реестр https://x.kg/a.pdf#page=9'), '[стр.](https://x.kg/a.pdf#page=3)');
   console.log('PASS: коды и ссылки в ответе');
 
   // ── цикл модели ──

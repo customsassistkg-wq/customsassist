@@ -158,10 +158,12 @@ function trimCard(card, kind, topics, cty) {
     card = card.replace(/<div><strong>Срок действия истёк \(\d+\):<\/strong><\/div>[\s\S]*?(?=<div><strong>Что это значит:)/, '');
   }
   // УСИР — десятки моделей телефонов; нужен, когда спрашивают о стоимости
-  if (kind === 'value' && !topics.has('value')) card = limitRows(card, 5);
+  if (kind === 'value' && !topics.has('value')) card = limitRows(card, 5, 'полностью — по вопросу о стоимости');
+  // ТРОИС — до десятка знаков по коду; модель перечисляла все, и ответ на голый код выходил втрое длиннее
+  if (kind === 'trois' && !topics.has('trois')) card = limitRows(card, 5, 'полностью — по вопросу о товарном знаке');
   return card;
 }
-function limitRows(card, n) {
+function limitRows(card, n, rest) {
   const at = card.indexOf('<div class="usir-list">');
   if (at < 0) return card;
   const open = at + '<div class="usir-list">'.length;
@@ -170,7 +172,7 @@ function limitRows(card, n) {
   const rows = splitDivs(inner);
   if (rows.length <= n) return card;
   return card.slice(0, open) + inner.slice(0, rows[n - 1].end)
-    + `<div class="uu">…и ещё ${rows.length - n} строк — полностью по запросу о стоимости</div>` + card.slice(close);
+    + `<div class="uu">…и ещё ${rows.length - n} строк, ${rest}</div>` + card.slice(close);
 }
 // Одна строка вместо карточки: теги и заголовок — модель знает, что карточка есть.
 function headline(card) {
@@ -481,7 +483,7 @@ function tools() {
         direction: { type: 'string', enum: ['im', 'ex', 'tr'], description: 'Направление: im — ввоз (по умолчанию), ex — вывоз, tr — транзит' },
         country: { type: 'string', description: 'Страна происхождения — название по-русски (Китай, Казахстан, ОАЭ)' },
         date: { type: 'string', description: 'Дата оформления YYYY-MM-DD, если названа' },
-        full: { type: 'boolean', description: 'true — все карточки целиком, без сокращения до строки' },
+        full: { type: 'boolean', description: 'Только при повторном поиске: true — целиком карточки, пришедшие строкой «• …»' },
       },
       required: ['query'],
     },
@@ -565,8 +567,18 @@ function codesIn(text) {
 
 // Ссылка в ответе, которой не было в выдаче, — выдуманный адрес («[ЕТТ](https://customs.gov.kg)»).
 // Такая ссылка становится обычным текстом; адрес из выдачи остаётся ссылкой.
+// Адрес должен быть в выдаче целиком, а не началом более длинного: «https://cbd.minjust.gov.kg/»
+// входит в каждый адрес реестра, и модель ставила эту голую ссылку на акт, у которого адреса в базе нет
+// (прогон контрольного набора 17.09.2026).
 function keepKnownLinks(answer, toolText) {
-  return answer.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, text, url) => (toolText.includes(url.split('#')[0]) ? m : text));
+  return answer.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (m, text, url) => {
+    const bare = url.split('#')[0];
+    for (let at = toolText.indexOf(bare); at >= 0; at = toolText.indexOf(bare, at + 1)) {
+      const next = toolText[at + bare.length];
+      if (next === undefined || /[\s)#"'<>\]]/.test(next)) return m;
+    }
+    return text;
+  });
 }
 
 async function runTool(u, hint) {
