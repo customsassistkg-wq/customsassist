@@ -4,38 +4,60 @@ const { ask } = require('../services/assistant');
 
 const router = express.Router();
 
-// Тарифы AI-ассистента: месячный лимит вопросов. base входит в подписку.
-// Месяц — календарный по времени Бишкека (UTC+6), как и отчёт для счёта.
+// Тарифы AI-ассистента: лимит вопросов в день и в месяц. base входит в подписку.
+// День и месяц — календарные по времени Бишкека (UTC+6), как и отчёт для счёта.
+// Дневной лимит платных тарифов — примерно вдвое выше среднего расхода месячного
+// (300/30 ≈ 10 → 20, 1000/30 ≈ 33 → 60): в загруженный день хватает, а выбрать
+// месяц за день или делить учётную запись на нескольких человек — нет.
 // Вопрос с ошибкой модели не списывается: пользователь ответа не получил.
-// Администраторы без лимита. Числа можно переопределить: AI_PLAN_LIMITS={"base":100,...}.
+// Администраторы без лимита. Переопределение: AI_PLAN_LIMITS={"base":{"day":3,"month":100},...}.
 const PLANS = {
-  base: { name: 'Базовый', limit: 100 },
-  pro: { name: 'Pro', limit: 300 },
-  max: { name: 'Max', limit: 1000 },
+  base: { name: 'Базовый', day: 3, month: 100 },
+  pro: { name: 'Pro', day: 20, month: 300 },
+  max: { name: 'Max', day: 60, month: 1000 },
 };
 if (process.env.AI_PLAN_LIMITS) {
-  for (const [k, v] of Object.entries(JSON.parse(process.env.AI_PLAN_LIMITS))) if (PLANS[k]) PLANS[k].limit = Number(v);
+  for (const [k, v] of Object.entries(JSON.parse(process.env.AI_PLAN_LIMITS))) {
+    if (!PLANS[k]) continue;
+    if (typeof v === 'number') PLANS[k].month = v;
+    else Object.assign(PLANS[k], v.day != null ? { day: Number(v.day) } : {}, v.month != null ? { month: Number(v.month) } : {});
+  }
 }
 
+const TZ = 6 * 3600e3;
 function bishkekMonth(now = new Date()) {
-  const b = new Date(now.getTime() + 6 * 3600e3);
+  const b = new Date(now.getTime() + TZ);
   const y = b.getUTCFullYear(), m = b.getUTCMonth();
-  return { start: new Date(Date.UTC(y, m, 1) - 6 * 3600e3), next: new Date(Date.UTC(y, m + 1, 1) - 6 * 3600e3) };
+  return { start: new Date(Date.UTC(y, m, 1) - TZ), next: new Date(Date.UTC(y, m + 1, 1) - TZ) };
 }
+function bishkekDay(now = new Date()) {
+  const b = new Date(now.getTime() + TZ);
+  const start = new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate()) - TZ);
+  return { start, next: new Date(start.getTime() + 24 * 3600e3) };
+}
+const ymd = (d) => new Date(d.getTime() + TZ).toISOString().slice(0, 10);
 
 async function quotaFor(user) {
-  const { start, next } = bishkekMonth();
+  const month = bishkekMonth(), day = bishkekDay();
   const { rows } = await pool.query(
-    'select count(*)::int as used from assistant_log where user_id = $1 and created_at >= $2 and error is null',
-    [user.id, start]
+    `select count(*)::int as used, count(*) filter (where created_at >= $3)::int as used_today
+       from assistant_log where user_id = $1 and created_at >= $2 and error is null`,
+    [user.id, month.start, day.start]
   );
-  const used = rows[0]?.used || 0;
-  const plans = Object.fromEntries(Object.entries(PLANS).map(([k, v]) => [k, { name: v.name, limit: v.limit }]));
-  const resets = new Date(next.getTime() + 6 * 3600e3).toISOString().slice(0, 10);
-  if (user.role === 'admin') return { plan: 'admin', name: 'Администратор', limit: null, used, remaining: null, resets, plans };
+  const used = rows[0]?.used || 0, usedToday = rows[0]?.used_today || 0;
+  const plans = Object.fromEntries(Object.entries(PLANS).map(([k, v]) => [k, { name: v.name, day: v.day, month: v.month }]));
+  const base = { used, usedToday, resets: ymd(month.next), tomorrow: ymd(day.next), plans };
+  if (user.role === 'admin') return { plan: 'admin', name: 'Администратор', limit: null, day: null, remaining: null, ...base };
   const plan = PLANS[user.ai_plan] ? user.ai_plan : 'base';
-  const { name, limit } = PLANS[plan];
-  return { plan, name, limit, used, remaining: Math.max(0, limit - used), resets, plans };
+  const p = PLANS[plan];
+  const leftMonth = Math.max(0, p.month - used), leftDay = Math.max(0, p.day - usedToday);
+  return {
+    plan, name: p.name, limit: p.month, day: p.day, ...base,
+    remainingMonth: leftMonth, remainingDay: leftDay,
+    remaining: Math.min(leftMonth, leftDay),
+    // Что держит: исчерпан месяц — ждать завтра бесполезно, поэтому месяц главнее.
+    blockedBy: leftMonth === 0 ? 'month' : (leftDay <= leftMonth ? 'day' : 'month'),
+  };
 }
 
 function guard(req, res) {
@@ -141,4 +163,5 @@ router.post('/rate', async (req, res, next) => {
 
 module.exports = router;
 module.exports.bishkekMonth = bishkekMonth;
+module.exports.bishkekDay = bishkekDay;
 module.exports.PLANS = PLANS;

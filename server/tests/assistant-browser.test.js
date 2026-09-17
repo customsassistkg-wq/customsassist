@@ -16,7 +16,7 @@ const user = { id: 'valid', email: 'test@example.test', role: 'user', active: tr
 const db = { inserts: 0, rated: null };
 require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async (sql, params) => {
   if (/insert into assistant_log/.test(sql)) { db.inserts++; return { rows: [{ id: 42 }] }; }
-  if (/count\(\*\)::int as used/.test(sql)) return { rows: [{ used: db.inserts }] };
+  if (/count\(\*\)::int as used/.test(sql)) return { rows: [{ used: db.inserts, used_today: db.inserts }] };
   if (/update assistant_log/.test(sql)) { db.rated = params; return { rowCount: 1 }; }
   return { rows: [user] };
 } } } };
@@ -86,7 +86,7 @@ app.get('/', (q, r) => r.type('html').send(html));
       assert.match(r.h, /class="ai-code" data-code="8517130000"/);
       assert.match(r.h, /Поиск в базе: 8517130000/);
       assert.match(r.h, /class="ai-rate" data-id="42"/);
-      assert.match(await page.locator('#aiQuota').innerText(), /Тариф «Базовый»: осталось \d+ из 100/);
+      assert.match(await page.locator('#aiQuota').innerText(), /Тариф «Базовый»: сегодня осталось \d+ из 3 · в месяц \d+ из 100/);
       assert.equal(r.msgs, 2);
       const lastUser = lastFirstRequest.messages[lastFirstRequest.messages.length - 1];
       assert.equal(lastUser.content[0].type, 'image');

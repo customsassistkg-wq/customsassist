@@ -8496,20 +8496,22 @@ function renderAiPage(){
 async function aiLoadQuota(){
   try{const res=await apiFetch('/api/assistant/quota');if(res.ok)aiShowQuota(await res.json())}catch(e){}
 }
+const aiDate=d=>d?d.split('-').reverse().join('.'):'';
 function aiShowQuota(q){
   const box=document.getElementById('aiQuota');
   if(!box||!q)return;
-  const till=q.resets?q.resets.split('-').reverse().join('.'):'';
-  if(q.limit==null){box.className='ai-quota';box.textContent=q.name+': без лимита · в этом месяце вопросов: '+q.used;return}
-  box.className='ai-quota'+(q.remaining===0?' out':(q.remaining<=Math.ceil(q.limit*0.1)?' low':''));
-  box.textContent='Тариф «'+q.name+'»: осталось '+q.remaining+' из '+q.limit+' вопросов в месяц · обновится '+till;
+  if(q.limit==null){box.className='ai-quota';box.textContent=q.name+': без лимита · сегодня вопросов: '+q.usedToday+', в этом месяце: '+q.used;return}
+  // «мало» — по тому лимиту, что держит: у Базового 1 из 3 в день — уже повод предупредить
+  const cap=q.blockedBy==='day'?q.day:q.limit;
+  box.className='ai-quota'+(q.remaining===0?' out':(q.remaining<=Math.max(1,Math.ceil(cap*0.1))?' low':''));
+  box.textContent='Тариф «'+q.name+'»: сегодня осталось '+q.remainingDay+' из '+q.day+' · в месяц '+q.remainingMonth+' из '+q.limit;
 }
 function aiQuotaText(q){
   if(!q)return 'Лимит вопросов исчерпан.';
-  const till=q.resets?q.resets.split('-').reverse().join('.'):'';
-  const up=Object.entries(q.plans||{}).filter(([k,p])=>p.limit>q.limit).map(([k,p])=>'«'+p.name+'» — '+p.limit);
-  return 'Лимит тарифа «'+q.name+'» — '+q.limit+' вопросов в месяц — исчерпан. Новые вопросы — с '+till+'.'
-    +(up.length?' Больше вопросов в месяц: '+up.join(', ')+'. Тариф подключает администратор.':'');
+  const up=Object.entries(q.plans||{}).filter(([k,p])=>p.month>q.limit).map(([k,p])=>'«'+p.name+'» — '+p.day+' в день, '+p.month+' в месяц');
+  const more=up.length?' Больше вопросов: '+up.join('; ')+'. Тариф подключает администратор.':'';
+  if(q.blockedBy==='day')return 'На сегодня вопросы закончились: тариф «'+q.name+'» — '+q.day+' в день. Следующий вопрос — '+aiDate(q.tomorrow)+' с 00:00 по Бишкеку.'+more;
+  return 'Лимит тарифа «'+q.name+'» — '+q.limit+' вопросов в месяц — исчерпан. Новые вопросы — с '+aiDate(q.resets)+'.'+more;
 }
 // Фото инвойса сжимается в браузере до 1600 px по длинной стороне (JPEG 0,85):
 // телефонный снимок в 4–12 МБ иначе упирается в лимит запроса, а тексту
@@ -9392,7 +9394,7 @@ function adminUserRowHtml(u){
     +'<td title="Активность в последние 5 минут">'+onlineCell+'</td>'
     +'<td>'+subCell+'</td>'
     +'<td>'+(u.role==='admin'?'без лимита':'<select class="admin-plan-sel" aria-label="AI-тариф">'
-      +[['base','Базовый · 100'],['pro','Pro · 300'],['max','Max · 1000']].map(([v,t])=>'<option value="'+v+'"'+((u.ai_plan||'base')===v?' selected':'')+'>'+t+'</option>').join('')+'</select>')+'</td>'
+      +[['base','Базовый · 3/день · 100/мес'],['pro','Pro · 20/день · 300/мес'],['max','Max · 60/день · 1000/мес']].map(([v,t])=>'<option value="'+v+'"'+((u.ai_plan||'base')===v?' selected':'')+'>'+t+'</option>').join('')+'</select>')+'</td>'
     +'<td>'+(u.created_at?fmtDate(u.created_at):'—')+'</td>'
     +'<td>'+(u.last_login_at?fmtDateTime(u.last_login_at):'—')+'</td>'
     +'<td class="au-actions no-print">'
