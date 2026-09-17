@@ -513,6 +513,23 @@ const a = require('../src/services/assistant');
     assert.deepEqual(bodies.filter((b) => b.vision), [{ vision: true, auth: 'Bearer tok' }]);
     assert.equal(tokens, 1); // токен берётся один раз и живёт час
     assert.deepEqual(a.flatNumbers('7.129,00 · 7,129.00 · 7 129,00 · 6 · 13.08.2026'), ['712900c', '712900c', '712900c', '6', '13082026']);
+    // Положение страницы — из геометрии слов Vision: рамка слова, читаемого снизу вверх, значит лист лежит боком.
+    // Страница разворачивается до чтений, поэтому ни одного чтения модели на неё не тратится.
+    const sideways = [{ x: 10, y: 100 }, { x: 10, y: 40 }, { x: 30, y: 40 }, { x: 30, y: 100 }];
+    const visionWords = (n, v) => ({ responses: [{ fullTextAnnotation: { text: 'x',
+      pages: [{ blocks: [{ paragraphs: [{ words: Array.from({ length: n }, () => ({ boundingBox: { vertices: v } })) }] }] }] } }] });
+    bodies.length = 0;
+    vision = visionWords(30, sideways);
+    r = await a.readPage(page);
+    assert.deepEqual([r.rotate, r.text], [90, undefined]);
+    assert.equal(bodies.filter((b) => !b.vision).length, 0, 'чтения модели не тратятся на повёрнутую страницу');
+    // мало слов — геометрии не верим: страница читается как есть
+    bodies.length = 0;
+    vision = visionWords(5, sideways);
+    r = await a.readPage(page);
+    assert.equal(r.rotate, undefined);
+    assert.equal(bodies.filter((b) => b.max_tokens === 16000).length, 3);
+    vision = { responses: [{ fullTextAnnotation: { text: '19 6 $41.260,35 $247.562,10\nTotal 583.478,40' } }] };
 
     // сверка трёх чтений: основное — полосы (parts), неподтверждённое число заменяется тем, в чём сходятся два чтения
     // целиком, нерешённое большинством — в пометку; формат числа берётся из подтверждающего чтения

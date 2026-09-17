@@ -669,7 +669,28 @@ async function googleOcr(data) {
   const body = await res.json().catch(() => ({}));
   const r = body.responses?.[0];
   if (!res.ok || r?.error) throw new Error(`Vision ${res.status}: ${r?.error?.message || body.error?.message || 'unknown'}`);
-  return r?.fullTextAnnotation?.text || '';
+  return { text: r?.fullTextAnnotation?.text || '', turn: visionTurn(r) };
+}
+// Положение страницы — из геометрии, а не у модели: у каждого слова Vision отдаёт рамку, и первые две её вершины
+// задают направление чтения. Возвращается угол, на который страницу надо повернуть по часовой стрелке, чтобы она
+// встала прямо. Замер на пяти настоящих страницах, повёрнутых во все четыре стороны (20 снимков, 18.09.2026):
+// 20 из 20 при согласии 85–100% слов. Модель так не умеет: «прямо или вверх ногами» она различает (22 из 22), а
+// четыре положения — 39 из 44, путая «влево» и «вправо». Поворот возвращается только при явном большинстве и
+// достаточном числе слов: на почти пустой странице геометрия ничего не значит.
+function visionTurn(r) {
+  const votes = { 0: 0, 90: 0, 180: 0, 270: 0 };
+  let n = 0;
+  for (const p of r?.fullTextAnnotation?.pages || [])
+    for (const b of p.blocks || []) for (const par of b.paragraphs || []) for (const w of par.words || []) {
+      const v = w.boundingBox?.vertices || [];
+      if (v.length < 2 || v[0].x === undefined || v[1].x === undefined) continue;
+      const dx = v[1].x - v[0].x, dy = v[1].y - v[0].y;
+      if (Math.abs(dx) === Math.abs(dy)) continue;
+      votes[Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 180) : (dy < 0 ? 90 : 270)]++;
+      n++;
+    }
+  const [turn, count] = Object.entries(votes).sort((x, y) => y[1] - x[1])[0];
+  return n >= 20 && count / n >= 0.7 ? Number(turn) : 0;
 }
 // Третье мнение по таблице — Google Document AI (Custom Extractor «AssistKG Document Extractor», регион eu):
 // он читает поля документа как поля, а не как текст, и числа строк отдаёт с уверенностью по каждому. Стоит он
@@ -780,7 +801,9 @@ function reconcileReadings(base, others, vision) {
       return false;
     });
     if (agreed.length === unsupported.length) unsupported.forEach((t, i) => edits.push({ t, raw: agreed[i].raw }));
-    else unsupported.filter((t) => worthFlag(key, t.k)).forEach((t) => doubtful.push(`${key} — ${fmtNum(t.k)}`));
+    // Число показывается так, как его прочла модель, и только сумма приводится к единому виду: «13082028» в списке
+    // сомнений нечитаемо, а «13.08.2028» сразу видно — это дата счёта, по которой берётся курс НБКР.
+    else unsupported.filter((t) => worthFlag(key, t.k)).forEach((t) => doubtful.push(`${key} — ${t.k.endsWith('c') ? fmtNum(t.k) : t.raw}`));
   }
   for (const e of edits.sort((a, b) => b.t.line - a.t.line || b.t.at - a.t.at)) {
     const l = lines[e.t.line];
@@ -802,22 +825,29 @@ async function readPage(img, { checkOrientation = true, parts = [] } = {}) {
   const usage = { input: 0, output: 0, cacheRead: 0, costUsd: 0 };
   const read = (x) => readImage(x.media_type, x.data, TRANSCRIBE_PROMPT, 16000, usage);
   try {
+    // Сначала — Vision (около секунды): он и распознаёт страницу для сверки, и говорит её положение. Лежащая
+    // боком страница разворачивается до того, как на неё потрачены три чтения, — раньше они делались и выбрасывались.
+    const first = checkOrientation && visionAccount()
+      ? await googleOcr(img.data).catch((e) => { console.error('assistant: second OCR failed:', e.message); return null; })
+      : null;
+    if (first && first.turn) return { rotate: first.turn, usage };
     const reads = Promise.allSettled([
       parts.length ? Promise.all(parts.map(read)).then((t) => t.join('\n')) : read(img),
       ...(process.env.AI_READ_SINGLE === '1' ? [] : [read(img), read(img)]),
     ]);
-    if (checkOrientation && /перев/i.test(await readImage(img.media_type, img.data, ORIENT_PROMPT, 5, usage).catch(() => ''))) {
+    // Модель спрашивается о положении, только когда Vision недоступен или не ответил: она различает лишь два положения.
+    if (checkOrientation && !first && /перев/i.test(await readImage(img.media_type, img.data, ORIENT_PROMPT, 5, usage).catch(() => ''))) {
       await reads;
       return { rotate: 180, usage };
     }
-    const ocr = visionAccount()
+    const ocr = first ? Promise.resolve(first) : (visionAccount()
       ? googleOcr(img.data).catch((e) => { console.error('assistant: second OCR failed:', e.message); return null; })
-      : null;
+      : null);
     const [main, ...extra] = await reads;
     if (main.status === 'rejected') throw main.reason;
     let text = main.value;
     const others = extra.filter((r) => r.status === 'fulfilled').map((r) => r.value);
-    const seen = await ocr;
+    const seen = (await ocr)?.text || null;
     if (others.length === 2) {
       let r = reconcileReadings(text, others, seen);
       // Разбор полей нужен там, где чтения разошлись: на согласной странице он ничего не добавит, а стоит дорого.

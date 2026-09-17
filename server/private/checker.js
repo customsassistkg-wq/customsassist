@@ -2094,17 +2094,18 @@ function aiShots(cv){
   }
   return shot;
 }
-// Одна страница: shoot(flip) рисует её (flip — перевёрнутой на 180°). Сервер отвечает расшифровкой или {rotate: 180} —
-// тогда страница рисуется заново повёрнутой, а не пересжимается готовый JPEG (пересжатие само портило цифры), и уходит
-// снова уже без вопроса о положении. Рисуется страница, когда до неё дошла очередь, — в памяти не больше трёх разом.
+// Одна страница: shoot(turn) рисует её повёрнутой на turn градусов по часовой стрелке. Сервер отвечает расшифровкой
+// или {rotate: 90|180|270} — тогда страница рисуется заново повёрнутой, а не пересжимается готовый JPEG (пересжатие само
+// портило цифры), и уходит снова уже без вопроса о положении: положение сервер берёт из геометрии слов Google Vision,
+// точно на четыре стороны. Рисуется страница, когда до неё дошла очередь, — в памяти не больше трёх разом.
 async function aiReadPage(doc,shoot,label){
-  let shot=await shoot(false),checked=false;
+  let shot=await shoot(0),checked=false;
   for(;;){
     if(doc.cancelled)throw new Error('cancelled');
     if(doc.stopped)throw new Error(doc.stopped);
     const res=await apiFetch('/api/assistant/read',{method:'POST',body:JSON.stringify({image:shot.image,parts:shot.parts,name:label,checked:checked})});
     const data=await res.json().catch(()=>({}));
-    if(res.ok&&data.rotate&&!checked){shot=await shoot(true);checked=true;continue}
+    if(res.ok&&data.rotate&&!checked){shot=await shoot(data.rotate);checked=true;continue}
     if(res.ok&&typeof data.text==='string')return data.text;
     if(data.error==='page_quota_exceeded')doc.stopped=aiPageQuotaText(data.quota);
     throw new Error(doc.stopped||AI_ERR[data.error]||'ошибка '+res.status);
@@ -2156,13 +2157,13 @@ async function aiReadPdf(file,doc){
       // в документ снимком, в текстовом слое отсутствует.
       if(!scan&&im.cover<0.3)continue;
       let side=false;
-      const shoot=async flip=>{
+      const shoot=async turn=>{
         const base=page.getViewport({scale:1});
-        const vp=page.getViewport({scale:2400/Math.max(base.width,base.height),rotation:(page.rotate+(flip?180:0))%360});
+        const vp=page.getViewport({scale:2400/Math.max(base.width,base.height),rotation:(page.rotate+(turn||0))%360});
         let cv=document.createElement('canvas');
         cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
         await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-        if(!flip)side=aiSideways(cv);
+        if(!turn)side=aiSideways(cv);
         if(side)cv=aiRotateCanvas(cv);
         return aiShots(cv);
       };
@@ -2177,13 +2178,13 @@ async function aiReadPdf(file,doc){
 async function aiReadPhoto(file,doc){
   const bmp=await createImageBitmap(file),jobs=[];
   doc.pages=1;
-  const shoot=async flip=>{
+  const shoot=async turn=>{
     const k=Math.min(1,2400/Math.max(bmp.width,bmp.height));
-    const cv=document.createElement('canvas');
+    let cv=document.createElement('canvas');
     cv.width=Math.max(1,Math.round(bmp.width*k));cv.height=Math.max(1,Math.round(bmp.height*k));
     const x=cv.getContext('2d');
-    if(flip){x.translate(cv.width,cv.height);x.rotate(Math.PI)}
     x.drawImage(bmp,0,0,cv.width,cv.height);
+    for(let i=(turn||0)/90;i>0;i--)cv=aiRotateCanvas(cv);
     return aiShots(cv);
   };
   aiQueuePage(doc,jobs,shoot,file.name,()=>'— изображение (расшифровка) —');
