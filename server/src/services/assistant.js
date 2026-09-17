@@ -671,6 +671,42 @@ async function googleOcr(data) {
   if (!res.ok || r?.error) throw new Error(`Vision ${res.status}: ${r?.error?.message || body.error?.message || 'unknown'}`);
   return r?.fullTextAnnotation?.text || '';
 }
+// Третье мнение по таблице — Google Document AI (Custom Extractor «AssistKG Document Extractor», регион eu):
+// он читает поля документа как поля, а не как текст, и числа строк отдаёт с уверенностью по каждому. Стоит он
+// 3 цента и около 30 секунд на страницу против 0,5 цента и 40 секунд у трёх чтений модели, поэтому вызывается
+// только тогда, когда сверка трёх чтений не сошлась на числе, от которого зависит расчёт. Процессор —
+// OCR_DOCAI_PROCESSOR («eu/6d6d7c780082ca2c» или полный путь projects/…/processors/…), ключ — тот же
+// OCR_GOOGLE_SA. Схема полей задаётся в консоли и применяется на лету: версия-основание (invoice-cmr-foundation-v1)
+// не обучается на примерах, поэтому поле, добавленное в схему, появляется в ответе сразу, а выключенное — исчезает.
+const DOCAI_USD = Number(process.env.OCR_DOCAI_PRICE || 0.03);
+function docaiUrl() {
+  const sa = visionAccount(), p = process.env.OCR_DOCAI_PROCESSOR || '';
+  if (!sa || !p) return null;
+  const full = p.startsWith('projects/') ? p : `projects/${sa.project_id}/locations/${p.split('/')[0]}/processors/${p.split('/').pop()}`;
+  return `https://${full.split('/')[3]}-documentai.googleapis.com/v1/${full}:process`;
+}
+// Ответ — дерево сущностей: поля документа (grand_total, invoice_number…) и строки таблицы со своими полями.
+// Дерево разворачивается в строки текста: они идут и в расшифровку страницы, и в сверку — как подтверждение чисел.
+async function docaiRead(img) {
+  const res = await fetch(docaiUrl(), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + await googleToken(visionAccount()) },
+    body: JSON.stringify({ rawDocument: { content: img.data, mimeType: img.media_type }, skipHumanReview: true }),
+    signal: AbortSignal.timeout(180000),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Document AI ${res.status}: ${body.error?.message || 'unknown'}`);
+  const rows = [], fields = [];
+  const walk = (e, row) => {
+    const kids = e.properties || [];
+    if (!kids.length) (row || fields).push(`${e.type}: ${(e.mentionText || '').replace(/\s+/g, ' ').trim()}`);
+    else if (/item/i.test(e.type)) { const own = []; rows.push(own); kids.forEach((k) => walk(k, own)); }
+    else kids.forEach((k) => walk(k, row));
+  };
+  (body.document?.entities || []).forEach((e) => walk(e, null));
+  if (!rows.length && !fields.length) return null;
+  return [...fields, ...rows.map((r, i) => `строка ${i + 1} — ${r.join('; ')}`)].join('\n');
+}
 // Число в тексте — ключ: сумма (дробная часть в одну-две цифры) — в копейках с пометкой «c», целое — как напечатано
 // («000506» — номер, а не 506). «7.129,00», «7,129.00» и «7 129,00» — одно число: разделитель перед последними одной-двумя
 // цифрами — дробный, а пробел считается разделителем разрядов, только если за ним ровно три цифры.
@@ -767,11 +803,20 @@ async function readPage(img, { checkOrientation = true, parts = [] } = {}) {
     const others = extra.filter((r) => r.status === 'fulfilled').map((r) => r.value);
     const seen = await ocr;
     if (others.length === 2) {
-      const r = reconcileReadings(text, others, seen);
+      let r = reconcileReadings(text, others, seen);
+      // Разбор полей нужен там, где чтения разошлись: на согласной странице он ничего не добавит, а стоит дорого.
+      const docai = r.doubtful.length && docaiUrl()
+        ? await docaiRead(img).catch((e) => { console.error('assistant: Document AI failed:', e.message); return null; })
+        : null;
+      if (docai) {
+        usage.costUsd += DOCAI_USD;
+        r = reconcileReadings(text, others, (seen || '') + '\n' + docai);
+      }
       text = r.text + (r.doubtful.length
         ? `\n[Не подтверждено повторным чтением: ${r.doubtful.slice(0, 12).join('; ')}${r.doubtful.length > 12 ? `; и ещё ${r.doubtful.length - 12}` : ''}. `
           + 'Эти числа могут быть прочитаны неверно — назови их пользователю, чтобы он сверил с оригиналом.]'
-        : '');
+        : '')
+        + (docai ? '\n[Разбор полей документа (Google Document AI, машинное чтение полей; при расхождении с таблицей выше верь ему):\n' + docai + ']' : '');
     }
     return { text, usage };
   } catch (e) {

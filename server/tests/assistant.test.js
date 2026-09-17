@@ -539,6 +539,37 @@ const a = require('../src/services/assistant');
     assert.match(r.text, /^\| 1 \| ST-192 \| 1 \| \$7\.129,00 \| \$7\.129,00 \|\n\| 19 \| ST-192 \| 6 \| \$41\.260,35/);
     assert.match(r.text, /\nGrand Total: \$583\.478,40\n/);
     assert.match(r.text, /\[Не подтверждено повторным чтением: строка 20 — 15,00\. Эти числа могут быть прочитаны неверно/);
+    // Document AI вызывается только при нерешённом расхождении: его поля подтверждают число и идут в расшифровку
+    process.env.OCR_DOCAI_PROCESSOR = 'eu/6d6d7c780082ca2c';
+    const modelFetch = global.fetch;
+    let docaiCalls = [];
+    global.fetch = async (url, opts) => {
+      if (!/documentai\.googleapis\.com/.test(url)) return modelFetch(url, opts);
+      docaiCalls.push(url);
+      return { ok: true, json: async () => ({ document: { entities: [
+        { type: 'invoice_details', properties: [
+          { type: 'grand_total', mentionText: '$583.478,40' },
+          { type: 'line_item', properties: [{ type: 'code', mentionText: 'PRJ 000520' }, { type: 'net_weight', mentionText: '15,00' }, { type: 'total_price', mentionText: '$10.545,00' }] },
+        ] },
+      ] } }) };
+    };
+    fullRead = 0;
+    r = await a.readPage(page, { parts: parts2 });
+    assert.deepEqual(docaiCalls, ['https://eu-documentai.googleapis.com/v1/projects/undefined/locations/eu/processors/6d6d7c780082ca2c:process']);
+    assert.doesNotMatch(r.text, /Не подтверждено повторным чтением/); // «15,00» подтверждено разбором полей
+    assert.match(r.text, /\[Разбор полей документа \(Google Document AI[^\]]*\ngrand_total: \$583\.478,40\nстрока 1 — code: PRJ 000520; net_weight: 15,00; total_price: \$10\.545,00\]$/);
+    assert.ok(r.usage.costUsd >= 0.03, 'страница разбора в расходе: ' + r.usage.costUsd);
+    // на согласной странице разбор не вызывается — он стоит 3 цента и полминуты
+    docaiCalls = [];
+    global.fetch = async (url, opts) => {
+      if (/documentai\.googleapis\.com/.test(url)) { docaiCalls.push(url); return { ok: true, json: async () => ({ document: { entities: [] } }) }; }
+      if (/googleapis\.com/.test(url)) return modelFetch(url, opts);
+      return { ok: true, json: async () => ({ content: [{ type: 'text', text: '| 1 | ST-192 | 1 | $7.129,00 | $7.129,00 |' }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }) };
+    };
+    r = await a.readPage(page, { checkOrientation: false });
+    assert.ok(docaiCalls.length === 0 && r.usage.costUsd < 0.03, JSON.stringify([docaiCalls, r.usage.costUsd]));
+    delete process.env.OCR_DOCAI_PROCESSOR;
+    global.fetch = modelFetch;
     // без Google решает большинство чтений модели — и ошибается на количестве
     delete process.env.OCR_GOOGLE_SA;
     require('node:fs').unlinkSync(saFile);
