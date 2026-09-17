@@ -265,7 +265,8 @@ router.get('/assistant/billing', async (req, res, next) => {
     const [y, m] = month.split('-').map(Number);
     const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
     const { rows } = await pool.query(
-      `select u.email, u.ai_plan, count(*)::int as questions,
+      `select u.email, u.ai_plan, count(*) filter (where l.kind = 'question')::int as questions,
+              count(*) filter (where l.kind = 'read' and l.error is null)::int as pages,
               count(*) filter (where l.error is not null)::int as errors,
               sum(l.input_tokens)::int as input_tokens, sum(l.cache_read_tokens)::int as cache_read_tokens,
               sum(l.output_tokens)::int as output_tokens, round(sum(l.cost_usd), 6)::float as cost_usd
@@ -288,7 +289,8 @@ router.get('/assistant', async (req, res, next) => {
     const onlyBad = req.query.rating === '-1';
     const [totals, recent] = await Promise.all([
       pool.query(
-        `select u.email, count(*)::int as questions, sum(l.input_tokens)::int as input_tokens,
+        `select u.email, count(*) filter (where l.kind = 'question')::int as questions,
+                count(*) filter (where l.kind = 'read' and l.error is null)::int as pages, sum(l.input_tokens)::int as input_tokens,
                 sum(l.output_tokens)::int as output_tokens,
                 count(*) filter (where l.rating = 1)::int as good, count(*) filter (where l.rating = -1)::int as bad,
                 count(*) filter (where l.error is not null)::int as errors, max(l.created_at) as last_at, round(sum(l.cost_usd), 4)::float as cost_usd
@@ -300,7 +302,7 @@ router.get('/assistant', async (req, res, next) => {
         `select l.id, u.email, l.created_at, l.question, l.answer, l.searched, l.unverified, l.rating, l.comment,
                 l.error, l.input_tokens, l.output_tokens, l.duration_ms
            from assistant_log l join users u on u.id = l.user_id
-          ${onlyBad ? 'where l.rating = -1' : ''}
+          where l.kind = 'question'${onlyBad ? ' and l.rating = -1' : ''}
           order by l.created_at desc limit 100`
       ),
     ]);

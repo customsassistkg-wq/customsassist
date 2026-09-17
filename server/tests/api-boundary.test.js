@@ -34,6 +34,8 @@ const app = require('../src/index');
     // без входа большое тело помощника не разбирается: битый JSON на 2 МБ получает 401, а не ошибку разбора
     r = await post('/api/assistant', '{"messages":[' + big);
     assert.equal(r.status, 401);
+    r = await post('/api/assistant/read', '{"image":' + big);
+    assert.equal(r.status, 401);
 
     // нестроковый пароль — 400, а не 500 из bcrypt (длина массива 8 проходила проверку длины)
     r = await post('/api/auth/register', JSON.stringify({ email: 'new@test.local', password: ['1', '2', '3', '4', '5', '6', '7', '8'] }));
@@ -50,7 +52,10 @@ const app = require('../src/index');
     assert.deepEqual([r.status, (await r.json()).error], [400, 'bad_request']);
     r = await post('/api/assistant', '{"messages":[' + big, { cookie });
     assert.deepEqual([r.status, (await r.json()).error], [400, 'entity.parse.failed']);
-    console.log('PASS: Origin обязателен; тело помощника разбирается только после входа; типы полей; 413 и 400 вместо 500');
+    // страница документа — больше общих 100 КБ и тоже доходит до маршрута
+    r = await post('/api/assistant/read', JSON.stringify({ image: { media_type: 'image/gif', data: big } }), { cookie });
+    assert.deepEqual([r.status, (await r.json()).error], [400, 'bad_image']);
+    console.log('PASS: Origin обязателен; тело помощника и страницы документа разбирается только после входа; типы полей; 413 и 400 вместо 500');
   } finally {
     server.close();
   }

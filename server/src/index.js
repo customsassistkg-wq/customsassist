@@ -23,12 +23,12 @@ app.disable('x-powered-by');
 // reverse proxy described in CLAUDE.md's deploy notes.
 app.set('trust proxy', 1);
 
-// Помощник принимает фото инвойсов (до 4 изображений в base64) — остальному API
+// Помощник принимает страницы документов в base64 (/read — по одной; вопрос — со старых вкладок) — остальному API
 // хватает стандартных 100 КБ, и поднимать лимит для всех незачем. Большое тело
 // разбирается только после проверки сессии (ниже, после authMiddleware): до
 // 17.09.2026 его разбирал любой запрос без входа, и 15-мегабайтные JSON грузили
 // процесс раньше, чем маршрут отвечал 401.
-const ASSISTANT_PATH = /^\/api\/assistant\/?$/;
+const ASSISTANT_PATH = /^\/api\/assistant(?:\/read)?\/?$/;
 const jsonDefault = express.json();
 const jsonAssistant = express.json({ limit: '15mb' });
 app.use((req, res, next) => (ASSISTANT_PATH.test(req.path) ? next() : jsonDefault(req, res, next)));

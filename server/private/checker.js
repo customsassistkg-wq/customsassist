@@ -1557,48 +1557,42 @@ function colIndex(ref){
   return n-1;
 }
 
-// Возвращает лист как массив массивов строк.
-async function readXlsx(buf){
-  const entries=zipEntries(buf);
-  // Первый лист книги, а не sheet1.xml по имени: порядок файлов в архиве не
-  // обязан совпадать с порядком листов, а пользователь кладёт данные на первый.
-  let sheetPath='xl/worksheets/sheet1.xml';
-  try{
-    const wb=await zipRead(entries,'xl/workbook.xml');
-    const rels=await zipRead(entries,'xl/_rels/workbook.xml.rels');
-    if(wb&&rels){
-      const dom=new DOMParser().parseFromString(wb,'application/xml');
-      const sh=dom.getElementsByTagName('sheet')[0];
-      const rid=sh&&(sh.getAttribute('r:id')||sh.getAttribute('id'));
-      if(rid){
-        const rdom=new DOMParser().parseFromString(rels,'application/xml');
-        for(const r of rdom.getElementsByTagName('Relationship')){
-          if(r.getAttribute('Id')===rid){
-            let t=r.getAttribute('Target')||'';
-            t=t.replace(/^\/?xl\//,'').replace(/^\.\//,'');
-            sheetPath='xl/'+t;
-          }
-        }
-      }
-    }
-  }catch(e){}
-  let sheetXml=await zipRead(entries,sheetPath);
-  if(!sheetXml){
-    const any=Object.keys(entries).filter(k=>/^xl\/worksheets\/.*\.xml$/.test(k)).sort()[0];
-    if(!any)throw new Error('в файле нет листов');
-    sheetXml=await zipRead(entries,any);
-  }
+// Все листы книги по порядку — массивами массивов строк. Порядок и файлы листов — из workbook.xml и его
+// связей, а не по именам: порядок файлов в архиве не обязан совпадать с порядком листов, а файл листа может
+// называться как угодно. Калькулятор берёт первый лист (readXlsx), чат помощника — все: инвойс и упаковочный
+// лист часто лежат в одной книге на разных листах.
+async function readXlsxSheets(buf){
+  const entries=zipEntries(buf),xmlDom=s=>new DOMParser().parseFromString(s,'application/xml');
   const shared=[];
   const ssXml=await zipRead(entries,'xl/sharedStrings.xml');
   if(ssXml){
-    const sdom=new DOMParser().parseFromString(ssXml,'application/xml');
-    for(const si of sdom.getElementsByTagName('si')){
+    for(const si of xmlDom(ssXml).getElementsByTagName('si')){
       let s='';
       for(const t of si.getElementsByTagName('t'))s+=t.textContent;
       shared.push(s);
     }
   }
-  const dom=new DOMParser().parseFromString(sheetXml,'application/xml');
+  const sheets=[];
+  try{
+    const wb=await zipRead(entries,'xl/workbook.xml'),rels=await zipRead(entries,'xl/_rels/workbook.xml.rels');
+    if(wb&&rels){
+      const target={};
+      for(const r of xmlDom(rels).getElementsByTagName('Relationship'))target[r.getAttribute('Id')]='xl/'+(r.getAttribute('Target')||'').replace(/^\/?xl\//,'').replace(/^\.\//,'');
+      for(const sh of xmlDom(wb).getElementsByTagName('sheet')){
+        const p=target[sh.getAttribute('r:id')||sh.getAttribute('id')];
+        const xml=p&&await zipRead(entries,p);
+        if(xml)sheets.push({name:sh.getAttribute('name')||'',rows:xlsxRows(xmlDom(xml),shared)});
+      }
+    }
+  }catch(e){}
+  if(!sheets.length){
+    const any=Object.keys(entries).filter(k=>/^xl\/worksheets\/.*\.xml$/.test(k)).sort()[0];
+    if(!any)throw new Error('в файле нет листов');
+    sheets.push({name:'',rows:xlsxRows(xmlDom(await zipRead(entries,any)),shared)});
+  }
+  return sheets;
+}
+function xlsxRows(dom,shared){
   const rows=[];
   for(const row of dom.getElementsByTagName('row')){
     const cells=[];
@@ -1621,6 +1615,16 @@ async function readXlsx(buf){
     rows.push(cells);
   }
   return rows;
+}
+// Возвращает первый лист книги как массив массивов строк.
+async function readXlsx(buf){
+  return (await readXlsxSheets(buf))[0].rows;
+}
+// Текстовый файл — в UTF-8, а если так не читается, в windows-1251: CSV из Excel в русской локали
+// сохраняется именно в ней, и file.text() превращал кириллицу в знаки замены.
+async function fileText(file){
+  const buf=await file.arrayBuffer(),t=new TextDecoder('utf-8').decode(buf);
+  return t.indexOf(String.fromCharCode(0xfffd))>=0?new TextDecoder('windows-1251').decode(buf):t;
 }
 
 function readCsv(text){
@@ -1752,7 +1756,7 @@ async function onSpecFile(input){
     if(/\.xlsx$/i.test(file.name)){
       rows=await readXlsx(await file.arrayBuffer());
     } else {
-      rows=readCsv(await file.text());
+      rows=readCsv(await fileText(file));
     }
     if(!rows.length)throw new Error('файл пустой');
     const {recs,cut}=await specRowsToItems(rows);
@@ -1895,7 +1899,7 @@ function updateNavActive(){
 // перезагрузку, но не выход): сервер получает её хвост с каждым вопросом.
 // Ответ модели — Markdown; перед разметкой всё экранируется через esc(),
 // ссылки пропускаются только http(s), коды ТН ВЭД становятся переходом к карточке.
-let aiHistory=[],aiBusy=false,aiImages=[],aiDocs=[],aiPdfBusy=0,aiFileNote='';
+let aiHistory=[],aiBusy=false,aiDocs=[],aiFileNote='';
 function aiStoreKey(){return currentUser&&currentUser.email?'ca-ai-'+currentUser.email.toLowerCase():''}
 function aiSave(){try{const k=aiStoreKey();if(k)sessionStorage.setItem(k,JSON.stringify(aiHistory.slice(-40)))}catch(e){}}
 function aiLoad(){try{const k=aiStoreKey();const v=k&&sessionStorage.getItem(k);const a=v?JSON.parse(v):[];return Array.isArray(a)?a:[]}catch(e){return []}}
@@ -1924,27 +1928,27 @@ function aiMark(size){
   const id='aiGrad'+(++aiMarkSeq);
   return '<svg class="ai-mark" width="'+size+'" height="'+size+'" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="'+id+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B5CF6"/><stop offset=".5" stop-color="#3B6BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="13" fill="url(#'+id+')"/><path d="M4 15C4 8 8 4 15 4h18c7 0 11 4 11 11v2C33 13 17 13 4 21z" fill="#fff" opacity=".13"/><path d="M22 11c1.2 6.3 4.7 9.8 11 11-6.3 1.2-9.8 4.7-11 11-1.2-6.3-4.7-9.8-11-11 6.3-1.2 9.8-4.7 11-11z" fill="#fff"/><path d="M35 8c.5 2.6 1.9 4 4.5 4.5-2.6.5-4 1.9-4.5 4.5-.5-2.6-1.9-4-4.5-4.5 2.6-.5 4-1.9 4.5-4.5z" fill="#fff" opacity=".85"/><circle cx="34.5" cy="34.5" r="2.2" fill="#fff" opacity=".7"/></svg>';
 }
-const AI_HELLO_CHIPS=['Пошлина и ограничения на смартфоны из Китая','Сколько платить: 1000 кг куриных ножек 0207146001 из США на 2000 USD','📎 Разобрать инвойс: фото или PDF'];
+const AI_HELLO_CHIPS=['Пошлина и ограничения на смартфоны из Китая','Сколько платить: 1000 кг куриных ножек 0207146001 из США на 2000 USD','📎 Разобрать документы: PDF, фото, Excel, Word'];
 function aiHelloHtml(){
   return '<div class="ai-hello" id="aiHello"><div class="ai-hello-mark">'+aiMark(72)+'</div>'
-    +'<h3>Чем помочь?</h3><p>Опишите товар, назовите код ТН ВЭД или приложите фото или PDF инвойса. Ассистент ищет в базе CustomsAssistKG и отвечает по найденным карточкам.</p>'
+    +'<h3>Чем помочь?</h3><p>Опишите товар, назовите код ТН ВЭД или приложите инвойс и другие документы — PDF, фото, Excel, Word. Ассистент ищет в базе CustomsAssistKG и отвечает по найденным карточкам.</p>'
     +'<div class="ai-chips">'+AI_HELLO_CHIPS.map((c,i)=>'<button type="button" class="ai-chip" data-chip="'+i+'">'+esc(c)+'</button>').join('')+'</div></div>';
 }
 function renderAiPage(){
   const box=document.getElementById('pageAi');
   if(box.querySelector('#aiLog'))return;
   // Страница строится заново после выхода (resetAppView стирает #pageAi): вложения прежнего
-  // пользователя — фото и текст его PDF — не должны уйти с вопросом следующего.
-  aiImages=[];aiDocs=[];aiFileNote='';
+  // пользователя — текст его документов — не должны уйти с вопросом следующего.
+  aiDocs=[];aiFileNote='';
   if(!aiHistory.length)aiHistory=aiLoad();
   box.innerHTML='<div class="card"><div class="ai-head"><div class="ai-head-t">'+aiMark(44)+'<div><div class="ai-name">AI-ассистент</div><div class="ai-sub">Предварительный анализ по базе CustomsAssistKG, а не решение таможенного органа</div></div></div>'
     +'<button class="btn" type="button" id="aiNewBtn">Новый диалог</button></div>'
     +'<div class="ai-log" id="aiLog">'+(aiHistory.length?'':aiHelloHtml())+'</div>'
     +'<div class="ai-thumbs" id="aiThumbs"></div>'
-    +'<form class="ai-form" id="aiForm"><label class="btn ai-attach" title="Фото, скан или PDF инвойса">📎<input type="file" id="aiFile" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple hidden></label>'
+    +'<form class="ai-form" id="aiForm"><label class="btn ai-attach" title="PDF, фото или скан, Excel, CSV, Word">📎<input type="file" id="aiFile" accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.csv,text/csv,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden></label>'
     +'<textarea id="aiInput" rows="2" placeholder="Например: смартфоны из Китая, 200 шт. на 30 000 USD — сколько платить и что нужно?"></textarea>'
     +'<button class="calc-btn" id="aiSendBtn" type="submit">Спросить</button></form>'
-    +'<div class="ai-note">Enter — отправить, Shift+Enter — новая строка. 📎 — фото, скан или PDF инвойса (JPG, PNG, PDF): до 8 изображений и 3 PDF. Коды в ответе открывают карточку.</div>'
+    +'<div class="ai-note">Enter — отправить, Shift+Enter — новая строка. 📎 — PDF, фото или скан, Excel, CSV, Word (до '+AI_PDF_MAX_PAGES+' страниц в файле): документ читается сразу и остаётся в диалоге для следующих вопросов; нажмите на него, чтобы сверить прочитанное. Коды в ответе открывают карточку.</div>'
     +'<div class="ai-quota" id="aiQuota"></div></div>';
   document.getElementById('aiForm').addEventListener('submit',aiSend);
   document.getElementById('aiInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey)aiSend(e)});
@@ -1952,9 +1956,10 @@ function renderAiPage(){
   document.getElementById('aiLog').addEventListener('click',aiLogClick);
   document.getElementById('aiFile').addEventListener('change',e=>{aiAddFiles(e.target.files);e.target.value=''});
   document.getElementById('aiThumbs').addEventListener('click',e=>{
-    const r=e.target.closest('[data-rot]');if(r){aiRotateImage(+r.dataset.rot);return}
-    const x=e.target.closest('[data-rm]');if(x){aiImages.splice(+x.dataset.rm,1);aiRenderThumbs();return}
-    const y=e.target.closest('[data-rm-doc]');if(y){aiDocs.splice(+y.dataset.rmDoc,1);aiRenderThumbs()}
+    const x=e.target.closest('[data-rm-doc]');
+    if(x){const d=aiDocs[+x.dataset.rmDoc];if(d){d.cancelled=true;aiDocs.splice(aiDocs.indexOf(d),1)}aiRenderThumbs();return}
+    const v=e.target.closest('[data-view-doc]');
+    if(v&&aiDocs[+v.dataset.viewDoc])aiShowDoc(aiDocs[+v.dataset.viewDoc]);
   });
   for(const m of aiHistory)aiAppend(m);
   aiLoadQuota();
@@ -1971,7 +1976,8 @@ function aiShowQuota(q){
   // «мало» — по тому лимиту, что держит: у Базового 1 из 3 в день — уже повод предупредить
   const cap=q.blockedBy==='day'?q.day:q.limit;
   box.className='ai-quota'+(q.remaining===0?' out':(q.remaining<=Math.max(1,Math.ceil(cap*0.1))?' low':''));
-  box.textContent='Тариф «'+q.name+'»: сегодня осталось '+q.remainingDay+' из '+q.day+' · в месяц '+q.remainingMonth+' из '+q.limit;
+  box.textContent='Тариф «'+q.name+'»: сегодня осталось '+q.remainingDay+' из '+q.day+' · в месяц '+q.remainingMonth+' из '+q.limit
+    +(q.pagesToday&&q.pagesRemaining!=null?' · страниц документов можно прочитать ещё '+q.pagesRemaining:'');
 }
 function aiQuotaText(q){
   if(!q)return 'Лимит вопросов исчерпан.';
@@ -1980,28 +1986,18 @@ function aiQuotaText(q){
   if(q.blockedBy==='day')return 'На сегодня вопросы закончились: тариф «'+q.name+'» — '+q.day+' в день. Следующий вопрос — '+aiDate(q.tomorrow)+' с 00:00 по Бишкеку.'+more;
   return 'Лимит тарифа «'+q.name+'» — '+q.limit+' вопросов в месяц — исчерпан. Новые вопросы — с '+aiDate(q.resets)+'.'+more;
 }
-// Фото инвойса сжимается в браузере до 1600 px по длинной стороне (JPEG 0,85):
-// телефонный снимок в 4–12 МБ иначе упирается в лимит запроса, а тексту
-// документа такого разрешения хватает с запасом.
-async function aiResize(file){
-  const bmp=await createImageBitmap(file);
-  const k=Math.min(1,1600/Math.max(bmp.width,bmp.height));
-  const cv=document.createElement('canvas');
-  cv.width=Math.round(bmp.width*k);cv.height=Math.round(bmp.height*k);
-  cv.getContext('2d').drawImage(bmp,0,0,cv.width,cv.height);
-  const url=cv.toDataURL('image/jpeg',0.85);
-  return {media_type:'image/jpeg',data:url.slice(url.indexOf(',')+1),url:url};
-}
-// PDF инвойса разбирается здесь же, в браузере, библиотекой pdf.js со своего сервера
-// (/vendor/pdfjs-*: CSP не пускает скрипты с чужих адресов, а сама библиотека грузится только
-// при первом вложенном PDF). Страница с текстовым слоем уходит модели текстом: точные цифры, коды
-// и иероглифы дешевле и надёжнее, чем распознавание с картинки. Страница без него (скан) рисуется
-// в изображение и идёт тем же путём, что фото. WebAssembly выключен: иначе CSP
-// пришлось бы разрешить компиляцию кода, а декодерам сканов хватает запасных на JS.
+// Документы чата читаются здесь же, в браузере. PDF разбирает pdf.js со своего сервера (/vendor/pdfjs-*:
+// CSP не пускает скрипты с чужих адресов; библиотека грузится при первом PDF). WebAssembly выключен: иначе
+// CSP пришлось бы разрешить компиляцию кода, а декодерам сканов хватает запасных на JS. Страница с
+// текстовым слоем, таблица Excel или CSV и документ Word уходят модели текстом: точные цифры, коды и
+// иероглифы дешевле и надёжнее распознавания. Скан и фото отправляются на сервер по одной странице
+// (/api/assistant/read) сразу при прикреплении и возвращаются расшифровкой, поэтому длинный документ не
+// упирается в размер запроса. Прочитанное остаётся в диалоге (docs у реплики пользователя) и уходит с
+// каждым вопросом — уточняющие вопросы видят документ.
 const PDFJS_PATH='/vendor/pdfjs-6.3.289/';
-// Изображений — не больше 8 за вопрос: к каждому при отправке добавляется копия, повёрнутая на 180°
-// (см. aiSend), и восемь страниц с копиями укладываются в лимит запроса 15 МБ.
-const AI_PDF_MAX_PAGES=10,AI_PDF_MAX_CHARS=60000,AI_MAX_IMAGES=8;
+// До 60 страниц в файле, 12 файлов за вопрос, 30 в диалоге и 300 тыс. знаков документов на диалог —
+// последние два предела проверяет и сервер.
+const AI_PDF_MAX_PAGES=60,AI_MAX_DOCS=12,AI_DIALOG_MAX_DOCS=30,AI_DOCS_MAX_CHARS=300000;
 let aiPdfLib=null;
 // Текст страницы из элементов pdf.js. Строка — по положению на странице (с допуском на верхние индексы
 // «м³»), а внутри строки элементы идут слева направо. Широкий промежуток между ячейками — « | »:
@@ -2056,7 +2052,77 @@ async function aiPageImages(page,OPS){
   }
   return {cover:Math.min(1,area/(vp.width*vp.height)),invisible:invisible};
 }
-async function aiReadPdf(file){
+// Страницы-изображения читает сервер — не больше трёх разом (сервер пускает четыре на пользователя).
+function aiLimiter(n){
+  let active=0;
+  const queue=[];
+  const next=()=>{
+    while(active<n&&queue.length){
+      const [f,ok,fail]=queue.shift();
+      active++;
+      Promise.resolve().then(f).then(ok,fail).finally(()=>{active--;next()});
+    }
+  };
+  return f=>new Promise((ok,fail)=>{queue.push([f,ok,fail]);next()});
+}
+const aiReadQueue=aiLimiter(3);
+// Страница для чтения: целиком — 1 600 px (модель и так ужимает изображение примерно до этого) — и двумя полосами из
+// отрисовки в 2 400 px, у которых мелкие цифры крупнее; сервер читает и то и другое и сверяет числа (readPage). Разрез —
+// по самой светлой полосе у середины без учёта линеек таблицы, чтобы не разрезать строку текста. JPEG 0,95: при 0,85
+// итог реального инвойса читался неверно в 3 прогонах из 4, при 0,95 — в 1.
+function aiShots(cv){
+  const jpeg=(c,q)=>{const u=c.toDataURL('image/jpeg',q);return {media_type:'image/jpeg',data:u.slice(u.indexOf(',')+1)}};
+  const W=cv.width,H=cv.height,k=Math.min(1,1600/Math.max(W,H));
+  const full=document.createElement('canvas');
+  full.width=Math.round(W*k);full.height=Math.round(H*k);
+  full.getContext('2d').drawImage(cv,0,0,full.width,full.height);
+  const shot={image:jpeg(full,0.95),parts:[]};
+  if(Math.max(W,H)<2000)return shot;
+  const y0=Math.round(H*0.4),y1=Math.round(H*0.6),d=cv.getContext('2d').getImageData(0,y0,W,y1-y0).data,ink=new Float32Array(y1-y0);
+  for(let y=0;y<y1-y0;y++){
+    let run=0,n=0;
+    for(let x=0;x<=W;x++){const on=x<W&&d[4*(y*W+x)]<150;if(on)run++;else{if(run&&run<W*0.03)n+=run;run=0}}
+    ink[y]=n;
+  }
+  let cut=Math.round(H/2),best=Infinity;
+  for(let y=4;y<y1-y0-4;y++){let s=0;for(let j=-4;j<=4;j++)s+=ink[y+j];if(s<best){best=s;cut=y0+y}}
+  for(const [a,b] of [[0,cut],[cut,H]]){
+    const c=document.createElement('canvas');
+    c.width=W;c.height=b-a;
+    c.getContext('2d').drawImage(cv,0,a,W,b-a,0,0,W,b-a);
+    shot.parts.push(jpeg(c,0.92));
+  }
+  return shot;
+}
+// Одна страница: shoot(flip) рисует её (flip — перевёрнутой на 180°). Сервер отвечает расшифровкой или {rotate: 180} —
+// тогда страница рисуется заново повёрнутой, а не пересжимается готовый JPEG (пересжатие само портило цифры), и уходит
+// снова уже без вопроса о положении. Рисуется страница, когда до неё дошла очередь, — в памяти не больше трёх разом.
+async function aiReadPage(doc,shoot,label){
+  let shot=await shoot(false),checked=false;
+  for(;;){
+    if(doc.cancelled)throw new Error('cancelled');
+    if(doc.stopped)throw new Error(doc.stopped);
+    const res=await apiFetch('/api/assistant/read',{method:'POST',body:JSON.stringify({image:shot.image,parts:shot.parts,name:label,checked:checked})});
+    const data=await res.json().catch(()=>({}));
+    if(res.ok&&data.rotate&&!checked){shot=await shoot(true);checked=true;continue}
+    if(res.ok&&typeof data.text==='string')return data.text;
+    if(data.error==='page_quota_exceeded')doc.stopped=aiPageQuotaText(data.quota);
+    throw new Error(doc.stopped||AI_ERR[data.error]||'ошибка '+res.status);
+  }
+}
+// Место страницы в тексте документа занято заранее, чтобы страницы шли по порядку; заголовок — после чтения (лежала ли боком,
+// становится известно, когда страница нарисована).
+function aiQueuePage(doc,jobs,shoot,label,head){
+  const slot=doc.parts.length;
+  doc.parts.push('');
+  doc.total++;
+  jobs.push(aiReadQueue(()=>aiReadPage(doc,shoot,label)).then(t=>{doc.parts[slot]=head()+'\n'+t},()=>{
+    if(doc.cancelled)return;
+    doc.failed++;
+    doc.parts[slot]=head()+'\n[не прочитана'+(doc.stopped?': '+doc.stopped:'')+']';
+  }).finally(()=>{doc.done++;aiRenderThumbs()}));
+}
+async function aiReadPdf(file,doc){
   // Адрес абсолютный: checker.js исполняется из blob:-адреса, и import('/vendor/…') разрешался бы
   // относительно него, а не сайта. И вычисляется здесь, а не на верхнем уровне: этот же файл
   // загружает сервер (services/base.js), где location нет.
@@ -2069,37 +2135,89 @@ async function aiReadPdf(file){
   // освобождается задача загрузки: у документа в pdf.js 6 метода destroy() нет
   const task=aiPdfLib.getDocument({data:new Uint8Array(await file.arrayBuffer()),cMapUrl:PDFJS_BASE+'cmaps/',cMapPacked:true,
     wasmUrl:PDFJS_BASE+'wasm/',useWasm:false,enableXfa:false});
+  const jobs=[];
   try{
-    const doc=await task.promise;
-    const pages=Math.min(doc.numPages,AI_PDF_MAX_PAGES),free=Math.max(0,AI_MAX_IMAGES-aiImages.length),texts=[],images=[];
-    let lost=0;
+    const pdf=await task.promise;
+    const pages=Math.min(pdf.numPages,AI_PDF_MAX_PAGES);
+    doc.pages=pdf.numPages;
+    if(pdf.numPages>pages)doc.notes.push('прочитаны первые '+pages+' стр. из '+pdf.numPages+' — остальные приложите отдельным файлом');
     // Решение — по каждой странице, а не по файлу: пакет документов часто склеен из электронного
     // инвойса и сканов CMR или сертификата, и порог «в среднем 40 знаков на страницу» отдавал такой
     // файл текстом, молча теряя сканы.
-    for(let i=1;i<=pages;i++){
-      const page=await doc.getPage(i);
+    for(let i=1;i<=pages&&!doc.cancelled;i++){
+      const page=await pdf.getPage(i);
       const t=aiPageText((await page.getTextContent()).items,page.getViewport({scale:1}),aiPdfLib.Util);
       const im=await aiPageImages(page,aiPdfLib.OPS);
       // Скан: текста меньше 40 знаков (печать, подпись), текст нечитаем или это слой распознавания
       // поверх картинки — его качество неизвестно, а чтение изображения проверено на реальных сканах.
       const scan=t.replace(/\s/g,'').length<40||aiTextBroken(t)||(im.cover>=0.3&&im.invisible);
-      if(!scan)texts.push('— страница '+i+' —\n'+t);
+      if(!scan)doc.parts.push('— страница '+i+' —\n'+t);
       // Изображение — и у текстовой страницы, где картинка занимает заметную часть: таблица, вставленная
       // в документ снимком, в текстовом слое отсутствует.
       if(!scan&&im.cover<0.3)continue;
-      if(images.length>=free){lost++;continue}
-      const base=page.getViewport({scale:1});
-      const vp=page.getViewport({scale:Math.min(2.5,1600/Math.max(base.width,base.height))});
-      const cv=document.createElement('canvas');
-      cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
-      await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
-      const side=aiSideways(cv);
-      const url=(side?aiRotateCanvas(cv):cv).toDataURL('image/jpeg',0.85);
-      images.push({media_type:'image/jpeg',data:url.slice(url.indexOf(',')+1),url:url,pdf:file.name+', стр. '+i+(side?' (повёрнута)':'')});
+      let side=false;
+      const shoot=async flip=>{
+        const base=page.getViewport({scale:1});
+        const vp=page.getViewport({scale:2400/Math.max(base.width,base.height),rotation:(page.rotate+(flip?180:0))%360});
+        let cv=document.createElement('canvas');
+        cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+        await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+        if(!flip)side=aiSideways(cv);
+        if(side)cv=aiRotateCanvas(cv);
+        return aiShots(cv);
+      };
+      aiQueuePage(doc,jobs,shoot,file.name+', стр. '+i,
+        ()=>'— страница '+i+(scan?' (скан, ':': изображение на странице (')+'расшифровка'+(side?'; лежала боком, повёрнута':'')+') —');
+      aiRenderThumbs();
     }
-    const text=texts.join('\n\n');
-    return {name:file.name,pages:doc.numPages,read:pages,text:text.slice(0,AI_PDF_MAX_CHARS),cut:text.length>AI_PDF_MAX_CHARS,images:images,lost:lost};
+    await Promise.all(jobs);
   }finally{task.destroy()}
+}
+// Снимок — до 2 400 px по длинной стороне: полосы для чтения режутся из него же (aiShots).
+async function aiReadPhoto(file,doc){
+  const bmp=await createImageBitmap(file),jobs=[];
+  doc.pages=1;
+  const shoot=async flip=>{
+    const k=Math.min(1,2400/Math.max(bmp.width,bmp.height));
+    const cv=document.createElement('canvas');
+    cv.width=Math.max(1,Math.round(bmp.width*k));cv.height=Math.max(1,Math.round(bmp.height*k));
+    const x=cv.getContext('2d');
+    if(flip){x.translate(cv.width,cv.height);x.rotate(Math.PI)}
+    x.drawImage(bmp,0,0,cv.width,cv.height);
+    return aiShots(cv);
+  };
+  aiQueuePage(doc,jobs,shoot,file.name,()=>'— изображение (расшифровка) —');
+  aiRenderThumbs();
+  try{await Promise.all(jobs)}finally{bmp.close()}
+}
+// Excel — все листы книги, CSV — одна таблица; ячейки строки через « | », пустые строки пропускаются.
+async function aiReadSheet(file,doc){
+  const sheets=/\.csv$/i.test(file.name)?[{name:'',rows:readCsv(await fileText(file))}]:await readXlsxSheets(await file.arrayBuffer());
+  doc.pages=sheets.length;
+  for(const s of sheets){
+    const lines=s.rows.map(r=>r.map(c=>String(c==null?'':c).trim()).join(' | ').replace(/(\s\|\s*)+$/,'')).filter(l=>l.replace(/[\s|]/g,''));
+    if(lines.length)doc.parts.push('— '+(s.name?'лист «'+s.name+'»':'таблица')+' —\n'+lines.join('\n'));
+  }
+}
+// Документ Word (.docx) — zip с word/document.xml: абзацы по порядку, строки таблиц — ячейками через « | ».
+async function readDocx(buf){
+  const xml=await zipRead(zipEntries(buf),'word/document.xml');
+  if(!xml)throw new Error('в файле нет текста документа');
+  const dom=new DOMParser().parseFromString(xml,'application/xml');
+  const texts=n=>Array.prototype.map.call(n.getElementsByTagName('w:t'),t=>t.textContent).join('');
+  const body=dom.getElementsByTagName('w:body')[0],out=[];
+  for(const el of body?Array.from(body.children):[]){
+    if(el.tagName==='w:p'){const t=texts(el);if(t.trim())out.push(t)}
+    else if(el.tagName==='w:tbl'){
+      for(const tr of el.getElementsByTagName('w:tr')){
+        out.push(Array.from(tr.children).filter(c=>c.tagName==='w:tc').map(tc=>Array.from(tc.getElementsByTagName('w:p')).map(texts).filter(Boolean).join(' ')).join(' | '));
+      }
+    }
+  }
+  return out.join('\n');
+}
+async function aiReadWord(file,doc){
+  doc.parts.push('— документ Word —\n'+await readDocx(await file.arrayBuffer()));
 }
 // Страница, отсканированная боком (таблица инвойса в альбомной ориентации на листе A4), модели
 // почти не читается: на реальном инвойсе DeepSeek верно назвал 7–8 сумм из 21, а после поворота
@@ -2132,69 +2250,100 @@ function aiRotateCanvas(src){
   x.translate(out.width,0);x.rotate(Math.PI/2);x.drawImage(src,0,0);
   return out;
 }
-async function aiImageCanvas(url){
-  const img=new Image();img.src=url;await img.decode();
-  const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;
-  cv.getContext('2d').drawImage(img,0,0);
-  return cv;
+// Документы, уже отправленные в этом диалоге, — у реплик пользователя (в старых записях там только имена).
+function aiDialogDocs(){
+  return aiHistory.filter(m=>m.role==='user'&&Array.isArray(m.docs)).flatMap(m=>m.docs.filter(d=>d&&typeof d==='object'&&typeof d.text==='string'));
 }
-// Копия изображения, повёрнутая на 180°, уходит на сервер вместе с ним. Лист, отсканированный вверх
-// ногами, — и лист боком, повёрнутый не в ту сторону, — модель читает неверно и не замечает этого:
-// с перевёрнутого реального инвойса она выписала правдоподобную таблицу, где верна 0 сумм из 21.
-// Сервер спрашивает модель о положении страницы и при «перевёрнут» читает копию (services/assistant.js).
-async function aiFlippedData(im){
-  const url=aiRotateCanvas(aiRotateCanvas(await aiImageCanvas(im.url))).toDataURL('image/jpeg',0.85);
-  return url.slice(url.indexOf(',')+1);
+function aiPageQuotaText(q){
+  if(!q||q.pagesDay==null)return 'лимит страниц документов исчерпан';
+  return 'лимит страниц документов тарифа «'+q.name+'» исчерпан ('+(q.pagesBlockedBy==='day'?q.pagesDay+' в день; следующие — '+aiDate(q.tomorrow):q.pagesMonth+' в месяц; следующие — с '+aiDate(q.resets))+')';
 }
-// Кнопка ↻ у миниатюры: поворот на 90° по часовой, если автоматика не угадала или фото снято боком.
-async function aiRotateImage(i){
-  const im=aiImages[i];
-  if(!im)return;
-  const url=aiRotateCanvas(await aiImageCanvas(im.url)).toDataURL('image/jpeg',0.85);
-  if(aiImages[i]!==im)return;
-  aiImages[i]=Object.assign({},im,{media_type:'image/jpeg',data:url.slice(url.indexOf(',')+1),url:url});
-  aiRenderThumbs();
-}
+const AI_READERS={pdf:aiReadPdf,image:aiReadPhoto,sheet:aiReadSheet,word:aiReadWord};
 async function aiAddFiles(files){
   aiFileNote='';
+  const jobs=[];
   for(const f of Array.prototype.slice.call(files||[])){
-    if(f.type==='application/pdf'||/\.pdf$/i.test(f.name||'')){
-      if(aiDocs.length>=3){aiFileNote='Не больше 3 PDF за один вопрос.';continue}
-      aiPdfBusy++;aiRenderThumbs();
-      try{
-        const r=await aiReadPdf(f),note=[];
-        if(r.text.trim())aiDocs.push({name:r.name,pages:r.pages,text:r.text,cut:r.cut||r.pages>r.read});
-        aiImages.push(...r.images);
-        if(r.pages>r.read)note.push('модель получит первые '+r.read+' стр. из '+r.pages+' — остальное задайте отдельным вопросом');
-        else if(r.cut)note.push('текст длиннее '+AI_PDF_MAX_CHARS/1000+' тыс. знаков — модель получит его начало');
-        if(r.lost)note.push(r.lost+' стр. не приложены изображениями: не больше '+AI_MAX_IMAGES+' изображений за вопрос — уберите лишние и приложите файл снова');
-        if(note.length)aiFileNote='«'+f.name+'»: '+note.join('; ')+'.';
-      }catch(e){
-        aiFileNote='Не удалось прочитать «'+f.name+'»'+(e&&e.name==='PasswordException'?': файл защищён паролем.':'. Сохраните его заново или приложите фото страниц.');
-      }finally{aiPdfBusy--}
-      continue;
+    const n=f.name||'';
+    const kind=f.type==='application/pdf'||/\.pdf$/i.test(n)?'pdf':/^image\/(jpeg|png|webp)$/.test(f.type)?'image':/\.(xlsx|csv)$/i.test(n)?'sheet':/\.docx$/i.test(n)?'word':'';
+    if(!kind){aiFileNote='«'+n+'»: '+(/\.(doc|xls)$/i.test(n)?'старый формат — сохраните файл как .docx, .xlsx или PDF':'такой файл не читается — приложите PDF, фото, Excel, CSV или Word')+'.';continue}
+    if(aiDocs.length>=AI_MAX_DOCS||aiDocs.length+aiDialogDocs().length>=AI_DIALOG_MAX_DOCS){
+      aiFileNote='Не больше '+AI_MAX_DOCS+' файлов за вопрос и '+AI_DIALOG_MAX_DOCS+' в диалоге — для остальных начните новый диалог.';
+      break;
     }
-    if(aiImages.length>=AI_MAX_IMAGES)continue;
-    if(!/^image\/(jpeg|png|webp)$/.test(f.type))continue;
-    try{aiImages.push(await aiResize(f))}catch(e){}
+    const doc={name:n,kind:kind,pages:0,parts:[],total:0,done:0,failed:0,notes:[],busy:true};
+    aiDocs.push(doc);
+    jobs.push(aiReadFile(f,doc));
   }
   aiRenderThumbs();
+  await Promise.all(jobs);
+}
+async function aiReadFile(f,doc){
+  let err='';
+  try{await AI_READERS[doc.kind](f,doc)}
+  catch(e){
+    if(!doc.cancelled)err=e&&e.name==='PasswordException'?'файл защищён паролем'
+      :doc.kind==='pdf'?'не удалось прочитать — сохраните файл заново или приложите фото страниц':'не удалось прочитать: '+(e&&e.message||e);
+  }
+  // файл убрали или пользователь вышел, пока он читался
+  if(doc.cancelled||aiDocs.indexOf(doc)<0)return;
+  doc.busy=false;
+  doc.text=doc.parts.filter(Boolean).join('\n\n');
+  const room=Math.max(0,AI_DOCS_MAX_CHARS-aiDialogDocs().concat(aiDocs.filter(d=>d!==doc&&!d.busy)).reduce((s,d)=>s+d.text.length,0));
+  if(!room&&!err)err='документы диалога уже заняли '+AI_DOCS_MAX_CHARS/1000+' тыс. знаков — начните новый диалог';
+  else if(doc.text.length>room){
+    doc.text=doc.text.slice(0,room);doc.cut=true;
+    doc.notes.push('в диалог вошли первые '+Math.floor(room/1000)+' тыс. знаков — остальное задайте в новом диалоге');
+  }
+  if(doc.failed)doc.notes.push(doc.failed+' стр. не прочитаны'+(doc.stopped?': '+doc.stopped:' — приложите их фото или файл заново'));
+  if(!err&&!doc.parts.some(p=>p&&!/\[не прочитана/.test(p)&&p.replace(/^— [^\n]* —/,'').trim()))err=doc.stopped||(doc.total?'страницы не прочитаны':'текста не найдено');
+  if(err)aiDocs.splice(aiDocs.indexOf(doc),1);
+  const note=err?[err]:doc.notes;
+  if(note.length)aiFileNote='«'+doc.name+'»: '+note.join('; ')+'.';
+  aiRenderThumbs();
+  if(doc.total)aiLoadQuota();
 }
 function aiRenderThumbs(){
   const box=document.getElementById('aiThumbs');
   if(!box)return;
-  const chip='display:inline-flex;align-items:center;gap:6px;height:72px;padding:0 26px 0 12px;border:1px solid var(--glass-border);border-radius:var(--radius-md);font-size:12px;max-width:260px';
-  box.innerHTML=aiImages.map((im,i)=>'<span class="ai-thumb"'+(im.pdf?' title="'+esc(im.pdf)+'"':'')+'><img src="'+im.url+'" alt=""><button type="button" data-rot="'+i+'" aria-label="Повернуть по часовой" title="Повернуть" style="right:auto;left:-6px;background:var(--indigo-surface)">↻</button><button type="button" data-rm="'+i+'" aria-label="Убрать">✕</button></span>').join('')
-    +aiDocs.map((d,i)=>'<span class="ai-thumb ai-doc" style="'+chip+'" title="'+esc(d.name)+'">📄 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(d.name)+'</span> · '+d.pages+' стр.<button type="button" data-rm-doc="'+i+'" aria-label="Убрать">✕</button></span>').join('')
-    +(aiPdfBusy?'<span class="ai-thumb" style="'+chip+';color:var(--muted)">📄 Читаю PDF…</span>':'')
+  const chip='display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:4px 26px 4px 12px;border:1px solid var(--glass-border);border-radius:var(--radius-md);font-size:12px;max-width:340px';
+  const icon={pdf:'📄',image:'🖼️',sheet:'📊',word:'📝'};
+  box.innerHTML=aiDocs.map((d,i)=>{
+    const st=d.busy?(d.total?'читаю '+d.done+' из '+d.total:'открываю…'):(d.pages?d.pages+(d.kind==='sheet'?' лист.':' стр.'):'');
+    return '<span class="ai-thumb ai-doc" style="'+chip+(d.busy?';opacity:.85':';cursor:pointer')+'" title="'+esc(d.name+(d.busy?'':' — посмотреть прочитанный текст'))+'"'
+      +(d.busy?'':' data-view-doc="'+i+'"')+'>'+icon[d.kind]+' <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(d.name)+'</span>'
+      +(st?'<span style="white-space:nowrap;color:var(--muted)">· '+esc(st)+'</span>':'')+'<button type="button" data-rm-doc="'+i+'" aria-label="Убрать">✕</button></span>';
+  }).join('')
     +(aiFileNote?'<div class="ai-file-note" style="flex-basis:100%;font-size:12px;color:var(--orange)">'+esc(aiFileNote)+'</div>':'');
+}
+// Прочитанный текст документа — чтобы пользователь сверил суммы и коды расшифровки с оригиналом.
+function aiShowDoc(d){
+  openModal('<h3 style="margin:0 0 6px">'+esc(d.name)+'</h3>'
+    +'<div class="det">Так документ прочитан и так его видит ассистент. Страницы-сканы и фото — расшифровка изображения: суммы и коды сверьте с оригиналом.'+(d.cut?' Текст обрезан.':'')+'</div>'
+    +'<pre class="ai-doc-text" style="white-space:pre-wrap;max-height:62vh;overflow:auto;font-size:12px;line-height:1.5;margin:10px 0">'+esc(d.text||'')+'</pre>'
+    +'<div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');
+  const m=document.querySelector('#activeModal .modal');
+  if(m)m.classList.add('modal-wide');
 }
 function aiAppend(m){
   const log=document.getElementById('aiLog');
   const hello=document.getElementById('aiHello');if(hello)hello.remove();
   const d=document.createElement('div');
   d.className='ai-msg '+(m.role==='user'?'u':'a')+(m.err?' err':'');
-  if(m.role==='user'){d.textContent=m.content+(m.imgs?'\n📎 изображений: '+m.imgs:'')+(m.docs&&m.docs.length?'\n📄 PDF: '+m.docs.join(', '):'')}
+  if(m.role==='user'){
+    d.textContent=m.content+(m.imgs?'\n📎 изображений: '+m.imgs:'');
+    // документы реплики: нажатие показывает прочитанный текст; в записях до 17.09.2026 — только имена
+    if(m.docs&&m.docs.length){
+      const box=document.createElement('div');
+      for(const x of m.docs){
+        const named=typeof x==='string',b=document.createElement(named?'span':'button');
+        b.textContent='📄 '+(named?x:x.name+(x.pages?' · '+x.pages+' стр.':''));
+        b.style.cssText='display:inline-block;margin:6px 6px 0 0;padding:2px 8px;border:1px solid rgba(255,255,255,.45);border-radius:8px;background:none;color:inherit;font:inherit;font-size:12px'+(named?'':';cursor:pointer');
+        if(!named){b.type='button';b.title='Посмотреть прочитанный текст';b.addEventListener('click',()=>aiShowDoc(x))}
+        box.appendChild(b);
+      }
+      d.appendChild(box);
+    }
+  }
   else{
     let html=aiMd(m.content);
     if(m.unverified&&m.unverified.length)html+='<div class="ai-warn">⚠️ Не подтверждено базой: '+m.unverified.map(esc).join(', ')+' — проверьте код перед использованием.</div>';
@@ -2250,30 +2399,35 @@ const AI_ERR={rate_limited:'Дневной лимит вопросов исче�
   ai_unavailable:'Сервис модели не ответил. Попробуйте ещё раз.',
   bad_image:'Изображение не принято: нужен JPG, PNG или WebP.',
   too_many_images:'Не больше 8 изображений за один вопрос.',
-  bad_doc:'PDF не принят: в нём не нашлось текста.',
-  too_many_docs:'Не больше 3 PDF за один вопрос.',
-  doc_too_long:'Текст PDF слишком длинный — приложите нужные страницы отдельно.',
+  bad_doc:'Документ не принят: в нём не нашлось текста.',
+  too_many_docs:'Не больше 30 документов в диалоге — начните новый диалог.',
+  doc_too_long:'Документы диалога длиннее 300 тыс. знаков — начните новый диалог.',
+  read_failed:'сервис модели не прочитал страницу',
   busy:'Предыдущий вопрос ещё обрабатывается — дождитесь ответа.'};
 async function aiSend(e){
   e.preventDefault();
-  const inp=document.getElementById('aiInput'),imgs=aiImages,docs=aiDocs;
-  const q=inp.value.trim()||(imgs.length||docs.length?'Разбери документ.':'');
-  // PDF ещё читается — вопрос ушёл бы без него
-  if(!q||aiBusy||aiPdfBusy)return;
-  aiBusy=true;inp.value='';aiImages=[];aiDocs=[];aiFileNote='';aiRenderThumbs();
+  const inp=document.getElementById('aiInput'),typed=inp.value.trim(),docs=aiDocs.slice();
+  const q=typed||(docs.length?'Разбери документ.':'');
+  if(!q||aiBusy)return;
+  // документ ещё читается — вопрос ушёл бы без него
+  if(docs.some(d=>d.busy)){aiFileNote='Документы ещё читаются — отправьте вопрос, когда у файла пропадёт «читаю».';aiRenderThumbs();return}
+  aiBusy=true;inp.value='';aiDocs=[];aiFileNote='';aiRenderThumbs();
   const ver=appViewVersion,btn=document.getElementById('aiSendBtn');
   btn.disabled=true;
-  const um={role:'user',content:q,imgs:imgs.length||undefined,docs:docs.length?docs.map(d=>d.name):undefined};
+  const um={role:'user',content:q,docs:docs.length?docs.map(d=>({name:d.name,pages:d.pages,text:d.text,cut:d.cut===true})):undefined};
   aiHistory.push(um);aiSave();aiAppend(um);
   const wait=aiAppend({role:'assistant',content:'⏳ Готовлю ответ…'});
-  const fail=(msg)=>{wait.remove();aiHistory.pop();aiSave();aiAppend({role:'assistant',content:msg,err:true})};
+  // Вопрос и документы возвращаются в форму: повторить можно без повторного чтения страниц.
+  const fail=(msg)=>{
+    wait.remove();aiHistory.pop();aiSave();aiAppend({role:'assistant',content:msg,err:true});
+    if(!inp.value)inp.value=typed;
+    if(!aiDocs.length&&docs.length){aiDocs=docs;aiRenderThumbs()}
+  };
   try{
-    const images=await Promise.all(imgs.map(async im=>({media_type:im.media_type,data:im.data,alt:await aiFlippedData(im)})));
-    if(ver!==appViewVersion)return;
     const res=await fetch('/api/assistant',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({messages:aiHistory.map(m=>({role:m.role,content:m.content})),images:images,docs:docs.map(d=>({name:d.name,pages:d.pages,text:d.text,cut:d.cut}))})});
+      body:JSON.stringify({messages:aiHistory.map(m=>({role:m.role,content:m.content})),docs:aiDialogDocs().map(d=>({name:d.name,pages:d.pages,text:d.text,cut:d.cut===true}))})});
     if(ver!==appViewVersion)return;
-    if(res.status===413){fail('Изображения слишком большие — отправьте меньше или в меньшем размере.');return}
+    if(res.status===413){fail('Документы диалога слишком большие — начните новый диалог.');return}
     if(!res.ok){const data=await res.json().catch(()=>({}));if(data.error==='quota_exceeded'){aiShowQuota(data.quota);fail(aiQuotaText(data.quota));return}fail(AI_ERR[data.error]||'Ошибка: '+(data.error||res.status));return}
     const reader=res.body.getReader(),dec=new TextDecoder();
     let buf='',final=null;
@@ -2314,7 +2468,7 @@ async function openAssistantLog(onlyBad){
   }catch(e){openModal('<h2>Журнал AI-ассистента</h2><div class="calc-warn w-red">Не удалось загрузить журнал</div><div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');return}
   const n=v=>(v||0).toLocaleString('ru-RU');
   const usd=v=>'$'+(v||0).toFixed(4);
-  const totals=data.totals.map(t=>'<tr><td>'+esc(t.email)+'</td><td>'+n(t.questions)+'</td><td>'+n(t.input_tokens)+' / '+n(t.output_tokens)+'</td><td>'+usd(t.cost_usd)+'</td><td>'+n(t.good)+' / '+n(t.bad)+'</td><td>'+n(t.errors)+'</td></tr>').join('');
+  const totals=data.totals.map(t=>'<tr><td>'+esc(t.email)+'</td><td>'+n(t.questions)+'</td><td>'+n(t.pages)+'</td><td>'+n(t.input_tokens)+' / '+n(t.output_tokens)+'</td><td>'+usd(t.cost_usd)+'</td><td>'+n(t.good)+' / '+n(t.bad)+'</td><td>'+n(t.errors)+'</td></tr>').join('');
   const recent=data.recent.map(r=>'<details class="ai-logrow"><summary>'+(r.rating===1?'👍 ':r.rating===-1?'👎 ':'')+(r.error?'⚠️ ':'')
     +esc(new Date(r.created_at).toLocaleString('ru-RU'))+' · '+esc(r.email)+' — '+esc(trunc(r.question,90))+'</summary>'
     +'<div class="det"><b>Вопрос:</b> '+esc(r.question)+'</div>'
@@ -2322,8 +2476,8 @@ async function openAssistantLog(onlyBad){
     +(r.error?'<div class="det"><b>Ошибка:</b> '+esc(r.error)+'</div>':'<div class="det"><b>Поиски:</b> '+esc((r.searched||[]).join(', '))+(r.unverified&&r.unverified.length?' · <b>не подтверждены:</b> '+esc(r.unverified.join(', ')):'')+' · '+n(r.duration_ms)+' мс</div><div class="ai-msg a">'+aiMd(r.answer||'')+'</div>')
     +'</details>').join('');
   openModal('<div class="ai-log-modal"></div><h2>Журнал AI-ассистента</h2>'
-    +'<div class="det">За 30 дней. Токены — вход без кэша / выход; стоимость — по ценам DeepSeek в момент вопроса; оценки — 👍 / 👎.</div>'
-    +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Вопросов</th><th>Токены</th><th>Стоимость</th><th>Оценки</th><th>Ошибок</th></tr></thead><tbody>'+(totals||'<tr><td colspan="6">Вопросов пока не было</td></tr>')+'</tbody></table></div>'
+    +'<div class="det">За 30 дней. Страниц — прочитанных страниц документов (сканы и фото). Токены — вход без кэша / выход; стоимость — по ценам DeepSeek в момент вопроса; оценки — 👍 / 👎.</div>'
+    +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Вопросов</th><th>Страниц</th><th>Токены</th><th>Стоимость</th><th>Оценки</th><th>Ошибок</th></tr></thead><tbody>'+(totals||'<tr><td colspan="7">Вопросов пока не было</td></tr>')+'</tbody></table></div>'
     +'<h3 style="margin:18px 0 8px">Расход за месяц — для счёта</h3>'
     +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="month" id="aiBillMonth" value="'+new Date(Date.now()+6*3600e3).toISOString().slice(0,7)+'" class="ai-bill-month"><button class="btn" type="button" onclick="loadAssistantBilling()">Показать</button><button class="btn" type="button" onclick="exportAssistantBilling()">⬇️ CSV</button></div>'
     +'<div id="aiBilling"></div>'
@@ -2346,13 +2500,13 @@ async function loadAssistantBilling(){
   }catch(e){box.innerHTML='<div class="calc-warn w-red">Не удалось загрузить расход</div>';return}
   const d=aiBillingData,n=v=>(v||0).toLocaleString('ru-RU'),rate=d.usdRate||0;
   const som=v=>rate?(v*rate).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' сом':'—';
-  let sum=0,q=0;
-  const rows=d.rows.map(r=>{sum+=r.cost_usd;q+=r.questions;
-    return '<tr><td>'+esc(r.email)+'</td><td>'+esc(AI_PLAN_NAMES[r.ai_plan]||r.ai_plan||'')+'</td><td>'+n(r.questions)+'</td><td>'+n(r.input_tokens)+' / '+n(r.cache_read_tokens)+' / '+n(r.output_tokens)+'</td><td>$'+r.cost_usd.toFixed(4)+'</td><td>'+som(r.cost_usd)+'</td></tr>'}).join('');
+  let sum=0,q=0,pg=0;
+  const rows=d.rows.map(r=>{sum+=r.cost_usd;q+=r.questions;pg+=r.pages||0;
+    return '<tr><td>'+esc(r.email)+'</td><td>'+esc(AI_PLAN_NAMES[r.ai_plan]||r.ai_plan||'')+'</td><td>'+n(r.questions)+'</td><td>'+n(r.pages)+'</td><td>'+n(r.input_tokens)+' / '+n(r.cache_read_tokens)+' / '+n(r.output_tokens)+'</td><td>$'+r.cost_usd.toFixed(4)+'</td><td>'+som(r.cost_usd)+'</td></tr>'}).join('');
   box.innerHTML='<div class="det">'+esc(d.month)+' по времени Бишкека. Токены — вход / из кэша / выход. Курс НБКР: '+(rate?rate+' сом за $ на '+esc(d.rateDate||''):'недоступен')+'.</div>'
-    +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Тариф</th><th>Вопросов</th><th>Токены</th><th>Стоимость, $</th><th>В сомах</th></tr></thead><tbody>'
-    +(rows||'<tr><td colspan="6">За этот месяц вопросов не было</td></tr>')
-    +(rows?'<tr><td><b>Итого</b></td><td></td><td><b>'+n(q)+'</b></td><td></td><td><b>$'+sum.toFixed(4)+'</b></td><td><b>'+som(sum)+'</b></td></tr>':'')
+    +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Тариф</th><th>Вопросов</th><th>Страниц</th><th>Токены</th><th>Стоимость, $</th><th>В сомах</th></tr></thead><tbody>'
+    +(rows||'<tr><td colspan="7">За этот месяц вопросов не было</td></tr>')
+    +(rows?'<tr><td><b>Итого</b></td><td></td><td><b>'+n(q)+'</b></td><td><b>'+n(pg)+'</b></td><td></td><td><b>$'+sum.toFixed(4)+'</b></td><td><b>'+som(sum)+'</b></td></tr>':'')
     +'</tbody></table></div>';
 }
 function exportAssistantBilling(){
@@ -2360,8 +2514,8 @@ function exportAssistantBilling(){
   if(!d||!d.rows.length){loadAssistantBilling();return}
   const rate=d.usdRate||0;
   const cell=v=>'"'+String(v).replace(/"/g,'""')+'"';
-  const lines=[['Месяц','Пользователь','Тариф','Вопросов','Вход без кэша','Вход из кэша','Выход','Стоимость USD','Курс НБКР','Стоимость сом']]
-    .concat(d.rows.map(r=>[d.month,r.email,AI_PLAN_NAMES[r.ai_plan]||r.ai_plan||'',r.questions,r.input_tokens,r.cache_read_tokens,r.output_tokens,r.cost_usd.toFixed(6).replace('.',','),String(rate).replace('.',','),(r.cost_usd*rate).toFixed(2).replace('.',',')]));
+  const lines=[['Месяц','Пользователь','Тариф','Вопросов','Страниц','Вход без кэша','Вход из кэша','Выход','Стоимость USD','Курс НБКР','Стоимость сом']]
+    .concat(d.rows.map(r=>[d.month,r.email,AI_PLAN_NAMES[r.ai_plan]||r.ai_plan||'',r.questions,r.pages||0,r.input_tokens,r.cache_read_tokens,r.output_tokens,r.cost_usd.toFixed(6).replace('.',','),String(rate).replace('.',','),(r.cost_usd*rate).toFixed(2).replace('.',',')]));
   // «;» и запятая в дробях — так CSV открывается в Excel с русской локалью без мастера импорта
   const csv='\ufeff'+lines.map(l=>l.map(cell).join(';')).join('\r\n');
   const a=document.createElement('a');
