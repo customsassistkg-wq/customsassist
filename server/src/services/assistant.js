@@ -676,8 +676,9 @@ async function googleOcr(data) {
 // 3 цента и около 30 секунд на страницу против 0,5 цента и 40 секунд у трёх чтений модели, поэтому вызывается
 // только тогда, когда сверка трёх чтений не сошлась на числе, от которого зависит расчёт. Процессор —
 // OCR_DOCAI_PROCESSOR («eu/6d6d7c780082ca2c» или полный путь projects/…/processors/…), ключ — тот же
-// OCR_GOOGLE_SA. Схема полей задаётся в консоли и применяется на лету: версия-основание (invoice-cmr-foundation-v1)
-// не обучается на примерах, поэтому поле, добавленное в схему, появляется в ответе сразу, а выключенное — исчезает.
+// OCR_GOOGLE_SA. В развёрнутую версию вшит свой снимок схемы: правка полей в консоли на неё не влияет, нужна
+// новая версия (создаётся из схемы за полминуты, обучающих примеров для версии-основания не нужно) и
+// переключение её по умолчанию. Количество Google заполняет через раз, поэтому оно считается делением ниже.
 const DOCAI_USD = Number(process.env.OCR_DOCAI_PRICE || 0.03);
 function docaiUrl() {
   const sa = visionAccount(), p = process.env.OCR_DOCAI_PROCESSOR || '';
@@ -687,6 +688,11 @@ function docaiUrl() {
 }
 // Ответ — дерево сущностей: поля документа (grand_total, invoice_number…) и строки таблицы со своими полями.
 // Дерево разворачивается в строки текста: они идут и в расшифровку страницы, и в сверку — как подтверждение чисел.
+const docaiCents = (s) => {
+  const m = String(s).match(/\d[\d.,'’\u00a0 ]*\d|\d/); // знак валюты стоит и слева («USD 7.954,00»), и справа («10.545,00$»)
+  const k = m ? numKey(m[0]) : '';
+  return k.endsWith('c') ? Number(k.slice(0, -1)) : Number(k || 0) * 100;
+};
 async function docaiRead(img) {
   const res = await fetch(docaiUrl(), {
     method: 'POST',
@@ -699,13 +705,23 @@ async function docaiRead(img) {
   const rows = [], fields = [];
   const walk = (e, row) => {
     const kids = e.properties || [];
-    if (!kids.length) (row || fields).push(`${e.type}: ${(e.mentionText || '').replace(/\s+/g, ' ').trim()}`);
-    else if (/item/i.test(e.type)) { const own = []; rows.push(own); kids.forEach((k) => walk(k, own)); }
+    const text = (e.mentionText || '').replace(/\s+/g, ' ').trim();
+    if (!kids.length) { if (row) row.set(e.type, text); else fields.push(`${e.type}: ${text}`); }
+    else if (/item/i.test(e.type)) { const own = new Map(); rows.push(own); kids.forEach((k) => walk(k, own)); }
     else kids.forEach((k) => walk(k, row));
   };
   (body.document?.entities || []).forEach((e) => walk(e, null));
   if (!rows.length && !fields.length) return null;
-  return [...fields, ...rows.map((r, i) => `строка ${i + 1} — ${r.join('; ')}`)].join('\n');
+  // Количество Google заполняет через раз (в замере 18.09.2026 — ни одной строки из 21), а сумму и цену за
+  // единицу — почти всегда. Где количества нет, оно выводится делением, и это надёжнее чтения узкой колонки:
+  // в строке 19 того же инвойса 247 562,10 ÷ 41 260,35 = ровно 6, а модель читает «8» в двух прогонах из трёх.
+  for (const row of rows) {
+    if (row.has('quantity') || !row.has('unit_price') || !row.has('total_price')) continue;
+    const price = docaiCents(row.get('unit_price')), q = price > 0 ? docaiCents(row.get('total_price')) / price : 0;
+    const round = Math.round(q * 100) / 100;
+    if (round > 0 && Math.abs(q - round) < 0.005) row.set('количество (сумма ÷ цена)', String(round).replace('.', ','));
+  }
+  return [...fields, ...rows.map((r, i) => `строка ${i + 1} — ${[...r].map(([k, v]) => `${k}: ${v}`).join('; ')}`)].join('\n');
 }
 // Число в тексте — ключ: сумма (дробная часть в одну-две цифры) — в копейках с пометкой «c», целое — как напечатано
 // («000506» — номер, а не 506). «7.129,00», «7,129.00» и «7 129,00» — одно число: разделитель перед последними одной-двумя

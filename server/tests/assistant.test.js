@@ -549,7 +549,7 @@ const a = require('../src/services/assistant');
       return { ok: true, json: async () => ({ document: { entities: [
         { type: 'invoice_details', properties: [
           { type: 'grand_total', mentionText: '$583.478,40' },
-          { type: 'line_item', properties: [{ type: 'code', mentionText: 'PRJ 000520' }, { type: 'net_weight', mentionText: '15,00' }, { type: 'total_price', mentionText: '$10.545,00' }] },
+          { type: 'line_item', properties: [{ type: 'code', mentionText: 'PRJ 000520' }, { type: 'net_weight', mentionText: '15,00' }, { type: 'unit_price', mentionText: '$5.272,50' }, { type: 'total_price', mentionText: '$10.545,00' }] },
         ] },
       ] } }) };
     };
@@ -557,7 +557,7 @@ const a = require('../src/services/assistant');
     r = await a.readPage(page, { parts: parts2 });
     assert.deepEqual(docaiCalls, ['https://eu-documentai.googleapis.com/v1/projects/undefined/locations/eu/processors/6d6d7c780082ca2c:process']);
     assert.doesNotMatch(r.text, /Не подтверждено повторным чтением/); // «15,00» подтверждено разбором полей
-    assert.match(r.text, /\[Разбор полей документа \(Google Document AI[^\]]*\ngrand_total: \$583\.478,40\nстрока 1 — code: PRJ 000520; net_weight: 15,00; total_price: \$10\.545,00\]$/);
+    assert.match(r.text, /\[Разбор полей документа \(Google Document AI[^\]]*\ngrand_total: \$583\.478,40\nстрока 1 — code: PRJ 000520; net_weight: 15,00; unit_price: \$5\.272,50; total_price: \$10\.545,00; количество \(сумма ÷ цена\): 2\]$/);
     assert.ok(r.usage.costUsd >= 0.03, 'страница разбора в расходе: ' + r.usage.costUsd);
     // на согласной странице разбор не вызывается — он стоит 3 цента и полминуты
     docaiCalls = [];
