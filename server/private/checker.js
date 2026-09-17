@@ -1944,7 +1944,7 @@ function renderAiPage(){
     +'<form class="ai-form" id="aiForm"><label class="btn ai-attach" title="Фото, скан или PDF инвойса">📎<input type="file" id="aiFile" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple hidden></label>'
     +'<textarea id="aiInput" rows="2" placeholder="Например: смартфоны из Китая, 200 шт. на 30 000 USD — сколько платить и что нужно?"></textarea>'
     +'<button class="calc-btn" id="aiSendBtn" type="submit">Спросить</button></form>'
-    +'<div class="ai-note">Enter — отправить, Shift+Enter — новая строка. 📎 — фото, скан или PDF инвойса (JPG, PNG, PDF): до 4 изображений и 3 PDF. Коды в ответе открывают карточку.</div>'
+    +'<div class="ai-note">Enter — отправить, Shift+Enter — новая строка. 📎 — фото, скан или PDF инвойса (JPG, PNG, PDF): до 8 изображений и 3 PDF. Коды в ответе открывают карточку.</div>'
     +'<div class="ai-quota" id="aiQuota"></div></div>';
   document.getElementById('aiForm').addEventListener('submit',aiSend);
   document.getElementById('aiInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey)aiSend(e)});
@@ -1994,13 +1994,68 @@ async function aiResize(file){
 }
 // PDF инвойса разбирается здесь же, в браузере, библиотекой pdf.js со своего сервера
 // (/vendor/pdfjs-*: CSP не пускает скрипты с чужих адресов, а сама библиотека грузится только
-// при первом вложенном PDF). Есть текстовый слой — модели уходит текст: точные цифры, коды и
-// иероглифы дешевле и надёжнее, чем распознавание с картинки. Нет его (скан) — страницы
-// рисуются в изображения и идут тем же путём, что фото. WebAssembly выключен: иначе CSP
+// при первом вложенном PDF). Страница с текстовым слоем уходит модели текстом: точные цифры, коды
+// и иероглифы дешевле и надёжнее, чем распознавание с картинки. Страница без него (скан) рисуется
+// в изображение и идёт тем же путём, что фото. WebAssembly выключен: иначе CSP
 // пришлось бы разрешить компиляцию кода, а декодерам сканов хватает запасных на JS.
 const PDFJS_PATH='/vendor/pdfjs-6.3.289/';
-const AI_PDF_MAX_PAGES=10,AI_PDF_MAX_CHARS=60000;
+// Изображений — не больше 8 за вопрос: к каждому при отправке добавляется копия, повёрнутая на 180°
+// (см. aiSend), и восемь страниц с копиями укладываются в лимит запроса 15 МБ.
+const AI_PDF_MAX_PAGES=10,AI_PDF_MAX_CHARS=60000,AI_MAX_IMAGES=8;
 let aiPdfLib=null;
+// Текст страницы из элементов pdf.js. Строка — по положению на странице (с допуском на верхние индексы
+// «м³»), а внутри строки элементы идут слева направо. Широкий промежуток между ячейками — « | »:
+// иначе «120 15,50 1 860,00» читается как одно число. Порядок строк — как записаны в файле: у
+// многострочной ячейки её текст так идёт подряд. Но генератор отчёта может записать таблицу по
+// колонкам — все номера, потом все количества, потом все суммы (без сортировки по положению такая
+// таблица приходила модели кашей). Это видно по сериям строк из одного числа; при двух и больше таких
+// сериях строки собираются по положению сверху вниз. Порог не «скачки вверх»: высокие многострочные
+// ячейки реестра ТРОИС дают те же скачки, а сортировка по положению их перемешивает.
+function aiPageText(items,vp,Util){
+  const parts=[];
+  for(const it of items){
+    if(!it.str||!it.str.trim())continue;
+    const m=Util.transform(vp.transform,it.transform);
+    parts.push({x:m[4],y:m[5],h:it.height||Math.hypot(m[2],m[3])||10,w:it.width||0,s:it.str});
+  }
+  const near=(a,b)=>Math.abs(a.y-b.y)<=0.6*Math.max(a.h,b.h);
+  let lines=[],run=0,runs=0;
+  for(const p of parts){const l=lines[lines.length-1];if(l&&near(l[l.length-1],p))l.push(p);else lines.push([p])}
+  for(const l of lines){if(l.length===1&&/^[\d\s.,'%$€+-]+$/.test(l[0].s)){if(++run===3)runs++}else run=0}
+  if(runs>1){
+    lines=[];
+    for(const p of parts.slice().sort((a,b)=>a.y-b.y)){const l=lines[lines.length-1];if(l&&near(l[0],p))l.push(p);else lines.push([p])}
+  }
+  return lines.map(l=>l.sort((a,b)=>a.x-b.x).map((p,i)=>{
+    if(!i)return p.s;
+    const q=l[i-1],h=Math.max(p.h,q.h),gap=p.x-q.x-q.w;
+    return (gap>2*h||gap>0.8*h&&/\d$/.test(q.s)&&/^[-+−]?\d/.test(p.s)?' | ':gap>0.1*h||gap<-0.5*h?' ':'')+p.s;
+  }).join('')).join('\n');
+}
+// Текстовый слой без таблицы символов у шрифта: управляющие знаки и знаки частной области или
+// кириллица, прочитанная как латиница-1 («Ñ÷¸ò-ôàêòóðà» вместо «Счёт-фактура»). Такую страницу модель
+// получает изображением.
+function aiTextBroken(t){
+  const s=t.replace(/\s/g,''),letters=(s.match(/\p{L}/gu)||[]).length;
+  return (s.match(/[\u0000-\u001f\ufffd\ue000-\uf8ff]/g)||[]).length>0.05*s.length||(s.match(/[\u00c0-\u00ff]/g)||[]).length>0.3*letters;
+}
+// Какую долю страницы занимают изображения и есть ли невидимый текст (режим 3 или 7 — слой
+// распознавания, который сканер или приложение кладёт поверх скана). Площадь изображения — определитель
+// матрицы преобразования, под которой оно рисуется (единичный квадрат).
+async function aiPageImages(page,OPS){
+  const ops=await page.getOperatorList(),vp=page.getViewport({scale:1}),stack=[];
+  const mul=(m,n)=>[m[0]*n[0]+m[2]*n[1],m[1]*n[0]+m[3]*n[1],m[0]*n[2]+m[2]*n[3],m[1]*n[2]+m[3]*n[3],m[0]*n[4]+m[2]*n[5]+m[4],m[1]*n[4]+m[3]*n[5]+m[5]];
+  let ctm=[1,0,0,1,0,0],area=0,invisible=false;
+  for(let i=0;i<ops.fnArray.length;i++){
+    const f=ops.fnArray[i],a=ops.argsArray[i];
+    if(f===OPS.save||f===OPS.paintFormXObjectBegin){stack.push(ctm);if(f===OPS.paintFormXObjectBegin&&a&&a[0])ctm=mul(ctm,a[0])}
+    else if(f===OPS.restore||f===OPS.paintFormXObjectEnd)ctm=stack.pop()||ctm;
+    else if(f===OPS.transform)ctm=mul(ctm,a);
+    else if(f===OPS.setTextRenderingMode&&(a[0]&3)===3)invisible=true;
+    else if(f===OPS.paintImageXObject||f===OPS.paintInlineImageXObject||f===OPS.paintImageMaskXObject)area+=Math.abs(ctm[0]*ctm[3]-ctm[1]*ctm[2]);
+  }
+  return {cover:Math.min(1,area/(vp.width*vp.height)),invisible:invisible};
+}
 async function aiReadPdf(file){
   // Адрес абсолютный: checker.js исполняется из blob:-адреса, и import('/vendor/…') разрешался бы
   // относительно него, а не сайта. И вычисляется здесь, а не на верхнем уровне: этот же файл
@@ -2016,22 +2071,23 @@ async function aiReadPdf(file){
     wasmUrl:PDFJS_BASE+'wasm/',useWasm:false,enableXfa:false});
   try{
     const doc=await task.promise;
-    const pages=Math.min(doc.numPages,AI_PDF_MAX_PAGES);
-    let text='',letters=0;
+    const pages=Math.min(doc.numPages,AI_PDF_MAX_PAGES),free=Math.max(0,AI_MAX_IMAGES-aiImages.length),texts=[],images=[];
+    let lost=0;
+    // Решение — по каждой странице, а не по файлу: пакет документов часто склеен из электронного
+    // инвойса и сканов CMR или сертификата, и порог «в среднем 40 знаков на страницу» отдавал такой
+    // файл текстом, молча теряя сканы.
     for(let i=1;i<=pages;i++){
-      const tc=await (await doc.getPage(i)).getTextContent();
-      const t=tc.items.map(it=>(it.str||'')+(it.hasEOL?'\n':' ')).join('').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
-      letters+=t.replace(/\s/g,'').length;
-      text+=(i>1?'\n\n':'')+'— страница '+i+' —\n'+t;
-    }
-    // В среднем от 40 знаков на страницу — текстовый документ; меньше — скан с печатью или подписью.
-    if(letters>=40*pages){
-      return {kind:'text',name:file.name,pages:doc.numPages,text:text.slice(0,AI_PDF_MAX_CHARS),
-        cut:text.length>AI_PDF_MAX_CHARS||doc.numPages>pages};
-    }
-    const images=[],free=Math.max(0,4-aiImages.length);
-    for(let i=1;i<=Math.min(doc.numPages,free);i++){
       const page=await doc.getPage(i);
+      const t=aiPageText((await page.getTextContent()).items,page.getViewport({scale:1}),aiPdfLib.Util);
+      const im=await aiPageImages(page,aiPdfLib.OPS);
+      // Скан: текста меньше 40 знаков (печать, подпись), текст нечитаем или это слой распознавания
+      // поверх картинки — его качество неизвестно, а чтение изображения проверено на реальных сканах.
+      const scan=t.replace(/\s/g,'').length<40||aiTextBroken(t)||(im.cover>=0.3&&im.invisible);
+      if(!scan)texts.push('— страница '+i+' —\n'+t);
+      // Изображение — и у текстовой страницы, где картинка занимает заметную часть: таблица, вставленная
+      // в документ снимком, в текстовом слое отсутствует.
+      if(!scan&&im.cover<0.3)continue;
+      if(images.length>=free){lost++;continue}
       const base=page.getViewport({scale:1});
       const vp=page.getViewport({scale:Math.min(2.5,1600/Math.max(base.width,base.height))});
       const cv=document.createElement('canvas');
@@ -2041,7 +2097,8 @@ async function aiReadPdf(file){
       const url=(side?aiRotateCanvas(cv):cv).toDataURL('image/jpeg',0.85);
       images.push({media_type:'image/jpeg',data:url.slice(url.indexOf(',')+1),url:url,pdf:file.name+', стр. '+i+(side?' (повёрнута)':'')});
     }
-    return {kind:'scan',name:file.name,pages:doc.numPages,images:images};
+    const text=texts.join('\n\n');
+    return {name:file.name,pages:doc.numPages,read:pages,text:text.slice(0,AI_PDF_MAX_CHARS),cut:text.length>AI_PDF_MAX_CHARS,images:images,lost:lost};
   }finally{task.destroy()}
 }
 // Страница, отсканированная боком (таблица инвойса в альбомной ориентации на листе A4), модели
@@ -2075,14 +2132,25 @@ function aiRotateCanvas(src){
   x.translate(out.width,0);x.rotate(Math.PI/2);x.drawImage(src,0,0);
   return out;
 }
+async function aiImageCanvas(url){
+  const img=new Image();img.src=url;await img.decode();
+  const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;
+  cv.getContext('2d').drawImage(img,0,0);
+  return cv;
+}
+// Копия изображения, повёрнутая на 180°, уходит на сервер вместе с ним. Лист, отсканированный вверх
+// ногами, — и лист боком, повёрнутый не в ту сторону, — модель читает неверно и не замечает этого:
+// с перевёрнутого реального инвойса она выписала правдоподобную таблицу, где верна 0 сумм из 21.
+// Сервер спрашивает модель о положении страницы и при «перевёрнут» читает копию (services/assistant.js).
+async function aiFlippedData(im){
+  const url=aiRotateCanvas(aiRotateCanvas(await aiImageCanvas(im.url))).toDataURL('image/jpeg',0.85);
+  return url.slice(url.indexOf(',')+1);
+}
 // Кнопка ↻ у миниатюры: поворот на 90° по часовой, если автоматика не угадала или фото снято боком.
 async function aiRotateImage(i){
   const im=aiImages[i];
   if(!im)return;
-  const img=new Image();img.src=im.url;await img.decode();
-  const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;
-  cv.getContext('2d').drawImage(img,0,0);
-  const url=aiRotateCanvas(cv).toDataURL('image/jpeg',0.85);
+  const url=aiRotateCanvas(await aiImageCanvas(im.url)).toDataURL('image/jpeg',0.85);
   if(aiImages[i]!==im)return;
   aiImages[i]=Object.assign({},im,{media_type:'image/jpeg',data:url.slice(url.indexOf(',')+1),url:url});
   aiRenderThumbs();
@@ -2094,20 +2162,19 @@ async function aiAddFiles(files){
       if(aiDocs.length>=3){aiFileNote='Не больше 3 PDF за один вопрос.';continue}
       aiPdfBusy++;aiRenderThumbs();
       try{
-        const r=await aiReadPdf(f);
-        if(r.kind==='text'){
-          aiDocs.push(r);
-          if(r.cut)aiFileNote='«'+f.name+'»: модель получит первые '+Math.min(r.pages,AI_PDF_MAX_PAGES)+' стр. текста — остальное задайте отдельным вопросом.';
-        }else if(r.images.length){
-          aiImages.push(...r.images);
-          if(r.images.length<r.pages)aiFileNote='«'+f.name+'» — скан без текста: приложены изображениями первые '+r.images.length+' стр. из '+r.pages+'.';
-        }else aiFileNote='«'+f.name+'» — скан без текста, а мест под изображения не осталось: уберите лишние фото.';
+        const r=await aiReadPdf(f),note=[];
+        if(r.text.trim())aiDocs.push({name:r.name,pages:r.pages,text:r.text,cut:r.cut||r.pages>r.read});
+        aiImages.push(...r.images);
+        if(r.pages>r.read)note.push('модель получит первые '+r.read+' стр. из '+r.pages+' — остальное задайте отдельным вопросом');
+        else if(r.cut)note.push('текст длиннее '+AI_PDF_MAX_CHARS/1000+' тыс. знаков — модель получит его начало');
+        if(r.lost)note.push(r.lost+' стр. не приложены изображениями: не больше '+AI_MAX_IMAGES+' изображений за вопрос — уберите лишние и приложите файл снова');
+        if(note.length)aiFileNote='«'+f.name+'»: '+note.join('; ')+'.';
       }catch(e){
         aiFileNote='Не удалось прочитать «'+f.name+'»'+(e&&e.name==='PasswordException'?': файл защищён паролем.':'. Сохраните его заново или приложите фото страниц.');
       }finally{aiPdfBusy--}
       continue;
     }
-    if(aiImages.length>=4)continue;
+    if(aiImages.length>=AI_MAX_IMAGES)continue;
     if(!/^image\/(jpeg|png|webp)$/.test(f.type))continue;
     try{aiImages.push(await aiResize(f))}catch(e){}
   }
@@ -2141,7 +2208,7 @@ function aiAppend(m){
 }
 const AI_STEP={search_base:s=>'🔎 Ищу в базе: '+(s.query||''),calc_payments:s=>'🧮 Считаю платежи по '+(s.code||''),
   group_notes:s=>'📖 Читаю примечания к группе '+(s.chapter||''),verify:s=>'✔ Проверяю коды: '+((s.codes||[]).join(', ')),
-  sum_check:s=>'🧾 Сверяю итог документа: строк '+((s.amounts||[]).length),
+  sum_check:s=>'🧾 Сверяю итог документа: строк '+((s.rows||s.amounts||[]).length),
   read_images:s=>'📄 Читаю документ: изображений '+(s.count||'')};
 async function aiRate(box,rating,comment){
   const id=Number(box.dataset.id);
@@ -2182,7 +2249,7 @@ const AI_ERR={rate_limited:'Дневной лимит вопросов исче�
   assistant_disabled:'Ассистент не настроен на сервере.',
   ai_unavailable:'Сервис модели не ответил. Попробуйте ещё раз.',
   bad_image:'Изображение не принято: нужен JPG, PNG или WebP.',
-  too_many_images:'Не больше 4 изображений за один вопрос.',
+  too_many_images:'Не больше 8 изображений за один вопрос.',
   bad_doc:'PDF не принят: в нём не нашлось текста.',
   too_many_docs:'Не больше 3 PDF за один вопрос.',
   doc_too_long:'Текст PDF слишком длинный — приложите нужные страницы отдельно.',
@@ -2201,8 +2268,10 @@ async function aiSend(e){
   const wait=aiAppend({role:'assistant',content:'⏳ Готовлю ответ…'});
   const fail=(msg)=>{wait.remove();aiHistory.pop();aiSave();aiAppend({role:'assistant',content:msg,err:true})};
   try{
+    const images=await Promise.all(imgs.map(async im=>({media_type:im.media_type,data:im.data,alt:await aiFlippedData(im)})));
+    if(ver!==appViewVersion)return;
     const res=await fetch('/api/assistant',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({messages:aiHistory.map(m=>({role:m.role,content:m.content})),images:imgs.map(im=>({media_type:im.media_type,data:im.data})),docs:docs.map(d=>({name:d.name,pages:d.pages,text:d.text,cut:d.cut}))})});
+      body:JSON.stringify({messages:aiHistory.map(m=>({role:m.role,content:m.content})),images:images,docs:docs.map(d=>({name:d.name,pages:d.pages,text:d.text,cut:d.cut}))})});
     if(ver!==appViewVersion)return;
     if(res.status===413){fail('Изображения слишком большие — отправьте меньше или в меньшем размере.');return}
     if(!res.ok){const data=await res.json().catch(()=>({}));if(data.error==='quota_exceeded'){aiShowQuota(data.quota);fail(aiQuotaText(data.quota));return}fail(AI_ERR[data.error]||'Ошибка: '+(data.error||res.status));return}

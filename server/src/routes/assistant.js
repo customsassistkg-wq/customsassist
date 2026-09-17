@@ -101,16 +101,17 @@ router.post('/', async (req, res) => {
   if (!history.length || history[history.length - 1].role !== 'user') return res.status(400).json({ error: 'bad_request' });
 
   // Изображения (фото или скан инвойса) — только к последнему вопросу, только
-  // JPEG/PNG/WebP, не больше четырёх и не больше ~5 МБ каждое. В журнал не пишутся.
+  // JPEG/PNG/WebP, не больше восьми и не больше ~5 МБ каждое. alt — та же страница,
+  // повёрнутая на 180°: по ней читается страница, отсканированная вверх ногами. В журнал не пишутся.
   const rawImages = Array.isArray(req.body?.images) ? req.body.images : [];
-  if (rawImages.length > 4) return res.status(400).json({ error: 'too_many_images' });
+  if (rawImages.length > 8) return res.status(400).json({ error: 'too_many_images' });
+  const base64 = (v) => typeof v === 'string' && v.length <= 7_000_000 && /^[A-Za-z0-9+/=]+$/.test(v);
   const images = [];
   for (const img of rawImages) {
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(img?.media_type)
-      || typeof img.data !== 'string' || img.data.length > 7_000_000 || !/^[A-Za-z0-9+/=]+$/.test(img.data)) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(img?.media_type) || !base64(img.data) || (img.alt !== undefined && !base64(img.alt))) {
       return res.status(400).json({ error: 'bad_image' });
     }
-    images.push({ media_type: img.media_type, data: img.data });
+    images.push({ media_type: img.media_type, data: img.data, ...(img.alt ? { alt: img.alt } : {}) });
   }
 
   // PDF: текст, который браузер извлёк из файла (pdf.js), — до трёх документов и 100 тыс. знаков

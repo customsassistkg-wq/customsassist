@@ -86,7 +86,8 @@ app.get('/api/nbkr-rates', (q, r) => r.status(503).json({}));
 app.get('/api/class-decisions', (q, r) => r.json({ items: [] }));
 app.use('/api/checker.js', require('../src/routes/checker'));
 app.use('/api/engine', require('../src/routes/engine'));
-app.use('/api/assistant', require('../src/routes/assistant'));
+let lastBody = null;
+app.use('/api/assistant', (q, r, next) => { if (q.method === 'POST' && q.path === '/') lastBody = q.body; next(); }, require('../src/routes/assistant'));
 app.use('/vendor', express.static(path.join(root, 'vendor'), { setHeaders: (res, file) => { if (file.endsWith('.mjs')) res.type('application/javascript'); } }));
 // страница — с политикой CSP из nginx.conf: pdf.js обязан работать и под ней
 app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(html));
@@ -132,6 +133,8 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
       assert.equal(lastReadRequest.messages[0].content[0].source.media_type, 'image/jpeg');
       assert.match(lastUser.content[0].text, /^Изображение 1 из 1 — расшифровка отдельным чтением/);
       assert.equal(lastUser.content[1].text, 'Пошлина на смартфон?');
+      // к изображению уходит копия, повёрнутая на 180°, — по ней сервер читает страницу вверх ногами
+      assert.match(lastBody.images[0].alt, /^[A-Za-z0-9+/=]{20,}$/);
       assert.match(await page.locator('.ai-msg.u').innerText(), /изображений: 1/);
       assert.equal(await page.locator('.ai-thumb').count(), 0);
       assert.equal(r.over, false, 'horizontal overflow at ' + w);
@@ -236,6 +239,58 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
       await page.click('.ai-thumb button[data-rm="0"]');
       assert.equal(await page.locator('.ai-thumb').count(), 0);
 
+      // копия для сервера действительно повёрнута на 180°: строки скана начинаются слева, и тёмная половина переходит направо
+      assert.deepEqual(await page.evaluate(async (b64) => {
+        const darkLeft = async (data) => {
+          const cv = await aiImageCanvas('data:image/jpeg;base64,' + data), d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+          let l = 0, r = 0;
+          for (let i = 0; i < d.length; i += 4) { const x = (i / 4) % cv.width; if (d[i] < 128) { if (x < cv.width / 2) l++; else r++; } }
+          return l > r;
+        };
+        return [await darkLeft(b64), await darkLeft(await aiFlippedData({ url: 'data:image/jpeg;base64,' + b64 }))];
+      }, jpg.toString('base64')), [true, false]);
+
+      // Постраничное решение. Таблица, записанная в файл по колонкам, собирается по строкам; в склеенном
+      // пакете текстовая страница идёт текстом, а скан — изображением; слой распознавания поверх скана и
+      // текст без таблицы символов шрифта («Ñ÷¸ò» вместо «Счёт») — изображением; таблица, вставленная
+      // картинкой в текстовый документ, — и текстом, и изображением.
+      const F1 = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+      const onePage = (content, resources, ...extra) => pdfFile(['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources ${resources} >>`, stream(content), F1, ...extra]);
+      const image = Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width 400 /Height 300 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`), jpg, Buffer.from('\nendstream')]);
+      const cells = [['No', 'Item', 'Qty', 'Amount USD'], ['1', 'Bolt M8', '120', '1 860.00'], ['2', 'Nut M8', '1 500', '975.50'], ['3', 'Washer 8mm', '2 000', '340.00'], ['4', 'Anchor 10x80', '350', '12 250.00']];
+      let byColumns = 'BT /F1 10 Tf ';
+      for (let c = 0; c < 4; c++) cells.forEach((row, r) => { byColumns += `1 0 0 1 ${[50, 90, 250, 330][c]} ${700 - r * 15} Tm (${row[c]}) Tj `; });
+      byColumns += '1 0 0 1 50 780 Tm (COMMERCIAL INVOICE No 88 Seller Ningbo Trading Co Ltd) Tj ET';
+      const cp1251 = (t) => t.replace(/[А-яё№]/g, (ch) => (ch === 'ё' ? '\xb8' : ch === '№' ? '\xb9' : String.fromCharCode(0xc0 + ch.charCodeAt(0) - 0x410)));
+      const addPdf = async (name, buffer) => {
+        await page.setInputFiles('#aiFile', { name, mimeType: 'application/pdf', buffer });
+        await page.waitForFunction((n) => !aiPdfBusy && (aiDocs.some((d) => d.name === n) || aiImages.some((i) => (i.pdf || '').startsWith(n))), name, { timeout: 30000 });
+        const r = await page.evaluate(() => ({ docs: aiDocs.map((d) => d.text), images: aiImages.map((i) => i.pdf) }));
+        await page.evaluate(() => { aiDocs = []; aiImages = []; aiRenderThumbs(); });
+        return r;
+      };
+      let got = await addPdf('columns.pdf', onePage(byColumns, '<< /Font << /F1 5 0 R >> >>'));
+      assert.deepEqual(got.images, []);
+      assert.match(got.docs[0], /No \| Item \| Qty \| Amount USD\n1 \| Bolt M8 \| 120 \| 1 860\.00\n2 \| Nut M8 \| 1 500 \| 975\.50\n3 \| Washer 8mm \| 2 000 \| 340\.00\n4 \| Anchor 10x80 \| 350 \| 12 250\.00/);
+      got = await addPdf('mixed.pdf', pdfFile(['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+        stream('BT /F1 12 Tf 50 780 Td (INVOICE No 17 Shenzhen Trading Co Ltd) Tj 0 -20 Td (Smartphone 8517130000 qty 200 pcs amount 30000 USD) Tj ET'), F1,
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Contents 7 0 R /Resources << /XObject << /Im1 8 0 R >> >> >>', stream('q 400 0 0 300 0 0 cm /Im1 Do Q'), image]));
+      assert.match(got.docs[0], /^— страница 1 —\nINVOICE No 17 Shenzhen Trading Co Ltd\nSmartphone 8517130000/);
+      assert.doesNotMatch(got.docs[0], /страница 2/);
+      assert.deepEqual(got.images, ['mixed.pdf, стр. 2']);
+      got = await addPdf('ocr.pdf', onePage('q 595 0 0 842 0 0 cm /Im1 Do Q BT 3 Tr /F1 12 Tf 50 780 Td (COMMERCIAL INVOICE No 5 recognised text layer TOTAL USD 2 368 304 98) Tj ET',
+        '<< /Font << /F1 5 0 R >> /XObject << /Im1 6 0 R >> >>', image));
+      assert.deepEqual(got, { docs: [], images: ['ocr.pdf, стр. 1'] });
+      got = await addPdf('cp1251.pdf', onePage('BT /F1 12 Tf 50 780 Td (' + cp1251('Счёт-фактура № 17 от 12.09.2026 Продавец ОсОО Азия Трейд Наименование товара Количество Сумма') + ') Tj ET',
+        '<< /Font << /F1 5 0 R >> >>'));
+      assert.deepEqual(got, { docs: [], images: ['cp1251.pdf, стр. 1'] });
+      got = await addPdf('pasted.pdf', onePage('BT /F1 12 Tf 50 800 Td (INVOICE No 17 from Shenzhen Trading Co Ltd, the table is below) Tj ET q 520 0 0 390 40 380 cm /Im1 Do Q',
+        '<< /Font << /F1 5 0 R >> /XObject << /Im1 6 0 R >> >>', image));
+      assert.match(got.docs[0], /INVOICE No 17 from Shenzhen Trading Co Ltd, the table is below/);
+      assert.deepEqual(got.images, ['pasted.pdf, стр. 1']);
+
 
       // инвойс, каким его печатает браузер или 1С: встроенные шрифты, китайский и русский текст, таблица
       const printer = await browser.newPage();
@@ -256,7 +311,7 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
       await page.locator('.ai-file-note', { hasText: 'Не удалось прочитать «broken.pdf»' }).waitFor({ timeout: 30000 });
       assert.deepEqual(errors, []);
       assert.deepEqual(violations, []);
-      console.log('PASS browser PDF — текстовый слой текстом, скан изображением, битый файл сообщением, под CSP');
+      console.log('PASS browser PDF — текстовый слой текстом, скан изображением, по страницам (колонки, пакет, слой распознавания, кодировка, вставленная таблица), копия на 180°, битый файл сообщением, под CSP');
       await page.close();
     }
   } finally {

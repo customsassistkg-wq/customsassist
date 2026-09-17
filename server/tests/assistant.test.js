@@ -210,7 +210,13 @@ const a = require('../src/services/assistant');
   assert.equal(a.sumCheck({ amounts: [0.1, 0.2] }), 'Сумма 2 чисел: 0,30.');
   assert.equal(a.sumCheck({ amounts: [] }), 'Нет чисел для сложения.');
   assert.match(a.sumCheck({ amounts: ['1 000,50', 2] }), /1\s002,50/);
-  console.log('PASS: sum_check — сумма строк без ошибки дробей, расхождение с итогом');
+  // строки с количеством и ценой: сумма берётся из rows, неверно прочитанная строка названа
+  const rows = [{ quantity: 120, price: 15.5, amount: 1860 }, { quantity: 1500, price: 0.65, amount: 975 }, { quantity: 3, price: 33.333, amount: 100 }];
+  assert.match(a.sumCheck({ rows, total: 2935 }), /^Сумма 3 чисел: 2\s935,00\. Количество × цена равно сумме во всех 3 строках\. Совпадает с итогом документа\.$/);
+  const misread = a.sumCheck({ rows: [rows[0], { quantity: 1500, price: 0.65, amount: 915 }], total: 2835 });
+  assert.match(misread, /Количество × цена не равно сумме: строка 2: 1\s500 × 0,65 = 975,00, а в документе 915,00\..*назови пользователю эти строки/);
+  assert.doesNotMatch(misread, /строка 1:/);
+  console.log('PASS: sum_check — сумма строк без ошибки дробей, расхождение с итогом, количество × цена по строкам');
 
   // ── стоимость раунда по ценам DeepSeek ──
   const u = { input_tokens: 1e6, cache_read_input_tokens: 1e6, output_tokens: 1e6 };
@@ -350,12 +356,40 @@ const a = require('../src/services/assistant');
     await a.ask([{ role: 'user', content: 'Разбери инвойс' }], { images: [img] });
     const main2 = bodies.find((b) => b.tool_choice);
     assert.deepEqual(main2.messages[main2.messages.length - 1].content.map((b) => b.type), ['image', 'text']);
+
+    // страница вверх ногами: положение спрашивается у модели, перевёрнутая читается по копии alt
+    bodies.length = 0; failRead = false;
+    const readOf = (b) => b.messages[0].content[0].source.data;
+    const isOrient = (b) => /перевёрнут вверх ногами/.test(b.messages[0].content[1].text);
+    global.fetch = async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      bodies.push(body);
+      if (!body.tools) {
+        if (isOrient(body)) return { ok: true, json: async () => ({ content: [{ type: 'text', text: readOf(body) === 'AAAA' ? 'перевёрнут' : 'правильно' }], usage: { input_tokens: 1000, output_tokens: 2 } }) };
+        if (failRead) return { ok: false, status: 500, json: async () => ({ error: { message: 'vision down' } }) };
+        return { ok: true, json: async () => ({ content: [{ type: 'text', text: 'READ ' + readOf(body) }], usage: { input_tokens: 1000, output_tokens: 300 } }) };
+      }
+      return { ok: true, json: async () => ({ content: body.tool_choice ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: '8537109800' } }] : [{ type: 'text', text: 'ок' }], usage: { input_tokens: 10, output_tokens: 5 } }) };
+    };
+    const up = { media_type: 'image/jpeg', data: 'AAAA', alt: 'BBBB' }, ok = { media_type: 'image/jpeg', data: 'CCCC', alt: 'DDDD' };
+    await a.ask([{ role: 'user', content: 'Разбери инвойс' }], { images: [up, ok] });
+    const main3 = bodies.find((b) => b.tool_choice), b3 = main3.messages[main3.messages.length - 1].content;
+    assert.match(b3[0].text, /^Изображение 1 из 2 \(страница была перевёрнута, прочитана после поворота\) — расшифровка.*\nREAD BBBB$/);
+    assert.match(b3[1].text, /^Изображение 2 из 2 — расшифровка.*\nREAD CCCC$/);
+    assert.equal(bodies.filter(isOrient).length, 2);
+    assert.ok(!bodies.some((b) => !b.tools && readOf(b) === 'DDDD'), 'ровная страница не читается по копии');
+    // чтение не удалось — модели уходит повёрнутая копия, а не перевёрнутый оригинал
+    bodies.length = 0; failRead = true;
+    await a.ask([{ role: 'user', content: 'Разбери инвойс' }], { images: [up] });
+    const main4 = bodies.find((b) => b.tool_choice), b4 = main4.messages[main4.messages.length - 1].content;
+    assert.equal(b4[0].type, 'image');
+    assert.equal(b4[0].source.data, 'BBBB');
     global.fetch = async (url, opts) => {
       const body = JSON.parse(opts.body);
       calls.push(body);
       return { ok: true, json: async () => ({ content: script(calls.length), usage: { input_tokens: 10, output_tokens: 5 } }) };
     };
-    console.log('PASS: изображения — расшифровка отдельным чтением вместо картинки, расход учтён, при сбое картинка');
+    console.log('PASS: изображения — расшифровка отдельным чтением вместо картинки, расход учтён, при сбое картинка, перевёрнутая страница — по копии');
   }
 
   // текст PDF — перед вопросом и подписан как данные; поиска сервером по коду из текста нет
