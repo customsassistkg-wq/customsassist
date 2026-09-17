@@ -56,12 +56,14 @@ require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async 
 
 let n = 0;
 let lastFirstRequest = null;
+let lastReadRequest = null;
 // 2×2 PNG: браузер сожмёт его в JPEG, сервер передаст модели блоком image.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==', 'base64');
 global.fetch = async (url, opts) => {
   n++;
   const b = JSON.parse(opts.body);
   if (b.tool_choice) lastFirstRequest = b;
+  if (!b.tools) lastReadRequest = b; // отдельное чтение изображения: без инструментов
   // задержка, чтобы шаг «Ищу в базе» успел дойти до браузера раньше ответа
   if (!b.tool_choice) await new Promise((r) => setTimeout(r, 400));
   const content = b.tool_choice
@@ -126,8 +128,9 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
       assert.match(await page.locator('#aiQuota').innerText(), /Тариф «Базовый»: сегодня осталось \d+ из 3 · в месяц \d+ из 100/);
       assert.equal(r.msgs, 2);
       const lastUser = lastFirstRequest.messages[lastFirstRequest.messages.length - 1];
-      assert.equal(lastUser.content[0].type, 'image');
-      assert.equal(lastUser.content[0].source.media_type, 'image/jpeg');
+      // фото сначала читается отдельным вызовом, модель получает расшифровку
+      assert.equal(lastReadRequest.messages[0].content[0].source.media_type, 'image/jpeg');
+      assert.match(lastUser.content[0].text, /^Изображение 1 из 1 — расшифровка отдельным чтением/);
       assert.equal(lastUser.content[1].text, 'Пошлина на смартфон?');
       assert.match(await page.locator('.ai-msg.u').innerText(), /изображений: 1/);
       assert.equal(await page.locator('.ai-thumb').count(), 0);
@@ -215,8 +218,8 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
       await page.keyboard.press('Enter');
       await page.waitForFunction(() => document.querySelectorAll('.ai-msg.a h4').length >= 2);
       last = lastFirstRequest.messages[lastFirstRequest.messages.length - 1];
-      assert.equal(last.content[0].type, 'image');
-      assert.equal(last.content[0].source.media_type, 'image/jpeg');
+      assert.equal(lastReadRequest.messages[0].content[0].type, 'image');
+      assert.match(last.content[0].text, /^Изображение 1 из 1 — расшифровка отдельным чтением/);
       assert.equal(last.content[1].text, 'Разбери скан');
 
       // скан, положенный боком, поворачивается сам; кнопка ↻ поворачивает на 90° по часовой

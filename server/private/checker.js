@@ -2140,7 +2140,9 @@ function aiAppend(m){
   return d;
 }
 const AI_STEP={search_base:s=>'🔎 Ищу в базе: '+(s.query||''),calc_payments:s=>'🧮 Считаю платежи по '+(s.code||''),
-  group_notes:s=>'📖 Читаю примечания к группе '+(s.chapter||''),verify:s=>'✔ Проверяю коды: '+((s.codes||[]).join(', '))};
+  group_notes:s=>'📖 Читаю примечания к группе '+(s.chapter||''),verify:s=>'✔ Проверяю коды: '+((s.codes||[]).join(', ')),
+  sum_check:s=>'🧾 Сверяю итог документа: строк '+((s.amounts||[]).length),
+  read_images:s=>'📄 Читаю документ: изображений '+(s.count||'')};
 async function aiRate(box,rating,comment){
   const id=Number(box.dataset.id);
   const m=aiHistory.find(x=>x.id===id);

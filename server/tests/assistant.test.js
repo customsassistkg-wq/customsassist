@@ -202,6 +202,16 @@ const a = require('../src/services/assistant');
   assert.match(await a.calcPayments({ code: '1', value: 1, currency: 'USD' }), /не найден в ЕТТ/);
   console.log('PASS: calc_payments — пошлина «не менее», НДС, сбор, ЕАЭС, ОАЭ');
 
+  // ── sum_check: сумма строк инвойса в копейках и сверка с итогом ──
+  const rows21 = [7129, 7129, 7129, 7129, 37577.5, 4845, 6849, 30524.1, 13477.3, 28921.2, 6523, 30847.2, 16560, 4142, 12152, 10192, 9642, 67954, 247562.1, 10545, 16649];
+  assert.match(a.sumCheck({ amounts: rows21, total: 583478.4 }), /^Сумма 21 чисел: 583\s478,40\. Совпадает с итогом документа\.$/);
+  // итог, прочитанный со скана неверно: расхождение, просьба перечитать, а не выбор одного из чисел
+  assert.match(a.sumCheck({ amounts: rows21, total: 563478.4 }), /расходится с суммой строк на 20\s000,00.*считай по сумме строк.*назови пользователю обе суммы/);
+  assert.equal(a.sumCheck({ amounts: [0.1, 0.2] }), 'Сумма 2 чисел: 0,30.');
+  assert.equal(a.sumCheck({ amounts: [] }), 'Нет чисел для сложения.');
+  assert.match(a.sumCheck({ amounts: ['1 000,50', 2] }), /1\s002,50/);
+  console.log('PASS: sum_check — сумма строк без ошибки дробей, расхождение с итогом');
+
   // ── стоимость раунда по ценам DeepSeek ──
   const u = { input_tokens: 1e6, cache_read_input_tokens: 1e6, output_tokens: 1e6 };
   const peak = new Date('2026-09-16T07:00:00Z');    // среда 07:00 UTC — пик
@@ -308,6 +318,45 @@ const a = require('../src/services/assistant');
     return { ok: true, json: async () => ({ content: script(calls.length), usage: { input_tokens: 10, output_tokens: 5 } }) };
   };
   console.log('PASS: поиск по коду из вопроса без раунда модели, примечания заодно, страна и направление — модели, откат при 400');
+
+  // изображение сначала расшифровывается отдельным вызовом без инструментов; модель получает текст, а не картинку
+  {
+    const bodies = [];
+    let failRead = false;
+    global.fetch = async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      bodies.push(body);
+      if (!body.tools) {
+        if (failRead) return { ok: false, status: 500, json: async () => ({ error: { message: 'vision down' } }) };
+        return { ok: true, json: async () => ({ content: [{ type: 'text', text: 'COMMERCIAL INVOICE GAL2026000000069\n| 1 | 853710980019 | $7.129,00 |\nGrand Total: $583.478,40' }], usage: { input_tokens: 1000, output_tokens: 300 } }) };
+      }
+      return { ok: true, json: async () => ({ content: body.tool_choice ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: '8537109800' } }] : [{ type: 'text', text: 'ок' }], usage: { input_tokens: 10, output_tokens: 5 } }) };
+    };
+    const img = { media_type: 'image/jpeg', data: 'AAAA' };
+    const st = [];
+    const rr = await a.ask([{ role: 'user', content: 'Разбери инвойс' }], { images: [img, img], onStep: (s) => st.push(s.tool) });
+    const reads = bodies.filter((b) => !b.tools);
+    assert.equal(reads.length, 2);
+    assert.equal(reads[0].messages[0].content[0].type, 'image');
+    assert.equal(st[0], 'read_images');
+    const main = bodies.find((b) => b.tool_choice);
+    const blocks = main.messages[main.messages.length - 1].content;
+    assert.deepEqual(blocks.map((b) => b.type), ['text', 'text', 'text']);
+    assert.match(blocks[0].text, /^Изображение 1 из 2 — расшифровка отдельным чтением.*\nCOMMERCIAL INVOICE[\s\S]*583\.478,40/);
+    assert.equal(blocks[2].text, 'Разбери инвойс');
+    assert.ok(rr.usage.input >= 2020, 'расход чтения учтён: ' + rr.usage.input);
+    // чтение не удалось — изображение уходит модели как есть
+    bodies.length = 0; failRead = true;
+    await a.ask([{ role: 'user', content: 'Разбери инвойс' }], { images: [img] });
+    const main2 = bodies.find((b) => b.tool_choice);
+    assert.deepEqual(main2.messages[main2.messages.length - 1].content.map((b) => b.type), ['image', 'text']);
+    global.fetch = async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      calls.push(body);
+      return { ok: true, json: async () => ({ content: script(calls.length), usage: { input_tokens: 10, output_tokens: 5 } }) };
+    };
+    console.log('PASS: изображения — расшифровка отдельным чтением вместо картинки, расход учтён, при сбое картинка');
+  }
 
   // текст PDF — перед вопросом и подписан как данные; поиска сервером по коду из текста нет
   calls.length = 0;
