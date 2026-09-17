@@ -576,6 +576,20 @@ const a = require('../src/services/assistant');
     assert.doesNotMatch(r.text, /Не подтверждено повторным чтением/); // «15,00» подтверждено разбором полей
     assert.match(r.text, /\[Разбор полей документа \(Google Document AI[^\]]*\ngrand_total: \$583\.478,40\nстрока 1 — code: PRJ 000520; net_weight: 15,00; unit_price: \$5\.272,50; total_price: \$10\.545,00; количество \(сумма ÷ цена\): 2\]$/);
     assert.ok(r.usage.costUsd >= 0.03, 'страница разбора в расходе: ' + r.usage.costUsd);
+    // Отказ разбора (версия снята с развёртывания, нет прав, нет оплаты) не ломает чтение и не списывает плату:
+    // страница возвращается с расшифровкой и пометкой о несверенных числах, просто без блока полей.
+    docaiCalls = [];
+    global.fetch = async (url, opts) => {
+      if (!/documentai\.googleapis\.com/.test(url)) return modelFetch(url, opts);
+      docaiCalls.push(url);
+      return { ok: false, status: 400, json: async () => ({ error: { message: "ProcessorVersion 'x' is not deployed." } }) };
+    };
+    fullRead = 0;
+    r = await a.readPage(page, { parts: parts2 });
+    assert.equal(docaiCalls.length, 1);
+    assert.match(r.text, /\[Не подтверждено повторным чтением: строка 20 — 15,00/);
+    assert.doesNotMatch(r.text, /Разбор полей документа/);
+    assert.ok(r.usage.costUsd < 0.03, 'плата за несостоявшийся разбор не берётся: ' + r.usage.costUsd);
     // на согласной странице разбор не вызывается — он стоит 3 цента и полминуты
     docaiCalls = [];
     global.fetch = async (url, opts) => {
