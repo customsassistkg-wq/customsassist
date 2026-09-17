@@ -34,6 +34,10 @@ const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000; // per IP, per 15 min
 const FORGOT_RATE_LIMIT = 5; // attempts
 const FORGOT_RATE_WINDOW_MS = 60 * 60 * 1000; // per IP, per hour
 
+// Same cost as real hashes (bcrypt.hash(password, 12) below), so the dummy
+// comparison takes as long as a real one.
+const DUMMY_HASH = bcrypt.hashSync('not-a-password', 12);
+
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
@@ -79,7 +83,7 @@ const checkResendRateLimit = makeRateLimiter(FORGOT_RATE_LIMIT, FORGOT_RATE_WIND
 // Публичные настройки для страницы. Публичный ключ Turnstile не секрет —
 // он и так виден в разметке виджета. Отдаём его отдельным запросом, а не
 // зашиваем в HTML, чтобы включение капчи было правкой .env и перезапуском
-// службы, а не пересборкой и выкатом восьмимегабайтного файла.
+// службы, а не правкой и выкатом страницы.
 router.get('/config', (req, res) => {
   res.json({ turnstileSiteKey: turnstileEnabled() ? (turnstileSiteKey() || null) : null });
 });
@@ -100,13 +104,14 @@ router.post('/login', async (req, res, next) => {
     );
     const user = rows[0];
     // Same generic error whether the email doesn't exist or the password is
-    // wrong, so a caller can't use this endpoint to enumerate accounts.
-    if (!user || !user.active) {
-      return res.status(401).json({ error: 'invalid credentials' });
-    }
-
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) {
+    // wrong, so a caller can't use this endpoint to enumerate accounts — and
+    // the same time too: bcrypt runs against a dummy hash for an unknown or
+    // disabled account, otherwise the instant 401 gives the answer away.
+    // Registration still answers 409 for a taken address on purpose: that
+    // path is behind Turnstile and a per-IP limit, and «уже зарегистрирован»
+    // is worth more to a real user than hiding it (decided 17.09.2026).
+    const ok = await bcrypt.compare(String(password), user && user.active ? user.password_hash : DUMMY_HASH);
+    if (!user || !user.active || !ok) {
       return res.status(401).json({ error: 'invalid credentials' });
     }
 

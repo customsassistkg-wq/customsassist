@@ -9603,7 +9603,7 @@ function confirmDeleteUser(u){
   openModal(
     '<h2>Удалить пользователя</h2>'
     +'<div id="pendingError" class="calc-warn w-red" style="display:none"></div>'
-    +'<p style="font-size:13px;color:var(--text);margin-bottom:8px">Пользователь <b>'+esc(u.email)+'</b> будет удалён безвозвратно — учётную запись нельзя будет восстановить. Если нужно просто временно закрыть доступ, используйте «Отключить» вместо удаления.</p>'
+    +'<p style="font-size:13px;color:var(--text);margin-bottom:8px">Пользователь <b>'+esc(u.email)+'</b> будет удалён безвозвратно — учётную запись нельзя будет восстановить. Вместе с ней удаляются вопросы к AI-ассистенту, и их расход пропадёт из отчёта для счёта. Если нужно просто временно закрыть доступ, используйте «Отключить» вместо удаления.</p>'
     +'<div class="modal-actions"><button class="calc-btn ghost" type="button" id="pendingCancelBtn">Отмена</button><button class="calc-btn" type="button" id="pendingConfirmBtn" style="background:var(--red)">Удалить</button></div>'
   );
   pendingAction={type:'delete',id:u.id};
