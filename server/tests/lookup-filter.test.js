@@ -24,8 +24,24 @@ const sandbox = {console, setTimeout, clearTimeout, addEventListener:noop, local
   document:{getElementById:el, querySelector:el, querySelectorAll:()=>[], createElement:el, addEventListener:noop, body:el()}};
 sandbox.window = sandbox;
 vm.createContext(sandbox);
-new vm.Script(code + '\nthis.__lk={lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded};').runInContext(sandbox);
-const {lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB, banOn, BAN_DB, umTermEnded} = sandbox.__lk;
+new vm.Script(code + '\nthis.__lk={lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded,adActive,ANTIDUMP_DB};').runInContext(sandbox);
+const {lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB, banOn, BAN_DB, umTermEnded, adActive, ANTIDUMP_DB} = sandbox.__lk;
+
+// ── Антидемпинговые меры и тарифные льготы: машинная дата окончания у каждой ──
+for (const r of ANTIDUMP_DB) {
+  assert.equal(r.length, 7, `поле срока у меры ${r[2]}`);
+  assert.match(r[6], /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(r[5] === null || /^https?:\/\//.test(r[5]), `ссылка не сдвинулась у меры ${r[2]}`);
+}
+{
+  const tyres = ANTIDUMP_DB.find((r) => r[2] === 'Грузовые шины');
+  assert.equal(adActive(tyres, '2026-11-13'), true);
+  assert.equal(adActive(tyres, '2026-11-14'), false);
+  for (const r of BAN_DB) if (r['льг']) assert.match(r['льгUntil'] || '', /^\d{4}-\d{2}-\d{2}$/, `срок льготы ${r.codes[0]}`);
+  const beef = BAN_DB.find((r) => r['льг'] && r.codes[0] === '0201');
+  assert.equal(banOn(beef, 'льг', beef['льгUntil']), true);
+  assert.equal(banOn(beef, 'льг', '2099-01-01'), false);
+}
 
 // ── Односторонние меры: признак «действует» из реестра не переживает свой срок ──
 assert.equal(umTermEnded('с 10.03.2026 до 10.09.2026', '2026-09-10'), false);
