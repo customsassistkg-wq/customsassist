@@ -507,20 +507,12 @@ const a = require('../src/services/assistant');
     const saFile = require('node:path').join(require('node:os').tmpdir(), 'vision-sa-test.json');
     require('node:fs').writeFileSync(saFile, JSON.stringify({ type: 'service_account', client_email: 'vision@test.iam.gserviceaccount.com', private_key: privateKey, token_uri: 'https://oauth2.googleapis.com/token' }));
     process.env.OCR_GOOGLE_SA = saFile;
-    vision = { responses: [{ fullTextAnnotation: { text: '19 6 $4.260,35 $247.562,10\nTotal 583.478,40' } }] };
+    vision = { responses: [{ fullTextAnnotation: { text: '19 6 $41.260,35 $247.562,10\nTotal 583.478,40' } }] };
     bodies.length = 0;
     r = await a.readPage(page);
     assert.deepEqual(bodies.filter((b) => b.vision), [{ vision: true, auth: 'Bearer tok' }]);
-    assert.match(r.text, /\[Сверка со вторым распознаванием: не подтверждены числа 41\s260,35; второе распознавание вместо них или дополнительно читает 4\s260,35\./);
-    vision = { responses: [{ fullTextAnnotation: { text: '19 6 $41,260.35 $247,562.10 Total 583 478,40' } }] };
-    assert.match((await a.readPage(page)).text, /\[Сверка со вторым распознаванием: все 3 чисел совпали\.\]$/);
-    // сбой второго распознавания не роняет чтение
-    vision = { responses: [{ error: { message: 'This API method requires billing to be enabled' } }] };
-    assert.doesNotMatch((await a.readPage(page)).text, /Сверка/);
-    assert.equal(tokens, 1); // токен взят один раз на все обращения
-    delete process.env.OCR_GOOGLE_SA;
-    require('node:fs').unlinkSync(saFile);
-    assert.deepEqual(a.amountsIn('7.129,00 · 7,129.00 · 7 129,00 · 6 · 2026 · 13.08.2026'), ['712900c', '712900c', '712900c', '2026', '13082026']);
+    assert.equal(tokens, 1); // токен берётся один раз и живёт час
+    assert.deepEqual(a.flatNumbers('7.129,00 · 7,129.00 · 7 129,00 · 6 · 13.08.2026'), ['712900c', '712900c', '712900c', '6', '13082026']);
 
     // сверка трёх чтений: основное — полосы (parts), неподтверждённое число заменяется тем, в чём сходятся два чтения
     // целиком, нерешённое большинством — в пометку; формат числа берётся из подтверждающего чтения
@@ -530,17 +522,29 @@ const a = require('../src/services/assistant');
       '| 1 | ST-192 | 1 | 7 129,00 | 7 129,00 |\n| 19 | ST-192 | 8 | $41.260,35 | $247.562,10 |\n| 20 | HYD | 1 | 18,00 | $10.545,00 |\nGrand Total: $583.478,40',
     ];
     let fullRead = 0;
+    const parts2 = [{ media_type: 'image/jpeg', data: 'P1' }, { media_type: 'image/jpeg', data: 'P2' }];
     global.fetch = async (url, opts) => {
+      if (/oauth2\.googleapis\.com/.test(url)) { tokens++; return { ok: true, json: async () => ({ access_token: 'tok', expires_in: 3600 }) }; }
+      if (/vision\.googleapis\.com/.test(url)) return { ok: true, json: async () => vision };
       const body = JSON.parse(opts.body);
       const data = body.messages[0].content[0].source.data;
       const text = /перевёрнут вверх ногами/.test(body.messages[0].content[1].text) ? 'правильно' : strips[data] || fulls[fullRead++ % 2];
       return { ok: true, json: async () => ({ content: [{ type: 'text', text }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }) };
     };
-    r = await a.readPage(page, { parts: [{ media_type: 'image/jpeg', data: 'P1' }, { media_type: 'image/jpeg', data: 'P2' }] });
+    // Google Vision подтверждает число где угодно на странице: «6» в строке 19 остаётся, хотя оба чтения целиком
+    // прочли «8», а «7 128,00» и итог «563 478,40», которых у Google нет, заменяются
+    vision = { responses: [{ fullTextAnnotation: { text: '19 6 41.260,35 247.562,10\n7.129,00 7.129,00\nGrand Total 583.478,40' } }] };
+    r = await a.readPage(page, { parts: parts2 });
     assert.equal(fullRead, 2);
-    assert.match(r.text, /^\| 1 \| ST-192 \| 1 \| \$7\.129,00 \| \$7\.129,00 \|\n\| 19 \| ST-192 \| 8 \| \$41\.260,35/);
+    assert.match(r.text, /^\| 1 \| ST-192 \| 1 \| \$7\.129,00 \| \$7\.129,00 \|\n\| 19 \| ST-192 \| 6 \| \$41\.260,35/);
     assert.match(r.text, /\nGrand Total: \$583\.478,40\n/);
     assert.match(r.text, /\[Не подтверждено повторным чтением: строка 20 — 15,00\. Эти числа могут быть прочитаны неверно/);
+    // без Google решает большинство чтений модели — и ошибается на количестве
+    delete process.env.OCR_GOOGLE_SA;
+    require('node:fs').unlinkSync(saFile);
+    fullRead = 0;
+    r = await a.readPage(page, { parts: parts2 });
+    assert.match(r.text, /\| 19 \| ST-192 \| 8 \| \$41\.260,35/);
     assert.equal(a.reconcileReadings('| 1 | 5,30 |', ['| 1 | 5,30 |', '| 1 | 5,80 |']).text, '| 1 | 5,30 |');
     // сбой чтения уносит расход с ошибкой
     global.fetch = async () => ({ ok: false, status: 500, json: async () => ({ error: { message: 'down' } }) });

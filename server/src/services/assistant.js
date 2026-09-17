@@ -682,23 +682,7 @@ function numKey(s) {
 // Числа, от которых зависит расчёт: суммы и веса с дробной частью, коды и количества от четырёх цифр.
 const numMatters = (k) => k.endsWith('c') || k.length >= 4;
 const fmtNum = (k) => (k.endsWith('c') ? (Number(k.slice(0, -1)) / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : k);
-function amountsIn(text) {
-  return [...String(text).matchAll(NUM_RE)].map((m) => numKey(m[0])).filter(numMatters);
-}
-function ocrCheck(transcript, ocr) {
-  const a = amountsIn(transcript), b = amountsIn(ocr);
-  if (!a.length) return '';
-  const left = new Map();
-  for (const v of b) left.set(v, (left.get(v) || 0) + 1);
-  const missing = [];
-  for (const v of a) { if (left.get(v)) left.set(v, left.get(v) - 1); else missing.push(v); }
-  if (!missing.length) return `[Сверка со вторым распознаванием: все ${a.length} чисел совпали.]`;
-  if (missing.length > 0.4 * a.length) return `[Сверка со вторым распознаванием ненадёжна: не совпали ${missing.length} чисел из ${a.length} — страница плохо читается; важные суммы сверь с оригиналом.]`;
-  const extra = [...left].flatMap(([v, n]) => Array(n).fill(v));
-  return `[Сверка со вторым распознаванием: не подтверждены числа ${missing.slice(0, 15).map(fmtNum).join('; ')}`
-    + `${extra.length ? `; второе распознавание вместо них или дополнительно читает ${extra.slice(0, 15).map(fmtNum).join('; ')}` : ''}. `
-    + 'Эти числа могут быть прочитаны неверно — назови их пользователю, чтобы он сверил с оригиналом.]';
-}
+const flatNumbers = (text) => [...String(text).matchAll(NUM_RE)].map((m) => numKey(m[0]));
 
 // Числа чтения по группам: строка таблицы — по её номеру, всё вне таблиц — одна группа из сумм и чисел от четырёх цифр.
 const ROW_RE = /^\s*\|\s*(\d{1,4})\s*\|/;
@@ -724,16 +708,20 @@ function numberGroups(text) {
 // четырёх цифр — но не номера с ведущими нулями («PRJ 000506»), а вне таблиц — только коды от восьми цифр: в живом прогоне
 // 17.09.2026 список из артикулов и цифр телефона в шапке заслонил настоящие расхождения.
 const worthFlag = (group, k) => k.endsWith('c') || (!k.startsWith('0') && k.length >= (group === 'вне таблицы' ? 8 : 4));
-function reconcileReadings(base, others) {
+function reconcileReadings(base, others, vision) {
   const g0 = numberGroups(base), go = others.map(numberGroups);
+  // Распознавание Google идёт сплошным текстом, без строк таблицы: оно подтверждает число где угодно на странице.
+  const vis = vision ? flatNumbers(vision) : null;
   const lines = String(base).split('\n');
   const edits = [], doubtful = [];
   for (const [key, mine] of g0) {
     const o = go.map((g) => g.get(key) || []);
-    const unsupported = mine.filter((t) => o.every((list) => !list.some((x) => x.k === t.k)));
+    const unsupported = mine.filter((t) => !o.some((list) => list.some((x) => x.k === t.k)) && !(vis && vis.includes(t.k)));
     if (!unsupported.length) continue;
     const left = mine.map((t) => t.k);
-    const agreed = o[0].filter((t) => o[1].some((x) => x.k === t.k)).filter((t) => {
+    // Google только подтверждает: требовать его согласия и на замену нельзя — на плохо читаемой странице он сам
+    // пропускает число, и тогда верная замена не проходила (живой прогон: итог «583 476,40» остался неисправленным).
+    const agreed = o[0].filter((t) => o.every((list) => list.some((x) => x.k === t.k))).filter((t) => {
       const i = left.indexOf(t.k);
       if (i < 0) return true;
       left.splice(i, 1);
@@ -777,16 +765,15 @@ async function readPage(img, { checkOrientation = true, parts = [] } = {}) {
     if (main.status === 'rejected') throw main.reason;
     let text = main.value;
     const others = extra.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+    const seen = await ocr;
     if (others.length === 2) {
-      const r = reconcileReadings(text, others);
+      const r = reconcileReadings(text, others, seen);
       text = r.text + (r.doubtful.length
         ? `\n[Не подтверждено повторным чтением: ${r.doubtful.slice(0, 12).join('; ')}${r.doubtful.length > 12 ? `; и ещё ${r.doubtful.length - 12}` : ''}. `
           + 'Эти числа могут быть прочитаны неверно — назови их пользователю, чтобы он сверил с оригиналом.]'
         : '');
     }
-    const o = await ocr;
-    const check = o == null ? '' : ocrCheck(text, o);
-    return { text: text + (check ? '\n' + check : ''), usage };
+    return { text, usage };
   } catch (e) {
     e.usage = usage;
     throw e;
@@ -1029,4 +1016,4 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   throw Object.assign(new Error('no answer after tool rounds'), { usage });
 }
 
-module.exports = { ask, readPage, reconcileReadings, searchBase, calcPayments, groupNotes, sumCheck, amountsIn, ocrCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, checker, roundCost };
+module.exports = { ask, readPage, reconcileReadings, flatNumbers, searchBase, calcPayments, groupNotes, sumCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, checker, roundCost };
