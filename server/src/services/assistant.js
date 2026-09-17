@@ -334,7 +334,12 @@ const som = (n) => n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximum
 // сайта, и по курсу НБКР, который калькулятор подставляет по умолчанию. Модель
 // не считает сама: арифметика ставок «не менее N евро за кг» и преференций —
 // ровно то место, где она ошибается.
-async function calcPayments({ code, value, currency, quantity, country: countryName, date } = {}) {
+// Условие поставки решает, что считать таможенной стоимостью: при EXW, FCA, FAS и FOB перевозка до границы
+// в цену не входит и её надо добавить, при CPT, CIP, CFR, CIF, DAP, DPU и DDP — уже входит. Инвойсы кыргызских
+// импортёров пишут условие прямо в таблице («CIP Бишкек», «Delivery Terms: DAP Kant»), и без него расчёт по
+// китайскому инвойсу FOB занижает и пошлину, и НДС, ничем этого не выдавая.
+const INCOTERM_ADD = /\b(EXW|FCA|FAS|FOB)\b/i;
+async function calcPayments({ code, value, currency, quantity, country: countryName, date, transport, incoterm } = {}) {
   const c = checker();
   const digits = String(code || '').replace(/\D/g, '');
   const row = c.ETT_DB.find((r) => r[0] === digits);
@@ -344,13 +349,22 @@ async function calcPayments({ code, value, currency, quantity, country: countryN
   const cur = String(currency || 'USD').toUpperCase().replace('KGS', 'СОМ').replace('SOM', 'СОМ');
   const curRate = cur === 'СОМ' ? 1 : (rates.rates || {})[cur];
   if (!curRate) return `Нет курса НБКР для валюты ${cur}. Доступны: СОМ, ${Object.keys(rates.rates || {}).join(', ')}.`;
-  const valueCur = num(value);
+  const goodsCur = num(value);
+  const freightCur = num(transport);
+  const valueCur = goodsCur + freightCur;
   const valueSom = valueCur * curRate;
   const qty = num(quantity);
   const [, name, unit, ettRate] = row;
   const cty = country(c, countryName);
+  const term = String(incoterm || '').toUpperCase();
   const lines = [`Код ${c.fmtCode(digits)} — ${name}`,
-    `Таможенная стоимость: ${valueCur} ${cur} × ${curRate} (курс НБКР на ${rates.date || 'сегодня'}) = ${som(valueSom)}`];
+    `Таможенная стоимость: ${freightCur ? `${goodsCur} + перевозка ${freightCur} = ${valueCur}` : valueCur} ${cur}`
+      + ` × ${curRate} (курс НБКР на ${rates.date || 'сегодня'}) = ${som(valueSom)}`];
+  if (INCOTERM_ADD.test(term) && !freightCur) {
+    lines.push(`⚠ Условие поставки ${term.match(INCOTERM_ADD)[0].toUpperCase()}: перевозка до границы ЕАЭС в цену товара не входит`
+      + ' и в таможенную стоимость не добавлена — расчёт занижен. Спроси у пользователя стоимость перевозки до границы'
+      + ' (и страховки, если была) и повтори расчёт с transport.');
+  }
 
   const base = { code: digits, name, unit, cur, curRate, valueCur, valueSom, weight: 0, qty,
     eurRate: rates.eur || 0, usdRate: rates.usd || 0, manualDuty: 0, auto: null, pref: 0 };
@@ -490,7 +504,8 @@ function tools() {
   }, {
     name: 'calc_payments',
     description: 'Расчёт ввозных платежей (пошлина, НДС, сбор) по 10-значному коду — тем же расчётом, что калькулятор сайта, по курсу НБКР. '
-      + 'Вызывай, когда пользователь назвал стоимость. Сам не считай.',
+      + 'Вызывай, когда пользователь назвал стоимость. Сам не считай. Если в документе есть условие поставки (CIP, DAP, FOB, EXW…), '
+      + 'передай его в incoterm, а стоимость перевозки до границы — в transport.',
     input_schema: {
       type: 'object',
       properties: {
@@ -500,6 +515,8 @@ function tools() {
         quantity: { type: 'number', description: 'Количество в единице специфической ставки (кг, шт, л, см³) — если ставка специфическая или комбинированная' },
         country: { type: 'string', description: 'Страна происхождения — название по-русски (Китай, Казахстан, ОАЭ)' },
         date: { type: 'string', description: 'Дата оформления YYYY-MM-DD' },
+        transport: { type: 'number', description: 'Стоимость перевозки (и страховки) до границы ЕАЭС в той же валюте — если она не включена в цену товара' },
+        incoterm: { type: 'string', description: 'Условие поставки из документа: EXW, FCA, FOB, CIP, CIF, DAP, DDP и т. п.' },
       },
       required: ['code', 'value', 'currency'],
     },

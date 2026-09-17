@@ -252,6 +252,13 @@ const a = require('../src/services/assistant');
   assert.match(await a.calcPayments({ code: '8517130000', value: 100, currency: 'USD', country: 'Казахстан' }), /ЕАЭС/);
   assert.match(await a.calcPayments({ code: '0201100001', value: 5000, currency: 'USD', quantity: 1000, country: 'ОАЭ', date: '2026-10-10' }), /ОАЭ: 13,1%/);
   assert.match(await a.calcPayments({ code: '1', value: 1, currency: 'USD' }), /не найден в ЕТТ/);
+  // условие поставки: при FOB перевозка в цену не входит — расчёт помечается заниженным, с transport она в базе
+  t = await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'FOB Shanghai' });
+  assert.match(t, /⚠ Условие поставки FOB: перевозка до границы ЕАЭС в цену товара не входит/);
+  t = await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'FOB Shanghai', transport: 200 });
+  assert.match(t, /Таможенная стоимость: 1000 \+ перевозка 200 = 1200 USD/);
+  assert.doesNotMatch(t, /расчёт занижен/);
+  assert.doesNotMatch(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'CIP Бишкек' }), /занижен/);
   console.log('PASS: calc_payments — пошлина «не менее», НДС, сбор, ЕАЭС, ОАЭ');
 
   // ── sum_check: сумма строк инвойса в копейках и сверка с итогом ──
