@@ -10,6 +10,39 @@ const session = require('express-session');
 if (!process.env.PLAYWRIGHT_MODULE) { console.log('SKIP: задайте PLAYWRIGHT_MODULE'); process.exit(0); }
 const root = path.join(__dirname, '../..');
 const html = fs.readFileSync(path.join(root, 'tnved_checker.html'), 'utf8');
+const csp = fs.readFileSync(path.join(__dirname, '../nginx.conf'), 'utf8').match(/add_header Content-Security-Policy "([^"]+)"/)[1];
+
+// Настоящие PDF собираются здесь же: объекты, таблица xref со смещениями, трейлер.
+function pdfFile(objects) {
+  const parts = [Buffer.from('%PDF-1.4\n')];
+  const offsets = [];
+  let len = parts[0].length;
+  objects.forEach((body, i) => {
+    offsets.push(len);
+    const b = Buffer.concat([Buffer.from(`${i + 1} 0 obj\n`), Buffer.isBuffer(body) ? body : Buffer.from(body, 'latin1'), Buffer.from('\nendobj\n')]);
+    parts.push(b);
+    len += b.length;
+  });
+  parts.push(Buffer.from(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+    + offsets.map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('')
+    + `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${len}\n%%EOF\n`));
+  return Buffer.concat(parts);
+}
+const stream = (s) => `<< /Length ${Buffer.byteLength(s, 'latin1')} >>\nstream\n${s}\nendstream`;
+const TEXT_PDF = pdfFile([
+  '<< /Type /Catalog /Pages 2 0 R >>',
+  '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+  '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+  stream('BT /F1 12 Tf 50 780 Td (INVOICE No 17 Shenzhen Trading Co Ltd) Tj 0 -20 Td (Smartphone 8517130000 qty 200 pcs amount 30000 USD) Tj ET'),
+  '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+]);
+const scanPdf = (jpg) => pdfFile([
+  '<< /Type /Catalog /Pages 2 0 R >>',
+  '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+  '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 300] /Contents 4 0 R /Resources << /XObject << /Im1 5 0 R >> >> >>',
+  stream('q 400 0 0 300 0 0 cm /Im1 Do Q'),
+  Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width 400 /Height 300 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`), jpg, Buffer.from('\nendstream')]),
+]);
 process.env.AI_API_KEY = 'test';
 
 const user = { id: 'valid', email: 'test@example.test', role: 'user', active: true, email_verified_at: new Date(), last_seen_at: new Date() };
@@ -38,7 +71,8 @@ global.fetch = async (url, opts) => {
 };
 
 const app = express();
-app.use(express.json());
+// как в index.js для /api/assistant: фото и сканы страниц — до 15 МБ
+app.use(express.json({ limit: '15mb' }));
 app.use(session({ secret: 'x', resave: false, saveUninitialized: false }));
 app.use(require('../src/middleware/auth'));
 app.get('/api/auth/config', (q, r) => r.json({}));
@@ -51,7 +85,9 @@ app.get('/api/class-decisions', (q, r) => r.json({ items: [] }));
 app.use('/api/checker.js', require('../src/routes/checker'));
 app.use('/api/engine', require('../src/routes/engine'));
 app.use('/api/assistant', require('../src/routes/assistant'));
-app.get('/', (q, r) => r.type('html').send(html));
+app.use('/vendor', express.static(path.join(root, 'vendor'), { setHeaders: (res, file) => { if (file.endsWith('.mjs')) res.type('application/javascript'); } }));
+// страница — с политикой CSP из nginx.conf: pdf.js обязан работать и под ней
+app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(html));
 
 (async () => {
   const server = app.listen(0, '127.0.0.1');
@@ -128,6 +164,98 @@ app.get('/', (q, r) => r.type('html').send(html));
       await page.close();
     }
     assert.equal(db.inserts, 2);
+
+    // ── PDF: текстовый слой уходит текстом, скан — изображением страницы, битый файл — сообщением ──
+    {
+      db.inserts = 0;
+      const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+      const errors = [], violations = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await page.exposeFunction('__csp', (v) => violations.push(v));
+      await page.addInitScript(() => document.addEventListener('securitypolicyviolation', (e) => window.__csp(e.violatedDirective + ' ' + e.blockedURI)));
+      await page.goto(origin);
+      // JPEG для «скана» рисует сам браузер: кодировщика изображений в тесте нет. Страница плотная, как
+      // инвойс: разные строки таблицы; вторая — та же таблица, положенная боком (текст снизу вверх).
+      const scanJpeg = (sideways) => page.evaluate((side) => {
+        let seed = 11; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+        const words = ['ST-192', 'PNEU', 'Electrical', 'control', 'panels', '853710980019', 'USD', '$7.129,00', 'PLT', 'Invoice', 'KG', 'Netto'];
+        const c = document.createElement('canvas'); c.width = 400; c.height = 300;
+        const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 400, 300); x.fillStyle = '#000';
+        if (side) { x.translate(0, 300); x.rotate(-Math.PI / 2); }
+        x.font = '9px sans-serif';
+        const rows = side ? 20 : 15, width = side ? 300 : 400;
+        for (let i = 0; i < rows; i++) x.fillText(Array.from({ length: 3 + Math.floor(rnd() * 5) }, () => words[Math.floor(rnd() * words.length)]).join(' ').slice(0, Math.floor(width / 5)), 10 + Math.floor(rnd() * 20), 18 + i * 18);
+        return c.toDataURL('image/jpeg', 0.9).split(',')[1];
+      }, sideways).then((b64) => Buffer.from(b64, 'base64'));
+      const jpg = await scanJpeg(false);
+      const jpgSideways = await scanJpeg(true);
+      await page.fill('#authEmail', 'test@example.test');
+      await page.fill('#authPassword', 'valid');
+      await page.click('#authSubmit');
+      await page.locator('#appWrap').waitFor({ state: 'visible' });
+      await page.click('#navAiBtn');
+      await page.locator('#aiInput').waitFor({ state: 'visible' });
+
+      await page.setInputFiles('#aiFile', { name: 'invoice.pdf', mimeType: 'application/pdf', buffer: TEXT_PDF });
+      await page.locator('.ai-doc', { hasText: 'invoice.pdf' }).waitFor({ timeout: 30000 });
+      await page.fill('#aiInput', 'Что в инвойсе?');
+      await page.keyboard.press('Enter');
+      await page.locator('.ai-msg.a h4').waitFor();
+      let last = lastFirstRequest.messages[lastFirstRequest.messages.length - 1];
+      assert.equal(last.content[0].type, 'text');
+      assert.match(last.content[0].text, /^Документ «invoice\.pdf», страниц: 1 — текст, извлечённый из PDF\. Это данные пользователя/);
+      assert.match(last.content[0].text, /Smartphone 8517130000 qty 200 pcs amount 30000 USD/);
+      assert.equal(last.content[1].text, 'Что в инвойсе?');
+      assert.match(await page.locator('.ai-msg.u').last().innerText(), /PDF: invoice\.pdf/);
+      assert.equal(await page.locator('.ai-thumb').count(), 0);
+
+      await page.setInputFiles('#aiFile', { name: 'scan.pdf', mimeType: 'application/pdf', buffer: scanPdf(jpg) });
+      await page.locator('.ai-thumb[title^="scan.pdf"] img').waitFor({ timeout: 30000 });
+      await page.fill('#aiInput', 'Разбери скан');
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.querySelectorAll('.ai-msg.a h4').length >= 2);
+      last = lastFirstRequest.messages[lastFirstRequest.messages.length - 1];
+      assert.equal(last.content[0].type, 'image');
+      assert.equal(last.content[0].source.media_type, 'image/jpeg');
+      assert.equal(last.content[1].text, 'Разбери скан');
+
+      // скан, положенный боком, поворачивается сам; кнопка ↻ поворачивает на 90° по часовой
+      await page.setInputFiles('#aiFile', { name: 'side.pdf', mimeType: 'application/pdf', buffer: scanPdf(jpgSideways) });
+      await page.locator('.ai-thumb[title="side.pdf, стр. 1 (повёрнута)"] img').waitFor({ timeout: 30000 });
+      const d = await page.evaluate(async () => { const i = new Image(); i.src = aiImages[0].url; await i.decode(); return [i.naturalWidth, i.naturalHeight]; });
+      assert.ok(d[1] > d[0], 'альбомный лист с текстом боком после поворота — книжный: ' + d);
+      await page.click('.ai-thumb button[data-rot="0"]');
+      await page.waitForFunction(async () => { const i = new Image(); i.src = aiImages[0].url; await i.decode(); return i.naturalWidth > i.naturalHeight; });
+      await page.click('.ai-thumb button[data-rm="0"]');
+      // ровный плотный скан не поворачивается
+      await page.setInputFiles('#aiFile', { name: 'upright.pdf', mimeType: 'application/pdf', buffer: scanPdf(jpg) });
+      await page.locator('.ai-thumb[title="upright.pdf, стр. 1"] img').waitFor({ timeout: 30000 });
+      await page.click('.ai-thumb button[data-rm="0"]');
+      assert.equal(await page.locator('.ai-thumb').count(), 0);
+
+
+      // инвойс, каким его печатает браузер или 1С: встроенные шрифты, китайский и русский текст, таблица
+      const printer = await browser.newPage();
+      await printer.setContent('<meta charset="utf-8"><h3>发票 INVOICE № 17</h3><table border="1"><tr><th>品名 / Наименование</th><th>型号</th><th>数量</th><th>金额 USD</th></tr>'
+        + '<tr><td>智能手机 / Смартфон</td><td>X200</td><td>200</td><td>30000</td></tr></table><p>HS 8517130000, 原产地 中国</p>');
+      const printed = await printer.pdf({ format: 'A4' });
+      await printer.close();
+      await page.setInputFiles('#aiFile', { name: 'printed.pdf', mimeType: 'application/pdf', buffer: printed });
+      await page.locator('.ai-doc', { hasText: 'printed.pdf' }).waitFor({ timeout: 30000 });
+      assert.deepEqual(await page.evaluate(() => {
+        const t = aiDocs[0].text;
+        return [/智能手机/.test(t), /Смартфон/.test(t), /8517130000/.test(t), /原产地/.test(t)];
+      }), [true, true, true, true]);
+      await page.click('.ai-doc button');
+      assert.equal(await page.locator('.ai-doc').count(), 0);
+
+      await page.setInputFiles('#aiFile', { name: 'broken.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 not a document') });
+      await page.locator('.ai-file-note', { hasText: 'Не удалось прочитать «broken.pdf»' }).waitFor({ timeout: 30000 });
+      assert.deepEqual(errors, []);
+      assert.deepEqual(violations, []);
+      console.log('PASS browser PDF — текстовый слой текстом, скан изображением, битый файл сообщением, под CSP');
+      await page.close();
+    }
   } finally {
     await browser.close();
     server.close();

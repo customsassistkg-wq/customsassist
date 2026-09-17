@@ -1895,7 +1895,7 @@ function updateNavActive(){
 // перезагрузку, но не выход): сервер получает её хвост с каждым вопросом.
 // Ответ модели — Markdown; перед разметкой всё экранируется через esc(),
 // ссылки пропускаются только http(s), коды ТН ВЭД становятся переходом к карточке.
-let aiHistory=[],aiBusy=false,aiImages=[];
+let aiHistory=[],aiBusy=false,aiImages=[],aiDocs=[],aiPdfBusy=0,aiFileNote='';
 function aiStoreKey(){return currentUser&&currentUser.email?'ca-ai-'+currentUser.email.toLowerCase():''}
 function aiSave(){try{const k=aiStoreKey();if(k)sessionStorage.setItem(k,JSON.stringify(aiHistory.slice(-40)))}catch(e){}}
 function aiLoad(){try{const k=aiStoreKey();const v=k&&sessionStorage.getItem(k);const a=v?JSON.parse(v):[];return Array.isArray(a)?a:[]}catch(e){return []}}
@@ -1924,31 +1924,38 @@ function aiMark(size){
   const id='aiGrad'+(++aiMarkSeq);
   return '<svg class="ai-mark" width="'+size+'" height="'+size+'" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="'+id+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B5CF6"/><stop offset=".5" stop-color="#3B6BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="13" fill="url(#'+id+')"/><path d="M4 15C4 8 8 4 15 4h18c7 0 11 4 11 11v2C33 13 17 13 4 21z" fill="#fff" opacity=".13"/><path d="M22 11c1.2 6.3 4.7 9.8 11 11-6.3 1.2-9.8 4.7-11 11-1.2-6.3-4.7-9.8-11-11 6.3-1.2 9.8-4.7 11-11z" fill="#fff"/><path d="M35 8c.5 2.6 1.9 4 4.5 4.5-2.6.5-4 1.9-4.5 4.5-.5-2.6-1.9-4-4.5-4.5 2.6-.5 4-1.9 4.5-4.5z" fill="#fff" opacity=".85"/><circle cx="34.5" cy="34.5" r="2.2" fill="#fff" opacity=".7"/></svg>';
 }
-const AI_HELLO_CHIPS=['Пошлина и ограничения на смартфоны из Китая','Сколько платить: 1000 кг куриных ножек 0207146001 из США на 2000 USD','📎 Разобрать фото инвойса'];
+const AI_HELLO_CHIPS=['Пошлина и ограничения на смартфоны из Китая','Сколько платить: 1000 кг куриных ножек 0207146001 из США на 2000 USD','📎 Разобрать инвойс: фото или PDF'];
 function aiHelloHtml(){
   return '<div class="ai-hello" id="aiHello"><div class="ai-hello-mark">'+aiMark(72)+'</div>'
-    +'<h3>Чем помочь?</h3><p>Опишите товар, назовите код ТН ВЭД или приложите фото инвойса. Ассистент ищет в базе CustomsAssistKG и отвечает по найденным карточкам.</p>'
+    +'<h3>Чем помочь?</h3><p>Опишите товар, назовите код ТН ВЭД или приложите фото или PDF инвойса. Ассистент ищет в базе CustomsAssistKG и отвечает по найденным карточкам.</p>'
     +'<div class="ai-chips">'+AI_HELLO_CHIPS.map((c,i)=>'<button type="button" class="ai-chip" data-chip="'+i+'">'+esc(c)+'</button>').join('')+'</div></div>';
 }
 function renderAiPage(){
   const box=document.getElementById('pageAi');
   if(box.querySelector('#aiLog'))return;
+  // Страница строится заново после выхода (resetAppView стирает #pageAi): вложения прежнего
+  // пользователя — фото и текст его PDF — не должны уйти с вопросом следующего.
+  aiImages=[];aiDocs=[];aiFileNote='';
   if(!aiHistory.length)aiHistory=aiLoad();
   box.innerHTML='<div class="card"><div class="ai-head"><div class="ai-head-t">'+aiMark(44)+'<div><div class="ai-name">AI-ассистент</div><div class="ai-sub">Предварительный анализ по базе CustomsAssistKG, а не решение таможенного органа</div></div></div>'
     +'<button class="btn" type="button" id="aiNewBtn">Новый диалог</button></div>'
     +'<div class="ai-log" id="aiLog">'+(aiHistory.length?'':aiHelloHtml())+'</div>'
     +'<div class="ai-thumbs" id="aiThumbs"></div>'
-    +'<form class="ai-form" id="aiForm"><label class="btn ai-attach" title="Фото или скан инвойса">📎<input type="file" id="aiFile" accept="image/jpeg,image/png,image/webp" multiple hidden></label>'
+    +'<form class="ai-form" id="aiForm"><label class="btn ai-attach" title="Фото, скан или PDF инвойса">📎<input type="file" id="aiFile" accept="image/jpeg,image/png,image/webp,application/pdf,.pdf" multiple hidden></label>'
     +'<textarea id="aiInput" rows="2" placeholder="Например: смартфоны из Китая, 200 шт. на 30 000 USD — сколько платить и что нужно?"></textarea>'
     +'<button class="calc-btn" id="aiSendBtn" type="submit">Спросить</button></form>'
-    +'<div class="ai-note">Enter — отправить, Shift+Enter — новая строка. 📎 — фото или скан инвойса (JPG, PNG), до 4 шт. Коды в ответе открывают карточку.</div>'
+    +'<div class="ai-note">Enter — отправить, Shift+Enter — новая строка. 📎 — фото, скан или PDF инвойса (JPG, PNG, PDF): до 4 изображений и 3 PDF. Коды в ответе открывают карточку.</div>'
     +'<div class="ai-quota" id="aiQuota"></div></div>';
   document.getElementById('aiForm').addEventListener('submit',aiSend);
   document.getElementById('aiInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey)aiSend(e)});
   document.getElementById('aiNewBtn').addEventListener('click',()=>{if(aiBusy)return;aiHistory=[];aiSave();document.getElementById('aiLog').innerHTML=aiHelloHtml()});
   document.getElementById('aiLog').addEventListener('click',aiLogClick);
   document.getElementById('aiFile').addEventListener('change',e=>{aiAddFiles(e.target.files);e.target.value=''});
-  document.getElementById('aiThumbs').addEventListener('click',e=>{const x=e.target.closest('[data-rm]');if(x){aiImages.splice(+x.dataset.rm,1);aiRenderThumbs()}});
+  document.getElementById('aiThumbs').addEventListener('click',e=>{
+    const r=e.target.closest('[data-rot]');if(r){aiRotateImage(+r.dataset.rot);return}
+    const x=e.target.closest('[data-rm]');if(x){aiImages.splice(+x.dataset.rm,1);aiRenderThumbs();return}
+    const y=e.target.closest('[data-rm-doc]');if(y){aiDocs.splice(+y.dataset.rmDoc,1);aiRenderThumbs()}
+  });
   for(const m of aiHistory)aiAppend(m);
   aiLoadQuota();
 }
@@ -1985,9 +1992,122 @@ async function aiResize(file){
   const url=cv.toDataURL('image/jpeg',0.85);
   return {media_type:'image/jpeg',data:url.slice(url.indexOf(',')+1),url:url};
 }
+// PDF инвойса разбирается здесь же, в браузере, библиотекой pdf.js со своего сервера
+// (/vendor/pdfjs-*: CSP не пускает скрипты с чужих адресов, а сама библиотека грузится только
+// при первом вложенном PDF). Есть текстовый слой — модели уходит текст: точные цифры, коды и
+// иероглифы дешевле и надёжнее, чем распознавание с картинки. Нет его (скан) — страницы
+// рисуются в изображения и идут тем же путём, что фото. WebAssembly выключен: иначе CSP
+// пришлось бы разрешить компиляцию кода, а декодерам сканов хватает запасных на JS.
+const PDFJS_PATH='/vendor/pdfjs-6.3.289/';
+const AI_PDF_MAX_PAGES=10,AI_PDF_MAX_CHARS=60000;
+let aiPdfLib=null;
+async function aiReadPdf(file){
+  // Адрес абсолютный: checker.js исполняется из blob:-адреса, и import('/vendor/…') разрешался бы
+  // относительно него, а не сайта. И вычисляется здесь, а не на верхнем уровне: этот же файл
+  // загружает сервер (services/base.js), где location нет.
+  const PDFJS_BASE=location.origin+PDFJS_PATH;
+  if(!aiPdfLib){
+    const lib=await import(PDFJS_BASE+'pdf.min.mjs');
+    lib.GlobalWorkerOptions.workerSrc=PDFJS_BASE+'pdf.worker.min.mjs';
+    aiPdfLib=lib;
+  }
+  // освобождается задача загрузки: у документа в pdf.js 6 метода destroy() нет
+  const task=aiPdfLib.getDocument({data:new Uint8Array(await file.arrayBuffer()),cMapUrl:PDFJS_BASE+'cmaps/',cMapPacked:true,
+    wasmUrl:PDFJS_BASE+'wasm/',useWasm:false,enableXfa:false});
+  try{
+    const doc=await task.promise;
+    const pages=Math.min(doc.numPages,AI_PDF_MAX_PAGES);
+    let text='',letters=0;
+    for(let i=1;i<=pages;i++){
+      const tc=await (await doc.getPage(i)).getTextContent();
+      const t=tc.items.map(it=>(it.str||'')+(it.hasEOL?'\n':' ')).join('').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+      letters+=t.replace(/\s/g,'').length;
+      text+=(i>1?'\n\n':'')+'— страница '+i+' —\n'+t;
+    }
+    // В среднем от 40 знаков на страницу — текстовый документ; меньше — скан с печатью или подписью.
+    if(letters>=40*pages){
+      return {kind:'text',name:file.name,pages:doc.numPages,text:text.slice(0,AI_PDF_MAX_CHARS),
+        cut:text.length>AI_PDF_MAX_CHARS||doc.numPages>pages};
+    }
+    const images=[],free=Math.max(0,4-aiImages.length);
+    for(let i=1;i<=Math.min(doc.numPages,free);i++){
+      const page=await doc.getPage(i);
+      const base=page.getViewport({scale:1});
+      const vp=page.getViewport({scale:Math.min(2.5,1600/Math.max(base.width,base.height))});
+      const cv=document.createElement('canvas');
+      cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+      await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+      const side=aiSideways(cv);
+      const url=(side?aiRotateCanvas(cv):cv).toDataURL('image/jpeg',0.85);
+      images.push({media_type:'image/jpeg',data:url.slice(url.indexOf(',')+1),url:url,pdf:file.name+', стр. '+i+(side?' (повёрнута)':'')});
+    }
+    return {kind:'scan',name:file.name,pages:doc.numPages,images:images};
+  }finally{task.destroy()}
+}
+// Страница, отсканированная боком (таблица инвойса в альбомной ориентации на листе A4), модели
+// почти не читается: на реальном инвойсе DeepSeek верно назвал 7–8 сумм из 21, а после поворота
+// страницы — 19 и итог. Размер изображения не помогает: модель сама сжимает его примерно до
+// тысячи токенов. Строки текста дают резкие перепады числа тёмных точек от строки к строке, а
+// у страницы, лежащей боком, — от столбца к столбцу; сравнивается полная вариация двух профилей
+// на уменьшенной копии. Порог 0,8 и не меньше 2% тёмных точек откалиброваны на реальных сканах
+// (боком 0,62–0,65, ровно 1,55–2,84) и на синтетических страницах; страницу в несколько строк
+// признак не различает — такая не поворачивается. Направление — по часовой: так ложится
+// альбомный лист, напечатанный и отсканированный книжно; если не угадано, есть кнопка ↻.
+function aiSideways(cv){
+  const k=500/Math.max(cv.width,cv.height),w=Math.max(1,Math.round(cv.width*k)),h=Math.max(1,Math.round(cv.height*k));
+  const sm=document.createElement('canvas');sm.width=w;sm.height=h;
+  const x=sm.getContext('2d',{willReadFrequently:true});
+  x.drawImage(cv,0,0,w,h);
+  const d=x.getImageData(0,0,w,h).data,g=new Float32Array(w*h);
+  let sum=0;
+  for(let i=0;i<w*h;i++){g[i]=0.299*d[4*i]+0.587*d[4*i+1]+0.114*d[4*i+2];sum+=g[i]}
+  const thr=sum/(w*h)-40,R=new Float32Array(h),C=new Float32Array(w);
+  let ink=0;
+  for(let y=0;y<h;y++)for(let i=0;i<w;i++)if(g[y*w+i]<thr){R[y]++;C[i]++;ink++}
+  const tv=a=>{let t=0,m=0;for(let i=0;i<a.length;i++){m+=a[i];if(i)t+=Math.abs(a[i]-a[i-1])}return m?t/m:0};
+  const c=tv(C);
+  return ink>=0.02*w*h&&c>0&&tv(R)/c<0.8;
+}
+function aiRotateCanvas(src){
+  const out=document.createElement('canvas');
+  out.width=src.height;out.height=src.width;
+  const x=out.getContext('2d');
+  x.translate(out.width,0);x.rotate(Math.PI/2);x.drawImage(src,0,0);
+  return out;
+}
+// Кнопка ↻ у миниатюры: поворот на 90° по часовой, если автоматика не угадала или фото снято боком.
+async function aiRotateImage(i){
+  const im=aiImages[i];
+  if(!im)return;
+  const img=new Image();img.src=im.url;await img.decode();
+  const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;
+  cv.getContext('2d').drawImage(img,0,0);
+  const url=aiRotateCanvas(cv).toDataURL('image/jpeg',0.85);
+  if(aiImages[i]!==im)return;
+  aiImages[i]=Object.assign({},im,{media_type:'image/jpeg',data:url.slice(url.indexOf(',')+1),url:url});
+  aiRenderThumbs();
+}
 async function aiAddFiles(files){
+  aiFileNote='';
   for(const f of Array.prototype.slice.call(files||[])){
-    if(aiImages.length>=4)break;
+    if(f.type==='application/pdf'||/\.pdf$/i.test(f.name||'')){
+      if(aiDocs.length>=3){aiFileNote='Не больше 3 PDF за один вопрос.';continue}
+      aiPdfBusy++;aiRenderThumbs();
+      try{
+        const r=await aiReadPdf(f);
+        if(r.kind==='text'){
+          aiDocs.push(r);
+          if(r.cut)aiFileNote='«'+f.name+'»: модель получит первые '+Math.min(r.pages,AI_PDF_MAX_PAGES)+' стр. текста — остальное задайте отдельным вопросом.';
+        }else if(r.images.length){
+          aiImages.push(...r.images);
+          if(r.images.length<r.pages)aiFileNote='«'+f.name+'» — скан без текста: приложены изображениями первые '+r.images.length+' стр. из '+r.pages+'.';
+        }else aiFileNote='«'+f.name+'» — скан без текста, а мест под изображения не осталось: уберите лишние фото.';
+      }catch(e){
+        aiFileNote='Не удалось прочитать «'+f.name+'»'+(e&&e.name==='PasswordException'?': файл защищён паролем.':'. Сохраните его заново или приложите фото страниц.');
+      }finally{aiPdfBusy--}
+      continue;
+    }
+    if(aiImages.length>=4)continue;
     if(!/^image\/(jpeg|png|webp)$/.test(f.type))continue;
     try{aiImages.push(await aiResize(f))}catch(e){}
   }
@@ -1995,14 +2115,19 @@ async function aiAddFiles(files){
 }
 function aiRenderThumbs(){
   const box=document.getElementById('aiThumbs');
-  if(box)box.innerHTML=aiImages.map((im,i)=>'<span class="ai-thumb"><img src="'+im.url+'" alt=""><button type="button" data-rm="'+i+'" aria-label="Убрать">✕</button></span>').join('');
+  if(!box)return;
+  const chip='display:inline-flex;align-items:center;gap:6px;height:72px;padding:0 26px 0 12px;border:1px solid var(--glass-border);border-radius:var(--radius-md);font-size:12px;max-width:260px';
+  box.innerHTML=aiImages.map((im,i)=>'<span class="ai-thumb"'+(im.pdf?' title="'+esc(im.pdf)+'"':'')+'><img src="'+im.url+'" alt=""><button type="button" data-rot="'+i+'" aria-label="Повернуть по часовой" title="Повернуть" style="right:auto;left:-6px;background:var(--indigo-surface)">↻</button><button type="button" data-rm="'+i+'" aria-label="Убрать">✕</button></span>').join('')
+    +aiDocs.map((d,i)=>'<span class="ai-thumb ai-doc" style="'+chip+'" title="'+esc(d.name)+'">📄 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(d.name)+'</span> · '+d.pages+' стр.<button type="button" data-rm-doc="'+i+'" aria-label="Убрать">✕</button></span>').join('')
+    +(aiPdfBusy?'<span class="ai-thumb" style="'+chip+';color:var(--muted)">📄 Читаю PDF…</span>':'')
+    +(aiFileNote?'<div class="ai-file-note" style="flex-basis:100%;font-size:12px;color:var(--orange)">'+esc(aiFileNote)+'</div>':'');
 }
 function aiAppend(m){
   const log=document.getElementById('aiLog');
   const hello=document.getElementById('aiHello');if(hello)hello.remove();
   const d=document.createElement('div');
   d.className='ai-msg '+(m.role==='user'?'u':'a')+(m.err?' err':'');
-  if(m.role==='user'){d.textContent=m.content+(m.imgs?'\n📎 изображений: '+m.imgs:'')}
+  if(m.role==='user'){d.textContent=m.content+(m.imgs?'\n📎 изображений: '+m.imgs:'')+(m.docs&&m.docs.length?'\n📄 PDF: '+m.docs.join(', '):'')}
   else{
     let html=aiMd(m.content);
     if(m.unverified&&m.unverified.length)html+='<div class="ai-warn">⚠️ Не подтверждено базой: '+m.unverified.map(esc).join(', ')+' — проверьте код перед использованием.</div>';
@@ -2056,22 +2181,26 @@ const AI_ERR={rate_limited:'Дневной лимит вопросов исче�
   ai_unavailable:'Сервис модели не ответил. Попробуйте ещё раз.',
   bad_image:'Изображение не принято: нужен JPG, PNG или WebP.',
   too_many_images:'Не больше 4 изображений за один вопрос.',
+  bad_doc:'PDF не принят: в нём не нашлось текста.',
+  too_many_docs:'Не больше 3 PDF за один вопрос.',
+  doc_too_long:'Текст PDF слишком длинный — приложите нужные страницы отдельно.',
   busy:'Предыдущий вопрос ещё обрабатывается — дождитесь ответа.'};
 async function aiSend(e){
   e.preventDefault();
-  const inp=document.getElementById('aiInput'),imgs=aiImages;
-  const q=inp.value.trim()||(imgs.length?'Разбери документ на изображении.':'');
-  if(!q||aiBusy)return;
-  aiBusy=true;inp.value='';aiImages=[];aiRenderThumbs();
+  const inp=document.getElementById('aiInput'),imgs=aiImages,docs=aiDocs;
+  const q=inp.value.trim()||(imgs.length||docs.length?'Разбери документ.':'');
+  // PDF ещё читается — вопрос ушёл бы без него
+  if(!q||aiBusy||aiPdfBusy)return;
+  aiBusy=true;inp.value='';aiImages=[];aiDocs=[];aiFileNote='';aiRenderThumbs();
   const ver=appViewVersion,btn=document.getElementById('aiSendBtn');
   btn.disabled=true;
-  const um={role:'user',content:q,imgs:imgs.length||undefined};
+  const um={role:'user',content:q,imgs:imgs.length||undefined,docs:docs.length?docs.map(d=>d.name):undefined};
   aiHistory.push(um);aiSave();aiAppend(um);
   const wait=aiAppend({role:'assistant',content:'⏳ Готовлю ответ…'});
   const fail=(msg)=>{wait.remove();aiHistory.pop();aiSave();aiAppend({role:'assistant',content:msg,err:true})};
   try{
     const res=await fetch('/api/assistant',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({messages:aiHistory.map(m=>({role:m.role,content:m.content})),images:imgs.map(im=>({media_type:im.media_type,data:im.data}))})});
+      body:JSON.stringify({messages:aiHistory.map(m=>({role:m.role,content:m.content})),images:imgs.map(im=>({media_type:im.media_type,data:im.data})),docs:docs.map(d=>({name:d.name,pages:d.pages,text:d.text,cut:d.cut}))})});
     if(ver!==appViewVersion)return;
     if(res.status===413){fail('Изображения слишком большие — отправьте меньше или в меньшем размере.');return}
     if(!res.ok){const data=await res.json().catch(()=>({}));if(data.error==='quota_exceeded'){aiShowQuota(data.quota);fail(aiQuotaText(data.quota));return}fail(AI_ERR[data.error]||'Ошибка: '+(data.error||res.status));return}

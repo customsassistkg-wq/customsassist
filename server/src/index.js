@@ -119,6 +119,9 @@ if (process.env.NODE_ENV !== 'production') {
     res.sendFile(path.join(root, req.path === '/' ? 'tnved_checker.html' : req.path.slice(1)));
   });
   app.use('/icons', express.static(path.join(root, 'icons')));
+  app.use('/vendor', express.static(path.join(root, 'vendor'), {
+    setHeaders: (res, file) => { if (file.endsWith('.mjs')) res.type('application/javascript'); },
+  }));
 }
 
 app.use((err, req, res, next) => {

@@ -113,6 +113,20 @@ router.post('/', async (req, res) => {
     images.push({ media_type: img.media_type, data: img.data });
   }
 
+  // PDF: текст, который браузер извлёк из файла (pdf.js), — до трёх документов и 100 тыс. знаков
+  // на вопрос. Скан без текстового слоя браузер присылает страницами-изображениями (images).
+  // Текст документа, как и изображения, в журнал не пишется — только имена файлов.
+  const rawDocs = Array.isArray(req.body?.docs) ? req.body.docs : [];
+  if (rawDocs.length > 3) return res.status(400).json({ error: 'too_many_docs' });
+  const docs = [];
+  let docChars = 0;
+  for (const d of rawDocs) {
+    if (typeof d?.name !== 'string' || typeof d.text !== 'string' || !d.text.trim()) return res.status(400).json({ error: 'bad_doc' });
+    docChars += d.text.length;
+    if (docChars > 100000) return res.status(400).json({ error: 'doc_too_long' });
+    docs.push({ name: d.name.slice(0, 200), pages: Number.isInteger(d.pages) && d.pages > 0 ? d.pages : null, text: d.text, cut: d.cut === true });
+  }
+
   // Один вопрос в работе на пользователя. Лимит считается по журналу, а запись
   // появляется только после ответа модели, то есть через десятки секунд: без этого
   // все параллельные запросы видели нетронутый лимит (10 из 10 при лимите 3 в день).
@@ -130,9 +144,10 @@ router.post('/', async (req, res) => {
     res.set('X-Accel-Buffering', 'no');
     const send = (obj) => res.write(JSON.stringify(obj) + '\n');
     const started = Date.now();
-    const question = history[history.length - 1].content + (images.length ? ` [изображений: ${images.length}]` : '');
+    const question = history[history.length - 1].content + (images.length ? ` [изображений: ${images.length}]` : '')
+      + (docs.length ? ` [PDF: ${docs.map((d) => d.name).join(', ')}]` : '');
     try {
-      const r = await ask(history, { images, onStep: (s) => send({ step: s }) });
+      const r = await ask(history, { images, docs, onStep: (s) => send({ step: s }) });
       const id = await logQuestion({ userId: req.user.id, question, ...r, ms: Date.now() - started });
       send({ id, answer: r.answer, searched: r.searched, unverified: r.unverified, quota: await quotaFor(req.user).catch(() => null) });
     } catch (err) {
