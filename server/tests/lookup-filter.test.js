@@ -24,8 +24,14 @@ const sandbox = {console, setTimeout, clearTimeout, addEventListener:noop, local
   document:{getElementById:el, querySelector:el, querySelectorAll:()=>[], createElement:el, addEventListener:noop, body:el()}};
 sandbox.window = sandbox;
 vm.createContext(sandbox);
-new vm.Script(code + '\nthis.__lk={lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB};').runInContext(sandbox);
-const {lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB, banOn, BAN_DB} = sandbox.__lk;
+new vm.Script(code + '\nthis.__lk={lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded};').runInContext(sandbox);
+const {lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB, banOn, BAN_DB, umTermEnded} = sandbox.__lk;
+
+// ── Односторонние меры: признак «действует» из реестра не переживает свой срок ──
+assert.equal(umTermEnded('с 10.03.2026 до 10.09.2026', '2026-09-10'), false);
+assert.equal(umTermEnded('с 10.03.2026 до 10.09.2026 с 29.05.2026', '2026-09-11'), true);
+assert.equal(umTermEnded('бессрочно', '2030-01-01'), false);
+assert.equal(umTermEnded('с 01.01.2026 по 31.12.2026', '2026-12-31'), false);
 
 // ── Сроки запретов: последний день включительно, до даты начала — не действует ──
 {

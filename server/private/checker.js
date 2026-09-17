@@ -4991,6 +4991,14 @@ const NTM_DB=[["1.4","Альдрин (СОЗ, запрет ввоза)",["290382
 // префиксами равной длины — это работает и когда запрос длиннее концов диапазона,
 // и когда короче. Исключение снимает попадание только тогда, когда запрос не короче
 // самого исключения: по более общему коду мера частью товаров всё ещё действует.
+// Признак «действует» (r[13]) снят с реестра на дату его состояния (UNIMEAS_ASOF). Мера, чей срок
+// «до/по ДД.ММ.ГГГГ» с тех пор прошёл, действующей больше не считается: на 17.09.2026 так оставались
+// «действующими» пять кыргызских запретов, истёкших 01–15.09.2026. today — для тестов.
+function umTermEnded(srok,today){
+  const ends=[...String(srok||'').matchAll(/(?:до|по)\s+(\d{2})\.(\d{2})\.(\d{4})/g)].map(m=>m[3]+'-'+m[2]+'-'+m[1]);
+  const d=today||new Date(Date.now()+6*3600e3).toISOString().slice(0,10);
+  return ends.length>0&&ends.every(e=>e<d);
+}
 function findUniMeasure(q){
   const qn=norm(q); if(!qn||qn.length<4) return [];
   const res=[];
@@ -5010,7 +5018,7 @@ function findUniMeasure(q){
     for(const e of exc){ if(qn.length>=e.length&&qn.startsWith(e)){ dropped=true; break; } }
     if(dropped) continue;
     res.push({cc:r[0],year:r[1],n:r[2],mera:r[3],tovar:r[4],codesTxt:r[5],
-      srok:r[10],osn:r[11],prot:r[12],act:r[13]===1,
+      srok:r[10],osn:r[11],prot:r[12],act:r[13]===1&&!umTermEnded(r[10]),
       part:part.some(c=>c.startsWith(qn)||qn.startsWith(c)),code:hit});
   }
   return res;
