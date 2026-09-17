@@ -176,7 +176,8 @@ router.post('/register', async (req, res, next) => {
     if (!checkRegisterRateLimit(req.ip)) {
       return res.status(429).json({ error: 'too many attempts, try again later' });
     }
-    if (!email || !password) {
+    // Нестроковое значение (массив, объект) иначе доходило до bcrypt и давало 500.
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
       return res.status(400).json({ error: 'email and password required' });
     }
     if (!EMAIL_RE.test(String(email))) {
@@ -311,7 +312,7 @@ router.post('/forgot-password', async (req, res) => {
 router.post('/reset-password', async (req, res, next) => {
   try {
     const { token, password } = req.body || {};
-    if (!token || !password) {
+    if (typeof token !== 'string' || typeof password !== 'string' || !token || !password) {
       return res.status(400).json({ error: 'token and password required' });
     }
     if (password.length < 8) {

@@ -1,0 +1,14 @@
+# Письмо администраторам сайта о сбое службы %i.
+# Установлен как /etc/systemd/system/tnved-alert@.service; подключается к
+# службе строкой OnFailure=tnved-alert@%n.service в её drop-in alert.conf.
+[Unit]
+Description=Mail site admins about failure of %i
+
+[Service]
+Type=oneshot
+User=tnved
+Group=tnved
+# без группы журнала journalctl пользователя tnved не видит чужих служб
+SupplementaryGroups=systemd-journal
+WorkingDirectory=/opt/tnved/server
+ExecStart=/usr/bin/node scripts/alert-admins.js %i

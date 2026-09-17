@@ -24,9 +24,14 @@ app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
 // Помощник принимает фото инвойсов (до 4 изображений в base64) — остальному API
-// хватает стандартных 100 КБ, и поднимать лимит для всех незачем.
-app.use('/api/assistant', express.json({ limit: '15mb' }));
-app.use(express.json());
+// хватает стандартных 100 КБ, и поднимать лимит для всех незачем. Большое тело
+// разбирается только после проверки сессии (ниже, после authMiddleware): до
+// 17.09.2026 его разбирал любой запрос без входа, и 15-мегабайтные JSON грузили
+// процесс раньше, чем маршрут отвечал 401.
+const ASSISTANT_PATH = /^\/api\/assistant\/?$/;
+const jsonDefault = express.json();
+const jsonAssistant = express.json({ limit: '15mb' });
+app.use((req, res, next) => (ASSISTANT_PATH.test(req.path) ? next() : jsonDefault(req, res, next)));
 
 app.use(
   session({
@@ -93,6 +98,7 @@ app.use((req, res, next) => {
 });
 
 app.use(authMiddleware);
+app.use((req, res, next) => (ASSISTANT_PATH.test(req.path) && req.user ? jsonAssistant(req, res, next) : next()));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
@@ -101,8 +107,6 @@ app.use('/api/nbkr-rates', nbkrRatesRoutes);
 app.use('/api/checker.js', require('./routes/checker'));
 app.use('/api/assistant', require('./routes/assistant'));
 
-classDecisionsService.init();
-nbkrRatesService.init();
 
 // Convenience for local dev (`npm run dev`) without Nginx in front - in
 // production Nginx serves the static file directly per CLAUDE.md, and this
@@ -117,12 +121,23 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 app.use((err, req, res, next) => {
+  // Битый JSON и слишком большое тело — ошибка клиента: 400/413, без трассировки в журнале.
+  if (err.type === 'entity.parse.failed' || err.type === 'entity.too.large') {
+    return res.status(err.status).json({ error: err.type });
+  }
   console.error(err);
   res.status(500).json({ error: 'internal error' });
 });
 
-const port = process.env.PORT || 3000;
-// Только loopback: снаружи API доступен через Nginx. На всех интерфейсах порт
-// закрывал лишь UFW, а при trust proxy прямой запрос подделал бы X-Forwarded-For
-// и обошёл лимиты по IP.
-app.listen(port, '127.0.0.1', () => console.log(`tnved-api listening on 127.0.0.1:${port}`));
+// require() из теста получает app без фоновых загрузок и без открытого порта.
+if (require.main === module) {
+  classDecisionsService.init();
+  nbkrRatesService.init();
+  const port = process.env.PORT || 3000;
+  // Только loopback: снаружи API доступен через Nginx. На всех интерфейсах порт
+  // закрывал лишь UFW, а при trust proxy прямой запрос подделал бы X-Forwarded-For
+  // и обошёл лимиты по IP.
+  app.listen(port, '127.0.0.1', () => console.log(`tnved-api listening on 127.0.0.1:${port}`));
+}
+
+module.exports = app;

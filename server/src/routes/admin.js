@@ -76,7 +76,7 @@ router.get('/users', async (req, res, next) => {
 router.post('/users', async (req, res, next) => {
   try {
     const { email, password, role, subscription_expires_at } = req.body || {};
-    if (!email || !password) {
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
       return res.status(400).json({ error: 'email and password required' });
     }
     if (!EMAIL_RE.test(String(email))) {
@@ -260,7 +260,8 @@ router.delete('/users/:id', async (req, res, next) => {
 // было видно, по какому пересчитано.
 router.get('/assistant/billing', async (req, res, next) => {
   try {
-    const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? req.query.month : new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 7);
+    // Месяц 01–12: «2026-13» раньше проходил проверку и ронял запрос с 500.
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(req.query.month || '')) ? req.query.month : new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 7);
     const [y, m] = month.split('-').map(Number);
     const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
     const { rows } = await pool.query(
