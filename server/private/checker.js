@@ -9374,6 +9374,14 @@ function openModal(html){
 function modalEscHandler(e){if(e.key==='Escape')closeModal();}
 // Временная заглушка для документов в подвале, пока не готовы реальные тексты
 function openFooterDocModal(title){
+  // Политика конфиденциальности действует и опубликована отдельной страницей (её требуют магазины
+  // приложений без входа), поэтому окно ведёт на неё, а не показывает заглушку «в разработке».
+  if(title==='Политика конфиденциальности'){
+    openModal('<h3 style="margin:0 0 12px">'+esc(title)+'</h3>'
+      +'<p style="font-size:13px;line-height:1.6">Какие данные собирает сервис, кому и зачем они передаются и как их удалить — в действующей редакции политики.</p>'
+      +'<div class="modal-actions"><a class="calc-btn" href="/privacy.html" target="_blank" rel="noopener">Открыть политику</a><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');
+    return;
+  }
   openModal('<h3 style="margin:0 0 12px">'+esc(title)+'</h3>'
     +'<p style="font-size:13px;color:var(--muted);line-height:1.6">Документ находится в разработке. Актуальная редакция «'+esc(title)+'» будет опубликована здесь позже.</p>'
     +'<div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');

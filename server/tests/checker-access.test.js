@@ -129,6 +129,10 @@ app.get('/', (req,res)=>res.type('html').send(html));
       await page.locator('#inp').fill('8517130000');
       await page.locator('#result .card').first().waitFor();
       assert.match(await page.locator('#result').innerText(),/8517|Смартфон/i);
+      // the in-app privacy link must lead to the published policy, not to a «в разработке» stub
+      await page.evaluate(()=>openFooterDocModal('Политика конфиденциальности'));
+      await page.locator('#activeModal a[href="/privacy.html"]').waitFor({timeout:5000});
+      await page.evaluate(()=>closeModal());
       await page.reload();
       await page.locator('#appWrap').waitFor({state:'visible'});
       assert.equal(requests,3); // failed request, retry, fresh page with a session
