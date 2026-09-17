@@ -31,6 +31,14 @@ const REGISTER_RATE_LIMIT = 5; // attempts
 const REGISTER_RATE_WINDOW_MS = 60 * 60 * 1000; // per IP, per hour
 const LOGIN_RATE_LIMIT = 10; // attempts
 const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000; // per IP, per 15 min
+// Неудачные входы на один адрес — с любых IP: лимит по IP не останавливает перебор
+// пароля к одной учётной записи с сотни адресов. Считаются только неудачи, поэтому
+// владелец после чужих попыток ждёт не дольше окна, а существование адреса по
+// отказу не угадать — счётчик ведётся для любого введённого адреса.
+const LOGIN_FAIL_LIMIT = 20;
+const LOGIN_FAIL_WINDOW_MS = 60 * 60 * 1000;
+// RFC 5321: адрес длиннее 254 знаков не доставляется; длиннее — только мусор в таблице и в памяти счётчиков.
+const EMAIL_MAX = 254;
 const FORGOT_RATE_LIMIT = 5; // attempts
 const FORGOT_RATE_WINDOW_MS = 60 * 60 * 1000; // per IP, per hour
 
@@ -57,7 +65,8 @@ function hashToken(token) {
 function makeRateLimiter(limit, windowMs) {
   const hits = new Map();
   let lastSweep = Date.now();
-  return function check(ip) {
+  // record=false — только спросить, не исчерпан ли лимит (для счётчика неудач).
+  return function check(ip, record = true) {
     const now = Date.now();
     if (now - lastSweep > windowMs) {
       for (const [key, times] of hits) {
@@ -66,6 +75,7 @@ function makeRateLimiter(limit, windowMs) {
       lastSweep = now;
     }
     const recent = (hits.get(ip) || []).filter((t) => now - t < windowMs);
+    if (!record) return recent.length < limit;
     recent.push(now);
     hits.set(ip, recent);
     return recent.length <= limit;
@@ -74,6 +84,7 @@ function makeRateLimiter(limit, windowMs) {
 
 const checkRegisterRateLimit = makeRateLimiter(REGISTER_RATE_LIMIT, REGISTER_RATE_WINDOW_MS);
 const checkLoginRateLimit = makeRateLimiter(LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW_MS);
+const loginFailures = makeRateLimiter(LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW_MS);
 const checkForgotRateLimit = makeRateLimiter(FORGOT_RATE_LIMIT, FORGOT_RATE_WINDOW_MS);
 // Повторная отправка письма подтверждения теперь нужна и без сессии: войти
 // до подтверждения нельзя, значит попросить письмо заново человек может
@@ -94,13 +105,17 @@ router.post('/login', async (req, res, next) => {
       return res.status(429).json({ error: 'too many attempts, try again later' });
     }
     const { email, password } = req.body || {};
-    if (!email || !password) {
+    if (typeof email !== 'string' || typeof password !== 'string' || !email || !password || email.length > EMAIL_MAX) {
       return res.status(400).json({ error: 'email and password required' });
+    }
+    const key = email.toLowerCase();
+    if (!loginFailures(key, false)) {
+      return res.status(429).json({ error: 'too many attempts, try again later' });
     }
 
     const { rows } = await pool.query(
       'select id, email, password_hash, role, active, subscription_expires_at, email_verified_at from users where email = $1',
-      [String(email).toLowerCase()]
+      [key]
     );
     const user = rows[0];
     // Same generic error whether the email doesn't exist or the password is
@@ -110,8 +125,9 @@ router.post('/login', async (req, res, next) => {
     // Registration still answers 409 for a taken address on purpose: that
     // path is behind Turnstile and a per-IP limit, and «уже зарегистрирован»
     // is worth more to a real user than hiding it (decided 17.09.2026).
-    const ok = await bcrypt.compare(String(password), user && user.active ? user.password_hash : DUMMY_HASH);
+    const ok = await bcrypt.compare(password, user && user.active ? user.password_hash : DUMMY_HASH);
     if (!user || !user.active || !ok) {
+      loginFailures(key);
       return res.status(401).json({ error: 'invalid credentials' });
     }
 
@@ -180,7 +196,7 @@ router.post('/register', async (req, res, next) => {
     if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
       return res.status(400).json({ error: 'email and password required' });
     }
-    if (!EMAIL_RE.test(String(email))) {
+    if (email.length > EMAIL_MAX || !EMAIL_RE.test(email)) {
       return res.status(400).json({ error: 'invalid email' });
     }
     if (password.length < 8) {
@@ -250,7 +266,7 @@ router.post('/forgot-password', async (req, res) => {
   // Checked after the reply on purpose — a 429 here would itself be a signal,
   // and there is nothing useful to tell the caller anyway.
   if (!checkForgotRateLimit(req.ip)) return;
-  if (!email) return;
+  if (typeof email !== 'string' || !email || email.length > EMAIL_MAX) return;
 
   // Капча здесь тоже после ответа, и по той же причине: сказать «капча не
   // пройдена» значит ответить по-разному на разные запросы, а весь смысл
@@ -359,7 +375,8 @@ router.post('/reset-password', async (req, res, next) => {
 router.post('/verify-email', async (req, res, next) => {
   try {
     const { token } = req.body || {};
-    if (!token) return res.status(400).json({ error: 'token required' });
+    // Не строка (массив, объект) раньше падала в hashToken и отвечала 500.
+    if (typeof token !== 'string' || !token) return res.status(400).json({ error: 'token required' });
     const { rows } = await pool.query(
       `select evt.id as token_id, u.id as user_id, u.email, u.email_verified_at
          from email_verification_tokens evt join users u on u.id = evt.user_id
@@ -405,7 +422,7 @@ router.post('/resend-verification-public', async (req, res) => {
 
   if (!checkResendRateLimit(req.ip)) return;
   const { email } = req.body || {};
-  if (!email || !EMAIL_RE.test(String(email))) return;
+  if (typeof email !== 'string' || email.length > EMAIL_MAX || !EMAIL_RE.test(email)) return;
 
   try {
     const { rows } = await pool.query(

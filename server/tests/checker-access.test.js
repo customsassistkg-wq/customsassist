@@ -37,7 +37,10 @@ app.post('/api/auth/forgot-password', (req,res)=>{guestPosts.push('forgot '+req.
 app.post('/api/auth/verify-email', (req,res)=>{guestPosts.push('verify '+req.body.token);res.json({ok:true,email:'new@example.test'});});
 app.post('/api/auth/reset-password', (req,res)=>{guestPosts.push('reset '+req.body.token);res.json({ok:true});});
 app.use('/api/checker.js', require('../src/routes/checker'));
-app.get('/', (req,res)=>res.type('html').send(html));
+// The page is served with the production Content-Security-Policy taken from nginx.conf, so a
+// script or connection the policy would block fails this test instead of the live site.
+const csp=fs.readFileSync(path.join(__dirname,'../nginx.conf'),'utf8').match(/add_header Content-Security-Policy "([^"]+)"/)[1];
+app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send(html));
 
 (async()=>{
   const server=app.listen(0,'127.0.0.1');
@@ -80,7 +83,13 @@ app.get('/', (req,res)=>res.type('html').send(html));
       // 17.09.2026 the register button called EMAIL_RE, declared in checker.js:
       // it threw for every new visitor and worked only in a window where someone
       // had already logged in and out.
+      const cspViolations=[];
+      const watchCsp=async p=>{
+        await p.exposeFunction('__cspViolation',v=>cspViolations.push(v)).catch(()=>{});
+        await p.addInitScript(()=>document.addEventListener('securitypolicyviolation',e=>window.__cspViolation(e.violatedDirective+' '+e.blockedURI)));
+      };
       const guest=await browser.newPage();
+      await watchCsp(guest);
       const guestErrors=[];
       guest.on('pageerror',e=>guestErrors.push(e.message));
       await guest.goto(origin);
@@ -110,6 +119,7 @@ app.get('/', (req,res)=>res.type('html').send(html));
       assert.deepEqual(guestErrors,[]);
       await guest.close();
       const page=await browser.newPage({viewport:{width:1280,height:900}});
+      await watchCsp(page);
       const errors=[];let requests=0;
       page.on('pageerror',e=>errors.push(e.message));
       page.on('request',r=>{if(r.url().endsWith('/api/checker.js'))requests++;});
@@ -147,6 +157,7 @@ app.get('/', (req,res)=>res.type('html').send(html));
       await page.locator('#inp').fill('8703231910');
       await page.locator('#result .card').first().waitFor();
       assert.deepEqual(errors,[]);
+      assert.deepEqual(cspViolations,[],'Content-Security-Policy');
       const delayed=await browser.newPage();
       let pendingRoute, started;
       const downloading=new Promise(resolve=>started=resolve);

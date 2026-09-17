@@ -79,7 +79,7 @@ router.post('/users', async (req, res, next) => {
     if (typeof email !== 'string' || typeof password !== 'string' || !email || !password) {
       return res.status(400).json({ error: 'email and password required' });
     }
-    if (!EMAIL_RE.test(String(email))) {
+    if (email.length > 254 || !EMAIL_RE.test(email)) {
       return res.status(400).json({ error: 'invalid email' });
     }
     if (role && role !== 'user' && role !== 'admin') {

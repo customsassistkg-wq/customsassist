@@ -11,10 +11,10 @@
     "refresh-class-decisions": "node scripts/refresh-class-decisions.js"
   },
   "dependencies": {
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "connect-pg-simple": "^9.0.1",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2",
+    "express": "^4.22.3",
     "express-session": "^1.18.0",
     "pg": "^8.12.0"
   }
