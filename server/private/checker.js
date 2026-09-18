@@ -529,10 +529,21 @@ function focusResultSec(k){
   const sec=document.getElementById('res-sec-'+k);
   if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});
 }
-function resShortLabel(card){
+// Аббревиатуры в вердикте расшифровываются: «СЭН» декларанту понятно, а его клиенту — нет.
+// Подпись заменяется целиком, и каждая аббревиатура раскрывается один раз на вердикт:
+// вторая карточка СЭН остаётся «СЭН — отраслевой перечень», а не повторяет расшифровку.
+const RES_GLOSS=[[/^СЭН$/i,'СЭН — санитарно-эпидемиологический надзор'],[/^ТР ЕАЭС — оценка соответствия$/i,'ТР ЕАЭС — сертификат или декларация соответствия'],
+  [/^УСИР ЕАЭС$/i,'УСИР — стоимостные индикаторы риска'],[/^ТРОИС — записи недействующие$/i,'ТРОИС (реестр товарных знаков) — записи недействующие'],[/^Товарный знак в ТРОИС$/i,'товарный знак в реестре ТРОИС'],
+  [/^Требует лицензии$/i,'лицензия НКС (товары двойного назначения)'],[/^Ветконтроль$/i,'ветеринарный контроль'],[/^Гос\. регистрация$/i,'государственная регистрация продукции']];
+// Что группа значит для декларанта — одной строкой под названием.
+const RES_HINT={danger:'Ввоз или вывоз запрещён актом — оформление невозможно',docs:'До подачи декларации нужен документ уполномоченного органа',
+  control:'Товар проверяют на границе — нужны сопроводительные документы контроля',cert:'Нужен сертификат или декларация соответствия техрегламенту',
+  pay:'Пошлина, НДС, акциз, квоты и льготные ставки',info:'Реестры и справочные данные — действий не требуют'};
+function resShortLabel(card,used){
   const tags=cardTagTexts(card);
-  const s=(tags[0]||cardTitleText(card)).replace(/^[^\wА-Яа-яЁё0-9«]+/u,'');
-  return trunc(s,42);
+  let s=(tags[0]||cardTitleText(card)).replace(/^[^\wА-Яа-яЁё0-9«]+/u,'');
+  for(let i=0;i<RES_GLOSS.length;i++){const [re,full]=RES_GLOSS[i];if(re.test(s)){if(!used||!used[i]){s=full;if(used)used[i]=1}break}}
+  return trunc(s,70);
 }
 
 // Сводная плашка: чем кончилась проверка (плашки рисков) и что именно нашлось
@@ -550,22 +561,23 @@ function buildResultSummary(container,q){
     (groups[k]=groups[k]||[]).push(card);
   });
   const hasAlert=!!groups.danger;
+  // Пробелы внутри span'ов — намеренно: скопированный вердикт должен читаться строками, а не слипаться.
   const rows=RES_SECS.map(([k,label,sv])=>{
     const list=groups[k];
-    if(!list&&k!=='danger')return '';
-    const n=list?list.length:0;
-    const seen={},items=[];
-    (list||[]).forEach(c=>{const l=resShortLabel(c);if(l&&!seen[l]){seen[l]=1;items.push(l)}});
+    if(!list)return '';
+    const n=list.length;
+    const seen={},items=[],used={};
+    list.forEach(c=>{const l=resShortLabel(c,used);if(l&&!seen[l]){seen[l]=1;items.push(l)}});
     let extra='';
-    if(k==='pay'&&list){const r=list.map(c=>c.querySelector('.ett-rate')).filter(Boolean)[0];if(r)extra=' · ЕТТ '+trunc((r.textContent||'').replace(/\s+/g,' ').trim(),28)}
+    if(k==='pay'){const r=list.map(c=>c.querySelector('.ett-rate')).filter(Boolean)[0];if(r)extra=' · ставка ЕТТ '+trunc((r.textContent||'').replace(/\s+/g,' ').trim(),28)}
     const tail=items.length>3?' · ещё '+(items.length-3):'';
-    return '<button type="button" class="vd-row '+sv+(n?'':' vd-none')+'"'+(n?' onclick="focusResultSec(\''+k+'\')"':'')+'>'
-      +'<span class="vd-dot"></span><span class="vd-l">'+esc(label)+'</span><span class="vd-n">'+(n?n:'нет')+'</span>'
-      +'<span class="vd-i">'+(n?esc(items.slice(0,3).join(' · ')+tail):'в базе не найдено')+esc(extra)+'</span></button>';
+    return '<button type="button" class="vd-row '+sv+'" onclick="focusResultSec(\''+k+'\')">'
+      +'<span><span class="vd-l">'+esc(label)+'</span><span class="vd-n">'+n+'</span><span class="vd-hint">'+esc(RES_HINT[k]||'')+'</span></span>'
+      +'<span class="vd-i">'+esc(items.slice(0,3).join(' · ')+tail+extra)+'</span></button>\n';
   }).join('');
   box.className='summary'+(hasAlert?' has-alert':'');
   box.style.display='';
-  box.innerHTML='<div class="vd-h"><span class="vd-title">'+(hasAlert?'⛔ Есть запрет':'Вердикт')+(q?' по «'+esc(trunc(q.trim(),28))+'»':'')+'</span><span class="vd-cnt">мер найдено: '+cards.length+' · строка ведёт к разделу</span></div>'
+  box.innerHTML='<div class="vd-h"><span class="vd-title">'+(hasAlert?'⛔ Есть запрет':'Запретов нет')+(q?' — «'+esc(trunc(q.trim(),28))+'»':'')+'</span><span class="vd-cnt">мер: '+cards.length+' · строка ведёт к разделу</span></div>'
     +'<div class="vd-rows">'+rows+'</div>';
 }
 
