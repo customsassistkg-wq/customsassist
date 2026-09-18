@@ -700,6 +700,30 @@ const a = require('../src/services/assistant');
   assert.doesNotMatch(res(1), /уже посчитаны другие позиции/);
   assert.match(res(2), /⚠ В этом разговоре уже посчитаны другие позиции/);
   assert.doesNotMatch(res(3), /уже посчитаны другие позиции/);                                // пересчёт тех же позиций
+  // расчёт — один инвойс из суммы пакета, которую модель сама сложила через sum_check (Keramin: 38 419,17 из 44 061,70):
+  // ещё один раунд, а если пакет так и не посчитан — пометка
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: { ...one(600), total: 600 } }]
+    : n === 2 ? [{ type: 'tool_use', id: 't2', name: 'sum_check', input: { amounts: [600, 500] } }]
+    : n === 3 ? [{ type: 'text', text: 'Посчитан инвойс A.' }]
+    : n === 4 ? [{ type: 'tool_use', id: 't4', name: 'calc_payments', input: { ...two, total: 1100 } }]
+    : [{ type: 'text', text: 'Посчитан весь пакет.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери инвойсы' }], invTotal);
+  assert.match(calls[3].messages[calls[3].messages.length - 1].content, /расчёт выполнен на 600,00, а по sum_check документы пакета — 1\s100,00 — посчитай весь пакет одним вызовом/);
+  assert.equal(r.answer, 'Посчитан весь пакет.');
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: { ...one(600), total: 600 } }]
+    : n === 2 ? [{ type: 'tool_use', id: 't2', name: 'sum_check', input: { amounts: [600, 500] } }]
+    : [{ type: 'text', text: 'Посчитан инвойс A.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери инвойсы' }], invTotal);
+  assert.equal(calls.length, 4);
+  assert.match(r.answer, /_Расчёт выше — не весь пакет: расчёт выполнен на 600,00, а по sum_check документы пакета — 1\s100,00\._$/);
+  // позиция с кодом, которого нет в ЕТТ, не посчитана (Keramin: «8479 89 970 8» — два варианта) — тоже ещё один раунд
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: { currency: 'USD', total: 1100, items: [{ code: '8517130000', value: 600 }, { code: '8479899708', value: 500 }] } }]
+    : [{ type: 'text', text: 'Готово.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери инвойсы' }], { docs: [{ name: 'inv.pdf', pages: 1, text: 'Total 1 100,00 USD' }] });
+  assert.match(calls[2].messages[calls[2].messages.length - 1].content, /в расчёте есть непосчитанные позиции — посчитай весь пакет/);
   console.log('PASS: полнота ответа — коды расчёта, пропавшие из таблицы, возвращаются; расчёт, о котором просили, обязателен; итог и входы sum_check — из документов; одна поставка — один расчёт');
 
   // ── чтение страницы: положение, предел ответа, второе распознавание ──

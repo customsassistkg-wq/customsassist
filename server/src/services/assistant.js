@@ -1452,7 +1452,12 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
       try { result = String(await runTool(u, hint)); } catch (e) { console.error('assistant tool', u.name, e); result = 'Ошибка инструмента.'; }
       if (u.name === 'search_base') searched.push(String(u.input?.query || ''));
       const refused = u.name === 'sum_check' && !result.startsWith('Сумма ');
-      if (u.name === 'sum_check' && !refused) sumTexts.push(result);
+      if (u.name === 'sum_check' && !refused) {
+        sumTexts.push(result);
+        const given = Array.isArray(u.input?.amounts) && u.input.amounts.length ? u.input.amounts : (u.input?.rows || []).map((r) => r?.amount);
+        const parts = given.map((v) => Math.round(num(v) * 100));
+        sumParts.push({ parts, sum: parts.reduce((x, y) => x + y, 0) });
+      }
       // Коды посчитанных позиций последнего расчёта: ответ, где они перечислены, должен перечислить все (см. ниже).
       if (u.name === 'calc_payments' && /\nВсего к уплате: |\nИтого: /.test(result)) {
         // Второй расчёт других позиций — это другие инвойсы той же поставки. Живой прогон 18.09.2026 (Keramin): три
@@ -1461,6 +1466,8 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
         if (calcVals.length && !vals.some((v) => calcVals.includes(v))) result += SEPARATE_CALC;
         calcVals.push(...vals);
         calcDone = true;
+        calcTotal = u.input?.total != null ? Math.round(num(u.input.total) * 100) : null;
+        calcSkipped = /\nНе посчитаны — /.test(result);
       }
       if (u.name === 'calc_payments') {
         const counted = [...new Set([...result.matchAll(/(?:^|\n)(?:Позиция \d+\. )?Код (\d{4} \d{2} \d{3} \d) —/g)].map((m) => m[1].replace(/\s/g, '')))];
@@ -1479,6 +1486,17 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   // Просили посчитать платежи по документам, а расчёта нет. Живой прогон 18.09.2026 (Keramin): модель сочла скидку
   // «расхождением» и ответила «укажите, по какому коду и стоимости считать», хотя всё для расчёта было в документах.
   let calcDone = false, calcVals = [];
+  // Расчёт покрыл только часть пакета: итог, переданный в calc_payments, — одно из слагаемых суммы, которую модель сама
+  // сложила через sum_check (итоги инвойсов одной CMR), или часть позиций не посчитана. Живой прогон 18.09.2026 (Keramin):
+  // посчитан один инвойс из трёх (38 419,17 из 44 061,70 EUR), и ответ просил пользователя «добавить платежи» по остальным.
+  let calcTotal = null, calcSkipped = false, partialAsked = false;
+  const sumParts = [];
+  const partialCalc = () => {
+    const whole = calcTotal ? sumParts.find((p) => p.parts.length >= 2 && p.parts.includes(calcTotal) && p.sum > calcTotal) : null;
+    const fmt = (cents) => (cents / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return [whole ? `расчёт выполнен на ${fmt(calcTotal)}, а по sum_check документы пакета — ${fmt(whole.sum)}` : '',
+      calcSkipped ? 'в расчёте есть непосчитанные позиции' : ''].filter(Boolean).join(', ');
+  };
   const wantCalc = docTexts.length > 0 && CALC_ASK_RE.test(String(question));
   let firstRound = 0, preAt = -1;
   const pre = images.length || docs.length ? [] : preTools(question);
@@ -1554,22 +1572,29 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
       const missing = calcCodes.filter((code) => !inAnswer.has(code));
       const incomplete = missing.length && calcCodes.length - missing.length >= 2 ? missing : [];
       const needCalc = wantCalc && !calcDone;
-      if ((unverified.length || numbers.length || incomplete.length || needCalc) && !verified && round < maxRounds) {
-        verified = true;
-        onStep({ tool: 'verify', input: { codes: unverified, numbers } });
+      const partial = partialCalc();
+      const again = !verified && (unverified.length || numbers.length || incomplete.length || needCalc);
+      const askPartial = partial && !partialAsked;
+      if ((again || askPartial) && round < maxRounds) {
+        if (again) verified = true;
+        if (askPartial) partialAsked = true;
+        onStep({ tool: 'verify', input: { codes: again ? unverified : [], numbers: again ? numbers : [], partial } });
         messages.push({ role: 'assistant', content: answer });
         messages.push({ role: 'user', content: 'Служебная проверка: ' + [
-          unverified.length ? `коды ${unverified.join(', ')} не встречались в результатах инструментов — проверь каждый через search_base или убери его` : '',
-          numbers.length ? `числа ${numbers.slice(0, 15).join('; ')} не встречаются ни в документах, ни в результатах инструментов — `
+          again && unverified.length ? `коды ${unverified.join(', ')} не встречались в результатах инструментов — проверь каждый через search_base или убери его` : '',
+          again && numbers.length ? `числа ${numbers.slice(0, 15).join('; ')} не встречаются ни в документах, ни в результатах инструментов — `
             + 'сверь каждое с документом (суммы и разности — через sum_check), неподтверждённое исправь или убери, выдуманное расхождение убери целиком' : '',
-          incomplete.length ? `в расчёте есть позиции с кодами ${incomplete.map((code) => checker().fmtCode(code)).join(', ')}, а в ответе их нет — `
+          again && incomplete.length ? `в расчёте есть позиции с кодами ${incomplete.map((code) => checker().fmtCode(code)).join(', ')}, а в ответе их нет — `
             + 'таблицу платежей по кодам бери из расчёта целиком, со всеми строками' : '',
           needCalc ? 'в вопросе просили посчитать платежи, а расчёта нет — вызови calc_payments по стоимостям документов (строки как есть '
             + 'и total); сомнительные места назови отдельно, но расчёт не откладывай и не проси пользователя указать, что считать' : '',
+          askPartial ? `${partial} — посчитай весь пакет одним вызовом calc_payments: items всех инвойсов, для непосчитанных позиций — `
+            + 'действующий код из вариантов в выдаче, total — сумма итогов через sum_check; не проси пользователя досчитать остальное' : '',
         ].filter(Boolean).join('; ') + '. Затем верни исправленный ответ целиком, без упоминания этой проверки.' });
         continue;
       }
       const note = (numbers.length ? `\n\n_Сверьте с документами: ${numbers.slice(0, 8).join('; ')} — этих чисел нет ни в документах, ни в расчёте сайта._` : '')
+        + (partial ? `\n\n_Расчёт выше — не весь пакет: ${partial}._` : '')
         + (incomplete.length ? `\n\n_В расчёт вошли и позиции с кодами ${incomplete.map((code) => checker().fmtCode(code)).join(', ')} — в таблице выше их нет._` : '');
       return { answer: keepKnownLinks(answer + note, seenText.join('\n')), searched, usage, unverified };
     }
