@@ -593,10 +593,37 @@ async function render(q,boxId){
   catch(e){if(seq===renderSeq[id])box.innerHTML=engineErrorHtml(e);return}
   if(seq!==renderSeq[id])return;
   box.innerHTML=r.html;
-  if(!r.cards)return;
+  if(!r.cards){box.dataset.rq=searchStamp(qt);return}
   compactifyCards(box);
   enhanceResultCards(box,qt);
+  if(id==='result')await applySearchConditions(box,qt,seq);
+  if(seq!==renderSeq[id])return;
+  box.dataset.rq=searchStamp(qt);
   fetchClassDecisions(qt,boxId);
+}
+
+// Условия поиска (бывшая «Справка по товару»): направление, страна и дата стоят под полем,
+// и при ввозе без страны ничего не меняют. Иначе — тот же фильтр lkFilter, пересборка
+// секций и вердикта без скрытых карточек, баннер условий сверху и ставки по стране.
+function searchCond(){
+  const d=document.getElementById('lookupDir'),c=document.getElementById('lookupCty'),t=document.getElementById('lookupDate');
+  return {dir:d?d.value:'im',ctyTxt:c?c.value.trim():'',date:t&&t.value?t.value:''};
+}
+// Метка «что показано»: тесты и повторный запуск ждут именно её, а не появления карточек.
+function searchStamp(q){const s=searchCond();return q+'|'+s.dir+'|'+s.ctyTxt+'|'+s.date}
+async function applySearchConditions(box,q,seq){
+  const {dir,ctyTxt}=searchCond();
+  if(dir==='im'&&!ctyTxt)return;
+  const cty=lkCountry(ctyTxt);
+  lkFilter(dir,cty,box);
+  sectionResultCards(box);
+  buildResultSummary(box,q);
+  box.insertAdjacentHTML('afterbegin',lkHeadHtml(dir,cty));
+  await lkApplyRates(dir,cty,ctyTxt,box,seq);
+}
+function rerunSearch(){
+  const v=document.getElementById('inp').value;
+  if(searchMode==='code'&&v.trim())render(v);
 }
 
 // Прецеденты классификации — асинхронная подгрузка карточки поверх остальных
@@ -1976,7 +2003,6 @@ function updateNavActive(){
   document.getElementById('navPersonalBtn').classList.toggle('active',currentPage==='search'&&searchMode==='personal');
   document.getElementById('navTreeBtn').classList.toggle('active',currentPage==='tree');
   document.getElementById('navNotesBtn').classList.toggle('active',currentPage==='notes');
-  document.getElementById('navLookupBtn').classList.toggle('active',currentPage==='lookup');
   document.getElementById('navAiBtn').classList.toggle('active',currentPage==='ai');
 }
 // ─── AI-помощник ───
@@ -2620,7 +2646,6 @@ function setPage(p){
   if(p==='ai')renderAiPage();
   if(p==='tree')renderTreeRoot();
   if(p==='notes')renderNotesRoot();
-  if(p==='lookup')renderLookupForm();
   updateNavActive();
 }
 
@@ -2799,11 +2824,11 @@ function lkCtyMatch(cardCty,cty){
   const toks=String(cardCty||'').split(/[\s,;]+/).filter(Boolean);
   return toks.some(t=>{const q=prefNormC(t);return q.length>=2&&cty.names.some(n=>prefCountryHit(n,q))});
 }
-function lkFilter(dir,cty){
-  const box=document.getElementById('lookupCards');
+function lkFilter(dir,cty,box){
+  box=box||document.getElementById('result');
   if(!box)return;
   const hidden=[];
-  Array.prototype.slice.call(box.querySelectorAll(':scope > .card')).forEach(card=>{
+  resCards(box).forEach(card=>{
     const d=card.getAttribute('data-dir'),cc=card.getAttribute('data-cty');
     let why='';
     if(d&&d.split(' ').indexOf(dir)<0)why=LK_WHY[dir]||LK_WHY.ex;
@@ -2856,9 +2881,9 @@ function lkRateHtml(opts,ettTxt){
 
 // Подставляет ставку для страны в карточки ЕТТ справки. Ставка ЕТТ остаётся
 // видна зачёркнутой: инспектору нужно видеть обе, а не одну вместо другой.
-async function lkApplyRates(dir,cty,ctyTxt){
+async function lkApplyRates(dir,cty,ctyTxt,box,seq){
   if(dir!=='im'||!cty||!cty.pref)return;
-  const box=document.getElementById('lookupCards');
+  box=box||document.getElementById('result');
   if(!box)return;
   const dateEl=document.getElementById('lookupDate');
   const date=dateEl&&dateEl.value?dateEl.value:'';
@@ -2879,8 +2904,8 @@ async function lkApplyRates(dir,cty,ctyTxt){
   // Ставки перечней для страны считает сервер (lkPrefRates в private/base.js): перечни — часть базы.
   let rates;
   try{rates=await engine('lkRates',want,ctyTxt,date)}catch(e){return}
-  // пока шёл ответ, справку могли запросить заново — чужие ставки новой выдаче не нужны
-  if(document.getElementById('lookupCards')!==box)return;
+  // пока шёл ответ, поиск могли запустить заново — чужие ставки новой выдаче не нужны
+  if(seq!==undefined&&seq!==renderSeq[box.id])return;
   cards.forEach(card=>{
     const rateEl=card.querySelector('.ett-rate');
     const x=rateEl&&rates[cardCode(card)];
@@ -2924,44 +2949,8 @@ function lkCountryOptions(){
   }
   return out;
 }
-function renderLookupForm(){
-  const box=document.getElementById('pageLookup');
-  // Форма строится один раз. setPage('lookup') вызывается при каждом возврате
-  // на страницу (например, из пояснений к группе), и перерисовка стирала бы и
-  // заполненные поля, и уже полученную справку.
-  if(box.querySelector('#lookupQuery'))return;
-  const today=new Date().toISOString().slice(0,10);
-  box.innerHTML='<div class="calc-card">'
-    +'<div class="calc-row">'
-      +'<div class="calc-field"><label>Направление перемещения</label><select id="lookupDir" onchange="lkDirChanged()"><option value="im">Ввоз</option><option value="ex">Вывоз</option><option value="tr">Транзит</option></select></div>'
-      +`<div class="calc-field"><label id="lookupCtyLbl">${LK_CTY_LABEL.im}</label><input type="text" id="lookupCty" list="lkCtyList" placeholder="например: Китай, Бангладеш, Казахстан — можно не указывать"><datalist id="lkCtyList">${lkCountryOptions()}</datalist></div>`
-    +'</div>'
-    +'<div class="calc-row">'
-      +'<div class="calc-field"><label>Товар: код ТН ВЭД или наименование</label><input type="text" id="lookupQuery" placeholder="8517 12 0000, смартфон, дизельное топливо, саженцы яблони" onkeydown="if(event.key===\'Enter\')submitLookup()"></div>'
-    +'</div>'
-    +'<div class="calc-row">'
-      +`<div class="calc-field" style="max-width:320px"><label>Дата</label><input type="date" id="lookupDate" value="${today}"></div>`
-    +'</div>'
-    +'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="calc-btn" type="button" style="width:auto;flex:1;min-width:200px" onclick="submitLookup()">Показать справку</button><button class="qa-btn" type="button" onclick="window.print()">🖨️ Распечатать</button></div>'
-    +'<div class="det" style="margin-top:10px">Дата определяет преференциальную ставку: у решений о ставках для ОАЭ, Ирана и Монголии есть даты вступления в силу, а график ОАЭ идёт по годам. Остальные данные базы — действующие на сегодня; прошлые редакции ставок и запретов не хранятся.</div>'
-    +'</div><div id="lookupResultBox"></div>';
-}
-async function submitLookup(){
-  // Поле одно: render() сначала ищет по коду, а если не нашёл — по
-  // наименованию, поэтому делить ввод на два поля было незачем.
-  const q=document.getElementById('lookupQuery').value.trim();
-  const dir=document.getElementById('lookupDir').value;
-  const ctyTxt=document.getElementById('lookupCty').value;
-  const resBox=document.getElementById('lookupResultBox');
-  const seq=++lookupSeq;
-  if(!q){resBox.innerHTML='<div class="nf"><div class="big">✏️</div>Введите код ТН ВЭД или наименование товара</div>';return;}
-  const cty=lkCountry(ctyTxt);
-  resBox.innerHTML=lkHeadHtml(dir,cty)+'<div id="lookupCards"></div>';
-  await render(q,'lookupCards');
-  if(seq!==lookupSeq)return;
-  lkFilter(dir,cty);
-  await lkApplyRates(dir,cty,ctyTxt);
-}
+// Отдельной страницы «Справка по товару» нет с 18.09.2026: её поля (lookupDir, lookupCty,
+// lookupDate) стоят под полем поиска, а фильтр применяется в render() → applySearchConditions().
 
 function setSearchMode(m){
   // Настоящая защита админского раздела — на сервере (middleware/requireAdmin,
@@ -3449,18 +3438,8 @@ async function renderSpecies(q){
 }
 
 function goToCode(code){
-  // Переход по коду из справки остаётся в справке: направление и страна уже
-  // выбраны, а общий поиск про них не знает — уводить туда значит терять
-  // весь контекст ответа. Список «найдено по наименованию» кликабелен, и
-  // именно он выбрасывал человека со страницы.
-  const lq=document.getElementById('lookupQuery');
-  if(currentPage==='lookup'&&lq){
-    lq.value=code;
-    submitLookup();
-    const rb=document.getElementById('lookupResultBox');
-    if(rb&&rb.scrollIntoView)rb.scrollIntoView({behavior:'smooth',block:'start'});
-    return;
-  }
+  // Условия поиска (направление, страна, дата) живут под полем и переход их не трогает:
+  // код из списка кандидатов открывается с теми же условиями.
   setPage('search');
   setSearchMode('code');
   document.getElementById('inp').value=code;
@@ -3473,6 +3452,13 @@ if(appInitialized)return;
 appInitialized=true;
 document.body.dataset.page='search';
 document.body.dataset.mode='code';
+// Условия поиска: дата — сегодня, список стран — те, о которых база может ответить,
+// смена условия перезапускает текущий запрос.
+document.getElementById('lookupDate').value=new Date().toISOString().slice(0,10);
+document.getElementById('lkCtyList').innerHTML=lkCountryOptions();
+document.getElementById('lookupDir').addEventListener('change',()=>{lkDirChanged();rerunSearch()});
+document.getElementById('lookupDate').addEventListener('change',rerunSearch);
+{let condT;document.getElementById('lookupCty').addEventListener('input',()=>{clearTimeout(condT);condT=setTimeout(rerunSearch,350)})}
 
 renderAutoCalcPanel();
 renderPersonalCalcPanel();

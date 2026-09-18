@@ -167,97 +167,79 @@ app.get('/', (req,res)=>res.type('html').send(html));
     await page.locator('#authPassword').fill('valid');
     await page.locator('#authSubmit').click();
     await page.locator('#appWrap').waitFor({state:'visible'});
-    await page.locator('#navLookupBtn').click();
-    await page.locator('#lookupDir').waitFor({state:'visible'});
-
-    // Поля идут в порядке принятия решения: направление, страна, товар.
-    assert.deepEqual(await page.evaluate(()=>Array.from(document.querySelectorAll('#pageLookup select,#pageLookup input')).map(e=>e.id)),
-      ['lookupDir','lookupCty','lookupQuery','lookupDate']);
+    // Условия стоят под полем поиска в порядке принятия решения: направление, страна, дата.
+    assert.deepEqual(await page.evaluate(()=>Array.from(document.querySelectorAll('#srchCond select,#srchCond input')).map(e=>e.id)),
+      ['lookupDir','lookupCty','lookupDate']);
     assert.deepEqual(await page.evaluate(()=>Array.from(document.querySelectorAll('#lookupDir option')).map(o=>o.textContent)),
       ['Ввоз','Вывоз','Транзит']);
 
+    // Ждём метку «показано именно это», а не появление карточек: прежние карточки
+    // остаются на экране, пока идёт новый ответ.
     const run=async(dir,cty,q)=>{
       await page.selectOption('#lookupDir',dir);
       await page.fill('#lookupCty',cty);
-      await page.fill('#lookupQuery',q);
-      await page.click('#pageLookup .calc-btn');
-      await page.locator('#lookupCards .card').first().waitFor();
+      await page.fill('#inp',q);
+      const stamp=await page.evaluate(()=>searchStamp(document.getElementById('inp').value.trim()));
+      await page.waitForFunction((s)=>document.getElementById('result').dataset.rq===s,stamp);
       return page.evaluate(()=>({
-        shown:Array.from(document.querySelectorAll('#lookupCards > .card')).map(c=>c.className),
+        shown:Array.from(document.querySelectorAll('#result .res-sec > .card, #result > .card')).map(c=>c.className),
         hidden:Array.from(document.querySelectorAll('.lk-hidden > .card')).map(c=>(c.querySelector('.tag')||{}).textContent||c.className),
-        head:Array.from(document.querySelectorAll('#lookupResultBox .calc-warn')).map(w=>w.textContent).join(' | '),
+        head:Array.from(document.querySelectorAll('#result .calc-warn')).map(w=>w.textContent).join(' | '),
       }));
     };
+    const vis=(sel)=>page.evaluate((s)=>document.querySelectorAll('#result .res-sec > '+s+', #result > '+s).length,sel);
 
     // Меламин: антидемпинговая мера установлена в отношении товара из КНР.
     let r=await run('im','Китай','2933610000');
     assert.ok(r.hidden.every(h=>!/Антидемпинг|антидемпинг/.test(h)), 'мера КНР не должна скрываться для Китая');
-    assert.ok(await page.evaluate(()=>!!document.querySelector('#lookupCards > .card[data-cty]')), 'карточка со страной осталась видимой');
+    assert.ok(await vis('.card[data-cty]')>0, 'карточка со страной осталась видимой');
     r=await run('im','Германия','2933610000');
-    assert.ok(await page.evaluate(()=>!document.querySelector('#lookupCards > .card[data-cty]')), 'для Германии страновые карточки убраны');
+    assert.equal(await vis('.card[data-cty]'),0, 'для Германии страновые карточки убраны');
     assert.match(r.head,/Германия/);
 
     // Вывоз: ставка ЕТТ и льготы по НДС к нему не относятся.
     r=await run('ex','','8517130000');
-    assert.equal(await page.evaluate(()=>document.querySelectorAll('#lookupCards > .card[data-dir="im"]').length),0);
+    assert.equal(await vis('.card[data-dir="im"]'),0);
     assert.ok(await page.evaluate(()=>document.querySelectorAll('.lk-hidden > .card[data-dir="im"]').length>0));
     assert.match(r.head,/вывоз/i);
+    // Вердикт и секции пересобраны без скрытых карточек.
+    assert.ok(await page.evaluate(()=>!document.querySelector('#res-sec-pay')),'секция платежей при вывозе пуста и убрана');
 
     // Транзит: то же самое, но с основанием из ТК ЕАЭС.
     r=await run('tr','','8517130000');
-    assert.equal(await page.evaluate(()=>document.querySelectorAll('#lookupCards > .card[data-dir="im"]').length),0);
+    assert.equal(await vis('.card[data-dir="im"]'),0);
     assert.match(r.head,/142/);
 
     // Ввоз из ЕАЭС: взаимная торговля — тарифных мер нет, запреты остаются.
     r=await run('im','Казахстан','8517130000');
-    assert.equal(await page.evaluate(()=>document.querySelectorAll('#lookupCards > .card[data-kind="tariff"]').length),0);
+    assert.equal(await vis('.card[data-kind="tariff"]'),0);
     assert.match(r.head,/Казахстан/);
 
-    // Без страны и при ввозе не скрывается ничего.
-    await run('im','','8517130000');
+    // Без страны и при ввозе не скрывается ничего и баннера нет.
+    r=await run('im','','8517130000');
     assert.equal(await page.evaluate(()=>document.querySelectorAll('.lk-hidden').length),0);
+    assert.equal(r.head,'');
 
-    // Поиск по наименованию: список кандидатов кликабелен, и клик обязан
-    // остаться в справке — раньше goToCode() уводил в общий поиск ТН ВЭД.
-    await page.selectOption('#lookupDir','im');
-    await page.fill('#lookupCty','');
-    await page.fill('#lookupQuery','смартфон');
-    await page.click('#pageLookup .calc-btn');
-    await page.locator('#lookupCards .card').first().waitFor();
-    await page.locator('#lookupCards [onclick^="goToCode"]').first().click();
-    await page.locator('#lookupCards .card').first().waitFor();
-    assert.equal(await page.evaluate(()=>currentPage),'lookup');
-    assert.equal(await page.locator('#pageSearch').isVisible(),false);
-    assert.match(await page.inputValue('#lookupQuery'),/^\d{4}/);
+    // Смена условия перезапускает текущий запрос сама.
+    await page.selectOption('#lookupDir','ex');
+    await page.waitForFunction(()=>document.getElementById('result').dataset.rq==='8517130000|ex||'+document.getElementById('lookupDate').value);
+    assert.equal(await vis('.card[data-dir="im"]'),0);
 
-    // Примеры быстрого поиска живут только в пустом состоянии поиска по коду:
-    // на странице справки их нет (с 18.09.2026 — под полем, а не в правой колонке).
-    assert.equal(await page.locator('#sg1 button').first().isVisible(),false);
-
-    // Уход на другую страницу и возврат не стирают уже полученную справку.
-    await page.click('#navTreeBtn');
-    await page.click('#navLookupBtn');
-    assert.equal(await page.inputValue('#lookupDir'),'im');
-    assert.ok(await page.evaluate(()=>document.querySelectorAll('#lookupCards > .card').length>0));
-
-    await page.click('#navSearchBtn');
-    await page.locator('#sg1 button').first().click();
-    await page.locator('#result .card').first().waitFor();
-    assert.equal(await page.evaluate(()=>currentPage),'search');
+    // Клик по кандидату из списка «по наименованию» сохраняет условия.
+    await run('ex','','смартфон');
+    await page.locator('#result [onclick^="goToCode"]').first().click();
+    await page.waitForFunction(()=>/^\d{10}\|ex\|/.test(document.getElementById('result').dataset.rq||''));
+    assert.equal(await page.inputValue('#lookupDir'),'ex');
 
     // Ставка для ОАЭ в карточке ЕТТ: до 06.10.2026 — ЕТТ и дата, с 06.10.2026 — 13,1%
-    await page.click('#navLookupBtn');
-    await page.selectOption('#lookupDir','im');
-    await page.fill('#lookupCty','ОАЭ');
-    await page.fill('#lookupQuery','0201100001');
     await page.fill('#lookupDate','2026-09-16');
-    await page.click('#pageLookup .calc-btn');
-    await page.locator('#lookupCards .pref-rate').first().waitFor();
-    assert.match(await page.locator('#lookupCards .pref-rate').first().innerText(),/06\.10\.2026[\s\S]*13,1%/);
+    await run('im','ОАЭ','0201100001');
+    await page.locator('#result .pref-rate').first().waitFor();
+    assert.match(await page.locator('#result .pref-rate').first().innerText(),/06\.10\.2026[\s\S]*13,1%/);
     await page.fill('#lookupDate','2026-10-06');
-    await page.click('#pageLookup .calc-btn');
-    await page.locator('#lookupCards .ett-was').first().waitFor();
-    assert.match(await page.locator('#lookupCards .ett-rate').first().innerText(),/15%\s*13,1%/);
+    await page.locator('#lookupDate').dispatchEvent('change');
+    await page.locator('#result .ett-was').first().waitFor();
+    assert.match(await page.locator('#result .ett-rate').first().innerText(),/15%\s*13,1%/);
 
     assert.deepEqual(errors,[]);
     console.log('PASS: браузер — порядок полей, три направления, страна происхождения, ЕАЭС');
