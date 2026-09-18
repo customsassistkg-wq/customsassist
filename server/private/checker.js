@@ -2212,7 +2212,12 @@ function updateNavActive(){
   document.getElementById('navTreeBtn').classList.toggle('active',currentPage==='tree');
   document.getElementById('navNotesBtn').classList.toggle('active',currentPage==='notes');
   document.getElementById('navAiBtn').classList.toggle('active',currentPage==='ai');
+  document.querySelectorAll('#tabBar [data-nav]').forEach(b=>{const n=document.getElementById(b.dataset.nav);b.classList.toggle('active',!!n&&n.classList.contains('active'))});
+  const more=document.getElementById('tabMoreBtn');
+  if(more)more.classList.toggle('active',['navAutoBtn','navPersonalBtn','navNotesBtn','navSpeciesBtn'].some(id=>document.getElementById(id).classList.contains('active')));
 }
+function tabGo(id){document.body.classList.remove('nav-open');const b=document.getElementById(id);if(b)b.click();window.scrollTo({top:0,behavior:'smooth'})}
+function tabMore(){document.body.classList.toggle('nav-open')}
 // ─── AI-помощник ───
 // Переписка живёт в памяти страницы и в sessionStorage вкладки (переживает
 // перезагрузку, но не выход): сервер получает её хвост с каждым вопросом.
@@ -2906,7 +2911,7 @@ async function renderTreeChapter(nn,keepPage,highlightCode){
   }
   const moreBtn=t.total>t.rows.length?`<button class="btn" type="button" style="margin-top:10px" onclick="treeChapterShown+=50;renderTreeChapter('${nn}',true)">Показать ещё (осталось ${t.total-t.rows.length})</button>`:'';
   box.innerHTML=`<div class="tree-crumbs"><span onclick="renderTreeRoot()">Классификатор ТН ВЭД</span>${s?` › <span onclick="renderTreeSection('${s.r}')">Раздел ${s.r}</span>`:''} › Группа ${nn}</div>`
-    +`<div class="card"><div class="rn">Группа ${nn}. ${esc(title)}</div><div class="det">Найдено кодов в базе ЕТТ: ${t.total}. Нажмите код, чтобы открыть полную карточку (запреты, лицензирование, НДС, сертификация, пошлина).</div></div>`
+    +`<div class="card"><div class="rn">Группа ${nn}. ${esc(title)}</div><div class="det">Кодов в базе ЕТТ: ${t.total} — нажмите код, чтобы открыть карточку.</div><div class="qa-row" style="margin-top:10px"><a class="btn" href="${psnUrl(nn)}" target="_blank" rel="noopener">📖 Пояснения к группе ${nn} (PDF ЕЭК)</a><button type="button" class="btn" onclick="setPage('notes');renderNotesSection('${s?s.r:''}')">Примечания к разделу</button></div></div>`
     +`<div class="ett-list">${rows||'<div class="det">В базе ЕТТ нет кодов с этим префиксом.</div>'}</div>${moreBtn}`;
   if(highlightCode){
     const row=document.getElementById('treeRow'+highlightCode);
@@ -3710,6 +3715,9 @@ chipGroups.forEach(([id,list])=>{
     g.appendChild(b);
   });
 });
+
+// Таб-панель «Ещё» открывает меню разделов листом; выбор раздела закрывает его.
+{const np=document.querySelector('.nav-panel');if(np)np.addEventListener('click',e=>{if(e.target.closest('.nav-item'))document.body.classList.remove('nav-open')})}
 
 // История и подсказки: при фокусе на пустом поле — последние запросы, при вводе
 // 4–9 цифр — подпозиции с сервера. Список закрывается кликом вне поля и Escape.

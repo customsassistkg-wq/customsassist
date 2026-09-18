@@ -80,10 +80,10 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
     await page.locator('#calcValue').waitFor();
     await page.fill('#calcValue', '1000');
     await page.selectOption('#calcCur', 'СОМ');
-    await page.locator('#calcResult .calc-btn', { hasText: 'Рассчитать' }).click();
+    await page.locator('#calcResult .calc-actions .btn', { hasText: 'Рассчитать' }).click();
     await page.locator('#calcOut .calc-total').waitFor();
     assert.match(await page.locator('#calcOut').innerText(), /НДС \(12%/);
-    await page.locator('#calcResult .calc-btn', { hasText: 'В партию' }).click();
+    await page.locator('#calcResult .calc-actions .btn', { hasText: 'В партию' }).click();
     await page.locator('#calcBatchPanel .batch-tbl tbody tr').first().waitFor();
 
     // освобождённый от НДС код: 0% по перечню № 596
@@ -92,10 +92,10 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
     await page.waitForFunction((c) => document.querySelector('#calcResult .rc') && document.querySelector('#calcResult .rc').textContent.replace(/\D/g, '') === c, vatFree);
     await page.fill('#calcValue', '500');
     await page.selectOption('#calcCur', 'СОМ');
-    await page.locator('#calcResult .calc-btn', { hasText: 'Рассчитать' }).click();
+    await page.locator('#calcResult .calc-actions .btn', { hasText: 'Рассчитать' }).click();
     await page.locator('#calcOut .calc-total').waitFor();
     assert.match(await page.locator('#calcOut').innerText(), /НДС \(0%/);
-    await page.locator('#calcResult .calc-btn', { hasText: 'В партию' }).click();
+    await page.locator('#calcResult .calc-actions .btn', { hasText: 'В партию' }).click();
     await page.waitForFunction(() => document.querySelectorAll('#calcBatchPanel .batch-tbl tbody tr').length === 2);
 
     // подакцизный код: пункты ст.336 приходят с сервера, подпись поля меняется
