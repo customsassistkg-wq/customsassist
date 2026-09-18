@@ -18,6 +18,9 @@ const MAX_TOOL_ROUNDS = 8;
 // Разговор о документах: пакет на 12 кодов со сверками (sum_check, итог документа, поиск кодов ЕС) в восемь раундов
 // не укладывался — живой прогон 18.09.2026 кончился раундом без инструментов посреди работы.
 const MAX_TOOL_ROUNDS_DOCS = 12;
+const SEPARATE_CALC = '\n⚠ В этом разговоре уже посчитаны другие позиции. Если это одна поставка (одна CMR, одна декларация) — '
+  + 'сбор берётся один раз: посчитай все позиции одним вызовом (items всех инвойсов вместе, total — сумма их итогов через '
+  + 'sum_check). Результаты отдельных расчётов не складывай.';
 const CALC_ASK_RE = /посчита|рассчита|расч[её]т\s+(?:таможенных\s+)?платеж|платеж|сколько\s+(?:платить|заплатить|к\s+уплате)/i;
 // DeepSeek в раунде без инструментов (а иногда и в обычном) пишет вызовы текстом своей разметкой:
 // «<｜｜DSML｜｜ invoke name="sum_check">…». Пользователю такой «ответ» уходил как есть.
@@ -1284,9 +1287,32 @@ function discountNote(sum, t, fmt) {
   return ` Итог документа ${fmt(t)} меньше суммы строк ${fmt(sum)} на ${String(half).replace('.', ',')}% — так выглядит скидка. `
     + 'Если в документе есть скидка на этот процент (Discount, скидка), расхождения нет: это итог после скидки, и считать надо по нему.';
 }
-function sumCheck({ amounts, total, rows } = {}) {
+// В разговоре о документах sum_check складывает только напечатанные числа (hint.numberKnown задаёт ask()). Живой прогон
+// 18.09.2026 (Würth): модель удвоила строку — 4 032 × 213,36 = 8 602,68 вместо 2 016 и 4 301,34, — sum_check честно
+// сложил, и пользователю ушло «итог инвойса не включает строку 4», хотя итог 25 543,94 сходился со строками до цента.
+function sumCheck({ amounts, total, rows } = {}, hint = {}) {
   const num = (v) => (typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/\s/g, '').replace(',', '.')));
   const lines = (Array.isArray(rows) ? rows : []).slice(0, 1000);
+  let t = num(total), totalNote = '';
+  if (hint.numberKnown) {
+    // Суммы — с копейками: целое «700» короче четырёх цифр проверка чисел пропускает, «700,00» — нет. Три знака и больше
+    // («242.928» кг) остаются как есть: округление до копеек сделало бы напечатанное число «ненапечатанным».
+    const money = (v) => { const n = num(v); return Number.isFinite(n) && Math.abs(n * 100 - Math.round(n * 100)) < 1e-6 ? n.toFixed(2).replace('.', ',') : String(v); };
+    const given = [...(Array.isArray(amounts) ? amounts : []), ...lines.map((r) => r?.amount)].filter((v) => v != null && v !== '').map(money)
+      .concat(lines.flatMap((r) => [r?.quantity, r?.price]).filter((v) => v != null && v !== '').map(String));
+    const unknown = [...new Set(given.filter((x) => !hint.numberKnown(x)))];
+    if (unknown.length) {
+      return `Не выполнено: чисел ${unknown.slice(0, 10).join('; ')} нет в документах. sum_check складывает только напечатанное: `
+        + 'передай строки и итоги, как они стоят в документе (партии одной строки — не отдельные строки, строку не удваивай). '
+        + 'Итоги calc_payments уже посчитаны сервером — их не складывай.';
+    }
+    // Итог, посчитанный моделью (сумма итогов двух инвойсов, «чтобы сверить»), — не отказ, а без сверки: его число в
+    // выдачу не попадает, иначе стало бы «известным» для calc_payments.
+    if (Number.isFinite(t) && !hint.numberKnown(money(total))) {
+      t = NaN;
+      totalNote = ' Переданного total в документах нет — с ним не сверено (total — только напечатанный итог).';
+    }
+  }
   const list = (Array.isArray(amounts) && amounts.length ? amounts : lines.map((r) => r?.amount)).map(num).filter(Number.isFinite).slice(0, 1000);
   if (!list.length) return 'Нет чисел для сложения.';
   const fmt = (n) => n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1321,7 +1347,6 @@ function sumCheck({ amounts, total, rows } = {}) {
           + 'ошибка была во входе: повтори sum_check с ним и пользователю о расхождении не сообщай; если нет — назови пользователю эти строки.'
         : 'В этих строках одно из трёх чисел прочитано неверно — перечитай их в документе; если не сойдётся, назови пользователю эти строки.');
   } else if (checked) out += ` Количество × цена равно сумме во всех ${checked} строках.`;
-  const t = num(total);
   if (Number.isFinite(t)) {
     const diff = cents - Math.round(t * 100);
     // Сумма строк сходится с итогом, а количество × цена где-то нет — ошибка в количестве или цене, стоимость же верна.
@@ -1332,11 +1357,11 @@ function sumCheck({ amounts, total, rows } = {}) {
         + 'Проверь, все ли строки учтены и нет ли строк на других страницах; если расхождение останется — считай по сумме строк '
         + '(строки таблицы читаются со скана надёжнее итога) и назови пользователю обе суммы, чтобы он сверил их по оригиналу.');
   }
-  return out;
+  return out + totalNote;
 }
 
 async function runTool(u, hint) {
-  if (u.name === 'sum_check') return sumCheck(u.input);
+  if (u.name === 'sum_check') return sumCheck(u.input, hint);
   if (u.name === 'search_base') return searchBase(u.input, hint);
   if (u.name === 'calc_payments') return calcPayments(u.input, hint);
   if (u.name === 'group_notes') return groupNotes(u.input);
@@ -1412,10 +1437,12 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   const question = history[history.length - 1].content;
   const hint = { question };
   // Итог для calc_payments — из документов, реплик пользователя и выдачи sum_check (см. totalUnknown).
+  // Входы sum_check — оттуда же (см. sumCheck); выдача отказа sum_check в известные не идёт — она повторяет отвергнутые числа.
   const sumTexts = [];
   if (docTexts.length) {
-    hint.totalKnown = (t) => !unknownNumbers(t.toFixed(2).replace('.', ','),
+    hint.numberKnown = (s) => !unknownNumbers(s,
       [...docTexts, ...sumTexts, ...history.filter((m) => m.role === 'user').map((m) => m.content)].join('\n')).length;
+    hint.totalKnown = (t) => hint.numberKnown(t.toFixed(2).replace('.', ','));
   }
   const runUses = async (uses) => {
     const results = [];
@@ -1424,9 +1451,17 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
       let result;
       try { result = String(await runTool(u, hint)); } catch (e) { console.error('assistant tool', u.name, e); result = 'Ошибка инструмента.'; }
       if (u.name === 'search_base') searched.push(String(u.input?.query || ''));
-      if (u.name === 'sum_check') sumTexts.push(result);
+      const refused = u.name === 'sum_check' && !result.startsWith('Сумма ');
+      if (u.name === 'sum_check' && !refused) sumTexts.push(result);
       // Коды посчитанных позиций последнего расчёта: ответ, где они перечислены, должен перечислить все (см. ниже).
-      if (u.name === 'calc_payments' && /\nВсего к уплате: |\nИтого: /.test(result)) calcDone = true;
+      if (u.name === 'calc_payments' && /\nВсего к уплате: |\nИтого: /.test(result)) {
+        // Второй расчёт других позиций — это другие инвойсы той же поставки. Живой прогон 18.09.2026 (Keramin): три
+        // инвойса одной CMR посчитаны тремя вызовами, три сбора, итог модель сложила сама.
+        const vals = (Array.isArray(u.input?.items) && u.input.items.length ? u.input.items : [u.input]).map((it) => num(it?.value));
+        if (calcVals.length && !vals.some((v) => calcVals.includes(v))) result += SEPARATE_CALC;
+        calcVals.push(...vals);
+        calcDone = true;
+      }
       if (u.name === 'calc_payments') {
         const counted = [...new Set([...result.matchAll(/(?:^|\n)(?:Позиция \d+\. )?Код (\d{4} \d{2} \d{3} \d) —/g)].map((m) => m[1].replace(/\s/g, '')))];
         if (counted.length) calcCodes = counted;
@@ -1434,7 +1469,7 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
       // «Проверен» только тот код, который вернул инструмент: запрос несуществующего
       // кода сам по себе его не подтверждает.
       for (const code of codesIn(result)) seen.add(code);
-      seenText.push(result);
+      if (!refused) seenText.push(result);
       results.push({ type: 'tool_result', tool_use_id: u.id, content: result });
     }
     return results;
@@ -1443,7 +1478,7 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   let calcCodes = [];
   // Просили посчитать платежи по документам, а расчёта нет. Живой прогон 18.09.2026 (Keramin): модель сочла скидку
   // «расхождением» и ответила «укажите, по какому коду и стоимости считать», хотя всё для расчёта было в документах.
-  let calcDone = false;
+  let calcDone = false, calcVals = [];
   const wantCalc = docTexts.length > 0 && CALC_ASK_RE.test(String(question));
   let firstRound = 0, preAt = -1;
   const pre = images.length || docs.length ? [] : preTools(question);
@@ -1456,7 +1491,7 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
     firstRound = 1;
   }
   const maxRounds = docTexts.length ? MAX_TOOL_ROUNDS_DOCS : MAX_TOOL_ROUNDS;
-  let dsmlRetried = false;
+  let dsmlRetried = false, overran = false;
   for (let round = firstRound; round <= maxRounds; round++) {
     // Первый раунд — только поиск: ответить, не заглянув в базу, модель не может.
     // Именно type:'tool' с именем: DeepSeek молча игнорирует type:'any' (проверено
@@ -1539,6 +1574,16 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
       return { answer: keepKnownLinks(answer + note, seenText.join('\n')), searched, usage, unverified };
     }
     messages.push({ role: 'assistant', content });
+    // Последний раунд, а модель всё равно вызывает инструменты: tool_choice «none» DeepSeek соблюдает не всегда (живой
+    // прогон 18.09.2026, Würth: вопрос кончился ошибкой после 12 раундов). Вызовы не выполняются, и модель получает ещё
+    // одну попытку ответить по уже полученному.
+    if (round === maxRounds && !overran) {
+      overran = true;
+      messages.push({ role: 'user', content: uses.map((u) => ({ type: 'tool_result', tool_use_id: u.id,
+        content: 'Не выполнено: вызовы инструментов исчерпаны. Дай итоговый ответ по уже полученным результатам; что не успел проверить — назови одной строкой.' })) });
+      round--;
+      continue;
+    }
     messages.push({ role: 'user', content: await runUses(uses) });
   }
   // Модель проигнорировала tool_choice «none» в последнем раунде — ответа нет.
