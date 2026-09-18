@@ -680,6 +680,8 @@ const a = require('../src/services/assistant');
   assert.match(a.sumCheck({ rows: [{ quantity: 4032, price: 213.36, per: 100, amount: 8602.68 }] }, { numberKnown: (x) => !['4032', '8602,68'].includes(x) }),
     /^Не выполнено: чисел 8602,68; 4032 нет в документах/);
   assert.match(a.sumCheck({ amounts: [600, 500] }, { numberKnown: () => true }), /^Сумма 2 чисел: 1\s100,00/);
+  // цена проверяется как сумма: целая «360», которой в документе нет, не проходит
+  assert.match(a.sumCheck({ rows: [{ quantity: 200, price: 360, amount: 3600 }] }, { numberKnown: (x) => x !== '360,00' }), /^Не выполнено: чисел 360,00 нет в документах/);
   // total, посчитанный моделью, — без сверки и без его числа в выдаче (иначе он стал бы «известным» для calc_payments)
   t = a.sumCheck({ amounts: [600, 500], total: 1150 }, { numberKnown: (x) => x !== '1150,00' });
   assert.match(t, /^Сумма 2 чисел: 1\s100,00\. Переданного total в документах нет — с ним не сверено/);
@@ -887,6 +889,9 @@ const a = require('../src/services/assistant');
     assert.equal(docaiCalls.length, 1);
     // обычная страница, где Vision видит числа чтения, правилом не задевается
     assert.equal(a.pageUnreliable('| 1 | 39,25 | 145 075,39 |\nИтого 290 150,78', 'x'), null); // чисел меньше восьми — не судим
+    // выдумка бывает и пустой таблицей: в чтении чисел нет, а Vision видит их на странице
+    assert.equal(a.pageUnreliable('| № | Наименование | Сумма |\n| 1 | | |', '3696 | 39,25 | 145075,39 | 17409,05 | 290150,78 | 7111027 | 230000171 | 50492 | 1902199000'),
+      'распознавание Google видит на странице 9 чисел, а в расшифровке из них 0');
     assert.equal(a.pageUnreliable('3696 | 39,25 | 145 075,39 | 290 150,78 | 50492 | 1234567890 | 044525225 | 7801414 | 3000 | 4000', '3696 39,25 145075,39 290150,78 50492 7801414'), null); // 6 из 10
     delete process.env.OCR_DOCAI_PROCESSOR;
     global.fetch = modelFetch;

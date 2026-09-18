@@ -1143,12 +1143,17 @@ function reconcileWords(base, others, vision) {
 // Страница, где чтения модели выдумывают: мелкий шрифт под водяным знаком «ОБРАЗЕЦ» (ЭСФ Казахстана, 1123 × 793) —
 // все три чтения сочинили разные правдоподобные документы («ТОО "Фирма"», «ТОО "Прогресс"», Брянск вместо Актобе), а
 // Google Vision прочёл настоящие суммы. Признак — доля важных чисел чтения, которые видел Vision: на 19 нормальных
-// страницах 0,63–1,00 (обычно 0,9–1,0), на двух выдуманных — 0,00 и 0,21.
+// страницах 0,63–1,00 (обычно 0,9–1,0), на двух выдуманных — 0,00 и 0,21. И наоборот: выдумкой бывает и пустая таблица
+// (второй прогон той же ЭСФ), тогда чисел в чтении мало, а из чисел Vision в нём нет почти ни одного — на нормальных
+// страницах от 0,71, на выдуманных 0,00 и 0,32. Возвращает описание для пометки или null.
 function pageUnreliable(main, vision) {
-  const vn = new Set(flatNumbers(vision));
-  const n = [...new Set(flatNumbers(main).filter(numMatters))];
-  const ok = n.filter((k) => vn.has(k)).length;
-  return n.length >= 8 && ok < n.length * 0.4 ? { n: n.length, ok } : null;
+  const imp = (t) => [...new Set(flatNumbers(t).filter(numMatters))];
+  const mine = imp(main), theirs = imp(vision);
+  const inMain = new Set(flatNumbers(main)), inVision = new Set(flatNumbers(vision));
+  const ok = mine.filter((k) => inVision.has(k)).length, got = theirs.filter((k) => inMain.has(k)).length;
+  if (mine.length >= 8 && ok < mine.length * 0.4) return `из ${mine.length} чисел расшифровки распознавание Google подтвердило ${ok}`;
+  if (theirs.length >= 8 && got < theirs.length * 0.4) return `распознавание Google видит на странице ${theirs.length} чисел, а в расшифровке из них ${got}`;
+  return null;
 }
 async function readPage(img, { checkOrientation = true, parts = [], raw = false } = {}) {
   const usage = { input: 0, output: 0, cacheRead: 0, costUsd: 0 };
@@ -1183,7 +1188,7 @@ async function readPage(img, { checkOrientation = true, parts = [], raw = false 
     if (bad) {
       docai = docaiUrl() ? await docaiRead(img).catch((e) => { console.error('assistant: Document AI failed:', e.message); return null; }) : null;
       if (docai) usage.costUsd += DOCAI_USD;
-      text = `[Страница прочитана ненадёжно: из ${bad.n} чисел расшифровки распознавание Google подтвердило ${bad.ok}. Расшифровка модели `
+      text = `[Страница прочитана ненадёжно: ${bad}. Расшифровка модели `
         + 'отброшена — ниже текст распознавания Google, без разметки таблицы. Опирайся на него; скажи пользователю, что страница '
         + 'читается плохо (мелкий шрифт, водяной знак или низкое разрешение), и попроси прислать её чётче или сверить числа с оригиналом.]\n'
         + seen
@@ -1331,8 +1336,10 @@ function sumCheck({ amounts, total, rows } = {}, hint = {}) {
     // Суммы — с копейками: целое «700» короче четырёх цифр проверка чисел пропускает, «700,00» — нет. Три знака и больше
     // («242.928» кг) остаются как есть: округление до копеек сделало бы напечатанное число «ненапечатанным».
     const money = (v) => { const n = num(v); return Number.isFinite(n) && Math.abs(n * 100 - Math.round(n * 100)) < 1e-6 ? n.toFixed(2).replace('.', ',') : String(v); };
-    const given = [...(Array.isArray(amounts) ? amounts : []), ...lines.map((r) => r?.amount)].filter((v) => v != null && v !== '').map(money)
-      .concat(lines.flatMap((r) => [r?.quantity, r?.price]).filter((v) => v != null && v !== '').map(String));
+    // Цена — как сумма: целая «360» иначе прошла бы без проверки (живой прогон 18.09.2026: «200 шт × 360» в ДТ, где цены нет).
+    const given = [...(Array.isArray(amounts) ? amounts : []), ...lines.map((r) => r?.amount), ...lines.map((r) => r?.price)]
+      .filter((v) => v != null && v !== '').map(money)
+      .concat(lines.map((r) => r?.quantity).filter((v) => v != null && v !== '').map(String));
     const unknown = [...new Set(given.filter((x) => !hint.numberKnown(x)))];
     if (unknown.length) {
       return `Не выполнено: чисел ${unknown.slice(0, 10).join('; ')} нет в документах. sum_check складывает только напечатанное: `
