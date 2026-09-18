@@ -219,7 +219,7 @@ const DOC_SOURCES={
   prefRules:'https://eec.eaeunion.org/upload/medialibrary/dc8/kz4432n8enb7uyp83hshzcagsi3wm1gj/Pravila-proiskhozhdeniya-dlya-razvivayushchikhsya-i-naimenee-razvitykh-stran_GSP_obnovlen.pdf',
   permit156:'https://cbd.minjust.gov.kg/7-20912/edition/51297/ru',
   cites165:'https://cbd.minjust.gov.kg/7-16479/edition/378146/ru',
-  unimeas:'https://eec.eaeunion.org/upload/medialibrary/618/gifzhm8j6xx2wtf75tgcl1g4zvb7yvqn/2024_2026.pdf',
+  unimeas:'https://eec.eaeunion.org/comission/department/catr/nontariff/interim.php',
 };
 async function renderSourceAudit(){
   const box=document.getElementById('srcAudit');
