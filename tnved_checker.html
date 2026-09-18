@@ -926,6 +926,17 @@
     .card{padding:14px 13px}
     .hero-logo{max-width:128px}
   }
+  /* Цели нажатия на телефоне не ниже 32 px (замер скриптом 18.09.2026): ссылки и чипы, которые
+     были 16–24 px. Блок стоит последним в файле, чтобы правило ниже не перекрыло его. */
+  @media (max-width:640px){
+    #authScreen #authForgotLink{display:inline-block;padding:8px 0;margin:-8px 0}
+    .tree-crumbs span{display:inline-block;padding:8px 0}
+    .gb-pdf{display:flex;align-items:center;min-height:32px}
+    .vd-chip{min-height:32px}
+    .app-footer .af-links{gap:0}
+    .app-footer .af-links a{padding:7px 0}
+    .res-sec-collapsed .res-sec-h{min-height:32px;align-items:center}
+  }
 </style>
 <script data-boot>
   // Читаем выбор темы до отрисовки. Значение по умолчанию — тёмная.
