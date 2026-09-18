@@ -535,8 +535,22 @@ function focusResultCard(id){
   setTimeout(()=>card.classList.remove('card-flash'),1200);
 }
 
+// Эмодзи иконки карточки → символ спрайта страницы (tnved_checker.html, <body>). Шаблоны в base.js
+// не трогаются: замена — постобработка, исходный знак остаётся в data-em (по нему lkApplyRates
+// узнаёт карточку ЕТТ). Чего нет в карте — флаги, ☣️, 🐄 — остаётся эмодзи.
+const ICON_MAP={"🌍":"globe","🌐":"globe","🛡️":"shield","💰":"coins","🍶":"bottle","🧾":"receipt","📊":"chart","⚠️":"warn","📦":"box","⏸️":"pause","📋":"clipboard","❓":"help","💊":"pill","🏥":"cross","🧪":"flask","⚡":"bolt","✈️":"plane","🏭":"factory","🌾":"wheat","🌬️":"wind","🏅":"medal","💍":"ring","🔐":"lock","📉":"down","🚧":"barrier","🌱":"sprout","📝":"pencil","✓":"check","🐾":"paw","🗂️":"folder"};
+function iconizeCards(container){
+  container.querySelectorAll('.card .rh .ico').forEach(ico=>{
+    if(ico.dataset.em!==undefined)return;
+    const em=ico.textContent.trim(),k=ICON_MAP[em];
+    if(!k)return;
+    ico.dataset.em=em;
+    ico.innerHTML='<svg class="ic" aria-hidden="true"><use href="#i-'+k+'"/></svg>';
+  });
+}
 function enhanceResultCards(container,q){
   if(!container)return;
+  iconizeCards(container);
   const cards=resCards(container);
   cards.forEach(card=>{
     if(card.dataset.enh)return;
@@ -3080,7 +3094,7 @@ async function lkApplyRates(dir,cty,ctyTxt,box,seq){
   // только карточка ставки ЕТТ: класс c-ett носят и карточки соглашений
   const cards=Array.prototype.filter.call(box.querySelectorAll('.card.c-ett'),card=>{
     const ico=card.querySelector('.rh .ico');
-    return !!ico&&ico.textContent.trim()==='💰';
+    return !!ico&&(ico.dataset.em||ico.textContent.trim())==='💰';
   });
   const cardCode=card=>(card.querySelector('.rc')||{textContent:''}).textContent.replace(/\D/g,'');
   const rowCode=row=>(/goToCode\('(\d{10})'\)/.exec(row.getAttribute('onclick')||'')||[])[1];
