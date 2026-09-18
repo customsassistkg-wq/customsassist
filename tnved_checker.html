@@ -433,6 +433,11 @@
   .group-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:16px}
   .group-btn{display:flex;flex-direction:column;gap:4px;text-align:left;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:12px 14px;cursor:pointer;transition:all .15s;font-family:var(--head)}
   .group-btn:hover{border-color:var(--indigo);box-shadow:var(--shadow-sm)}
+  .group-cell{display:flex;flex-direction:column;gap:4px;min-width:0}
+  .group-cell .group-btn{flex:1}
+  .gb-pdf{font-size:11px;color:var(--ink-link);padding:2px 4px;text-decoration:none}
+  .gb-pdf:hover{text-decoration:underline}
+  .group-cell.notes-hl{margin:0;padding:6px!important}
   #toTopBtn{position:fixed;right:24px;bottom:24px;width:46px;height:46px;border-radius:50%;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);box-shadow:var(--shadow-lg);color:var(--indigo);font-size:18px;cursor:pointer;z-index:50;opacity:0;pointer-events:none;transform:translateY(8px);transition:opacity .2s,transform .2s}
   #toTopBtn.show{opacity:1;pointer-events:auto;transform:translateY(0)}
   #toTopBtn:hover{border-color:var(--indigo)}
@@ -1089,8 +1094,7 @@
         <button class="nav-item" id="navAutoBtn" type="button" onclick="setPage('search');setSearchMode('auto')"><span class="nav-ico">🚗</span> Поиск авто</button>
         <button class="nav-item" id="navPersonalBtn" type="button" onclick="setPage('search');setSearchMode('personal')"><span class="nav-ico">📦</span> Личные отправления</button>
         <div class="nav-grp">Справочники</div>
-        <button class="nav-item" id="navTreeBtn" type="button" onclick="setPage('tree')"><span class="nav-ico">🌳</span> Классификатор ТН ВЭД</button>
-        <button class="nav-item" id="navNotesBtn" type="button" onclick="setPage('notes')"><span class="nav-ico">📖</span> Пояснения и примечания</button>
+        <button class="nav-item" id="navTreeBtn" type="button" onclick="setPage('tree')"><span class="nav-ico">🌳</span> Классификатор и пояснения</button>
         <button class="nav-item" id="navSpeciesBtn" type="button" onclick="setPage('search');setSearchMode('species')"><span class="nav-ico">🐾</span> Красная книга / СИТЕС</button>
       </div>
 
@@ -1176,7 +1180,6 @@
       </div>
 
       <div id="pageTree" style="display:none"></div>
-      <div id="pageNotes" style="display:none"></div>
       <div id="pageLookup" style="display:none"></div>
       <div id="pageAi" style="display:none"></div>
 

@@ -2200,7 +2200,7 @@ async function printCalcEstimate(){
 }
 
 // ═══════════════════════════════════════════
-// ВЕРХНЕУРОВНЕВАЯ НАВИГАЦИЯ (левое меню) — Поиск / Дерево / Пояснения / Справка / Калькулятор
+// ВЕРХНЕУРОВНЕВАЯ НАВИГАЦИЯ (левое меню) — Поиск / Классификатор (с пояснениями) / Калькулятор / AI
 // ═══════════════════════════════════════════
 let currentPage='search';
 function updateNavActive(){
@@ -2210,11 +2210,10 @@ function updateNavActive(){
   document.getElementById('navCalcBtn').classList.toggle('active',currentPage==='search'&&searchMode==='calc');
   document.getElementById('navPersonalBtn').classList.toggle('active',currentPage==='search'&&searchMode==='personal');
   document.getElementById('navTreeBtn').classList.toggle('active',currentPage==='tree');
-  document.getElementById('navNotesBtn').classList.toggle('active',currentPage==='notes');
   document.getElementById('navAiBtn').classList.toggle('active',currentPage==='ai');
   document.querySelectorAll('#tabBar [data-nav]').forEach(b=>{const n=document.getElementById(b.dataset.nav);b.classList.toggle('active',!!n&&n.classList.contains('active'))});
   const more=document.getElementById('tabMoreBtn');
-  if(more)more.classList.toggle('active',['navAutoBtn','navPersonalBtn','navNotesBtn','navSpeciesBtn'].some(id=>document.getElementById(id).classList.contains('active')));
+  if(more)more.classList.toggle('active',['navAutoBtn','navPersonalBtn','navSpeciesBtn'].some(id=>document.getElementById(id).classList.contains('active')));
 }
 function tabGo(id){document.body.classList.remove('nav-open');const b=document.getElementById(id);if(b)b.click();window.scrollTo({top:0,behavior:'smooth'})}
 function tabMore(){document.body.classList.toggle('nav-open')}
@@ -2853,12 +2852,10 @@ function setPage(p){
   document.body.dataset.page=p;
   document.getElementById('pageSearch').style.display=p==='search'?'':'none';
   document.getElementById('pageTree').style.display=p==='tree'?'':'none';
-  document.getElementById('pageNotes').style.display=p==='notes'?'':'none';
   document.getElementById('pageLookup').style.display=p==='lookup'?'':'none';
   document.getElementById('pageAi').style.display=p==='ai'?'':'none';
   if(p==='ai')renderAiPage();
   if(p==='tree')renderTreeRoot();
-  if(p==='notes')renderNotesRoot();
   updateNavActive();
 }
 
@@ -2870,14 +2867,15 @@ function tnvedSectionFor(nn){
 function renderTreeRoot(){
   treeSeq++;
   const box=document.getElementById('pageTree');
-  let html='<div class="card"><div class="rn">Классификатор ТН ВЭД ЕАЭС</div><div class="det">Выберите раздел, затем группу — список кодов строится по базе ЕТТ (ставки пошлин), которая сейчас содержит ~13 300 кодов.</div></div><div class="group-grid">';
+  let html='<div class="card"><div class="rn">Классификатор ТН ВЭД ЕАЭС и пояснения к нему</div><div class="det">Выберите раздел, затем группу — список кодов строится по базе ЕТТ (ставки пошлин), которая сейчас содержит ~13 300 кодов. У каждой группы — текст пояснений ЕЭК (PDF).</div>'
+    +`<div class="det" style="margin-top:8px">${docLink('Пояснения к ТН ВЭД ЕАЭС — Департамент таможенного регулирования ЕЭК',DOC_SOURCES.psnIndex)} · в редакции Рекомендаций Коллегии ЕЭК от 24.07.2018 №12, 30.10.2018 №23, 16.04.2019 №12, 25.06.2019 №17, 03.12.2019 №40, 17.03.2020 №6, 17.08.2021 №17 · ${docLink('Основные правила интерпретации ТН ВЭД (ОПИ)',DOC_SOURCES.psnRules)}</div></div><div class="group-grid">`;
   for(const s of TNVED_SECTIONS){
     html+=`<button class="group-btn" onclick="renderTreeSection('${s.r}')"><b>Раздел ${s.r}</b><span>${esc(trunc(s.title,70))}</span><small>Групп${s.to>s.from?'ы':'а'} ${String(s.from).padStart(2,'0')}${s.to>s.from?'–'+String(s.to).padStart(2,'0'):''}</small></button>`;
   }
   html+='</div>';
   box.innerHTML=html;
 }
-function renderTreeSection(r){
+function renderTreeSection(r,highlightNn){
   treeSeq++;
   const s=TNVED_SECTIONS.find(x=>x.r===r);
   if(!s)return;
@@ -2886,10 +2884,15 @@ function renderTreeSection(r){
   for(let n=s.from;n<=s.to;n++){
     if(n===77)continue;
     const nn=String(n).padStart(2,'0'),title=TNVED_CHAPTERS[nn]||'';
-    html+=`<button class="group-btn" onclick="renderTreeChapter('${nn}')"><b>Группа ${nn}</b><span>${esc(trunc(title,80))}</span></button>`;
+    // Ссылка на PDF — сестра кнопки, а не её содержимое: <a> внутри <button> недопустим.
+    html+=`<div class="group-cell${nn===highlightNn?' notes-hl':''}" id="grp${nn}"><button class="group-btn" onclick="renderTreeChapter('${nn}')"><b>Группа ${nn}</b><span>${esc(trunc(title,80))}</span></button><a class="gb-pdf" href="${psnUrl(nn)}" target="_blank" rel="noopener">Пояснения к группе (PDF ЕЭК)</a></div>`;
   }
   html+='</div>';
   box.innerHTML=html;
+  if(highlightNn){
+    const cell=document.getElementById('grp'+highlightNn);
+    if(cell&&cell.scrollIntoView)cell.scrollIntoView({block:'center'});
+  }
 }
 let treeChapterShown=50;
 async function renderTreeChapter(nn,keepPage,highlightCode){
@@ -2907,11 +2910,11 @@ async function renderTreeChapter(nn,keepPage,highlightCode){
   let rows='';
   for(const [code,name,rate] of t.rows){
     const hl=code===highlightCode?' notes-hl':'';
-    rows+=`<div class="ett-row${hl}" id="treeRow${code}" style="cursor:pointer" onclick="goToCode('${code}')"><div class="ec">${esc(fmtCode(code))}</div><div class="en">${esc(trunc(name,140))}</div><div class="er">${esc(fmtRate(rate))}</div>${notesIconHtml(code)}</div>`;
+    rows+=`<div class="ett-row${hl}" id="treeRow${code}" style="cursor:pointer" onclick="goToCode('${code}')"><div class="ec">${esc(fmtCode(code))}</div><div class="en">${esc(trunc(name,140))}</div><div class="er">${esc(fmtRate(rate))}</div></div>`;
   }
   const moreBtn=t.total>t.rows.length?`<button class="btn" type="button" style="margin-top:10px" onclick="treeChapterShown+=50;renderTreeChapter('${nn}',true)">Показать ещё (осталось ${t.total-t.rows.length})</button>`:'';
   box.innerHTML=`<div class="tree-crumbs"><span onclick="renderTreeRoot()">Классификатор ТН ВЭД</span>${s?` › <span onclick="renderTreeSection('${s.r}')">Раздел ${s.r}</span>`:''} › Группа ${nn}</div>`
-    +`<div class="card"><div class="rn">Группа ${nn}. ${esc(title)}</div><div class="det">Кодов в базе ЕТТ: ${t.total} — нажмите код, чтобы открыть карточку.</div><div class="qa-row" style="margin-top:10px"><a class="btn" href="${psnUrl(nn)}" target="_blank" rel="noopener">📖 Пояснения к группе ${nn} (PDF ЕЭК)</a><button type="button" class="btn" onclick="setPage('notes');renderNotesSection('${s?s.r:''}')">Примечания к разделу</button></div></div>`
+    +`<div class="card"><div class="rn">Группа ${nn}. ${esc(title)}</div><div class="det">Кодов в базе ЕТТ: ${t.total} — нажмите код, чтобы открыть карточку.</div><div class="qa-row" style="margin-top:10px"><a class="btn" href="${psnUrl(nn)}" target="_blank" rel="noopener">Пояснения к группе ${nn} (PDF ЕЭК)</a>${s?`<button type="button" class="btn" onclick="renderTreeSection('${s.r}','${nn}')">Все группы раздела ${s.r}</button>`:''}</div></div>`
     +`<div class="ett-list">${rows||'<div class="det">В базе ЕТТ нет кодов с этим префиксом.</div>'}</div>${moreBtn}`;
   if(highlightCode){
     const row=document.getElementById('treeRow'+highlightCode);
@@ -2941,46 +2944,13 @@ function copyCode(code,el){
 }
 
 // ─── Пояснения и примечания к ТН ВЭД ЕАЭС ───
-function renderNotesRoot(){
-  const box=document.getElementById('pageNotes');
-  let html='<div class="card"><div class="rn">Пояснения к единой Товарной номенклатуре внешнеэкономической деятельности ЕАЭС (ТН ВЭД ЕАЭС)</div>'
-    +`<div class="det">${docLink('Официальный источник — Департамент таможенного регулирования ЕЭК',DOC_SOURCES.psnIndex)} · в редакции Рекомендаций Коллегии ЕЭК от 24.07.2018 №12, 30.10.2018 №23, 16.04.2019 №12, 25.06.2019 №17, 03.12.2019 №40, 17.03.2020 №6, 17.08.2021 №17.<br>${docLink('Основные правила интерпретации ТН ВЭД (ОПИ)',DOC_SOURCES.psnRules)}</div></div>`
-    +'<div class="side-h" style="margin:16px 0 10px">Выберите раздел</div><div class="group-grid">';
-  for(const s of TNVED_SECTIONS){
-    html+=`<button class="group-btn" onclick="renderNotesSection('${s.r}')"><b>Раздел ${s.r}</b><span>${esc(trunc(s.title,70))}</span></button>`;
-  }
-  html+='</div>';
-  box.innerHTML=html;
-}
-function renderNotesSection(r,highlightNn){
-  const s=TNVED_SECTIONS.find(x=>x.r===r);
-  if(!s)return;
-  const box=document.getElementById('pageNotes');
-  let html=`<div class="tree-crumbs"><span onclick="renderNotesRoot()">Пояснения — все разделы</span> › Раздел ${s.r}</div><div class="card"><div class="rn">Раздел ${s.r}. ${esc(s.title)}</div></div><div class="usir-list">`;
-  for(let n=s.from;n<=s.to;n++){
-    if(n===77)continue;
-    const nn=String(n).padStart(2,'0'),title=TNVED_CHAPTERS[nn]||'';
-    const hl=nn===highlightNn?' notes-hl':'';
-    html+=`<div class="usir-row${hl}" id="notesRow${nn}"><div class="un">Группа ${nn} — ${esc(title)}</div><div class="uu">${docLink('Открыть текст пояснений (PDF)',psnUrl(nn))}</div></div>`;
-  }
-  html+='</div>';
-  box.innerHTML=html;
-  if(highlightNn){
-    const row=document.getElementById('notesRow'+highlightNn);
-    if(row&&row.scrollIntoView)row.scrollIntoView({block:'center'});
-  }
-}
-// Переход из карточки результата/дерева прямо к пояснениям для группы, к которой относится код
-// (сама база с полным текстом пояснений в файл не переносилась — см. session.md; переходим на
-// страницу-указатель "Пояснения и примечания", подсвечиваем нужную группу и даём прямую ссылку на PDF).
-function openNotesForCode(code){
-  const nn=(code||'').slice(0,2);
-  if(!TNVED_CHAPTERS[nn])return;
-  setPage('notes');
-  const s=tnvedSectionFor(nn);
-  if(s)renderNotesSection(s.r,nn);
-  else renderNotesRoot();
-}
+// С 18.09.2026 отдельной страницы нет: источник и ОПИ — в корне классификатора,
+// PDF группы — в её ячейке и в карточке группы. Функции ниже оставлены как переходы.
+function renderNotesRoot(){setPage('tree')}
+function renderNotesSection(r,highlightNn){setPage('tree');renderTreeSection(r,highlightNn)}
+// Переход из карточки результата или строки ЕТТ к пояснениям для группы кода —
+// это карточка группы в классификаторе с кнопкой PDF и подсвеченной строкой кода.
+function openNotesForCode(code){showInTree(code)}
 function notesIconHtml(code){
   return `<span class="notes-ico" title="Пояснения к группе ${esc(code.slice(0,2))}" onclick="event.stopPropagation();openNotesForCode('${code}')">📖</span>`;
 }
@@ -3186,7 +3156,6 @@ function setSearchMode(m){
   currentPage='search';
   document.getElementById('pageSearch').style.display='';
   document.getElementById('pageTree').style.display='none';
-  document.getElementById('pageNotes').style.display='none';
   document.getElementById('pageLookup').style.display='none';
   document.getElementById('modeCodeBtn').classList.toggle('active',m==='code');
   document.getElementById('modeAutoBtn').classList.toggle('active',m==='auto');
