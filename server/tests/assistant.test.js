@@ -370,8 +370,8 @@ const a = require('../src/services/assistant');
   assert.deepEqual([wr.text, wr.fixed, wr.doubtful], [wrow('Коровка'), 1, []]);
   wr = a.reconcileWords(wrow('Коровка'), [wrow('Коробка'), wrow('Коробка')], wvis);          // упаковочный лист: большинство неправо
   assert.deepEqual([wr.text, wr.fixed], [wrow('Коровка'), 0]);
-  wr = a.reconcileWords(wrow('Зайчик'), [wrow('Зайчик'), wrow('Зайчик')], wvis.replace('XL Зайчик', 'XL Заичик'));
-  assert.deepEqual([wr.text, wr.fixed], [wrow('Зайчик'), 0]);                                 // три чтения модели согласны — Vision не перебивает
+  wr = a.reconcileWords(wrow('Корова'), [wrow('Корова'), wrow('Корова')], wvis);             // живой прогон: модель ×3 «Корова» — слово от Vision и пометка
+  assert.deepEqual([wr.text, wr.fixed, wr.doubtful], [wrow('Коровка'), 1, ['строка 13 — «Коровка» (модель прочла «Корова»)']]);
   wr = a.reconcileWords(wrow('Минка'), [wrow('Мишка'), wrow('Мишка')], null);                 // без Vision — два согласных чтения
   assert.deepEqual([wr.text, wr.fixed], [wrow('Мишка'), 1]);
   wr = a.reconcileWords(wrow('Мишко'), [wrow('Мишка'), wrow('Мышка')], null);                 // разнобой — пометка, слово не меняется
