@@ -5727,7 +5727,7 @@ function renderHtml(q){
       // как вообще увидеть список.
       return {cards:false,html:nameMatchesHtml(qt,nameList)};
     }
-    return {cards:false,html:`<div class="nf"><div class="big">🔍</div>«<strong>${esc(qt)}</strong>» не найдено ни по коду, ни по наименованию<br><span style="color:var(--hint);margin-top:6px;display:block">Товар, вероятно, не ограничен и не требует сертификации. Уточните в уполномоченных органах КР.</span></div>`};
+    return {cards:false,html:`<div class="nf"><div class="big">🔍</div>«<strong>${esc(qt)}</strong>» не найдено ни по коду, ни по наименованию<br><span style="color:var(--hint);margin-top:6px;display:block">Такого кода нет в действующем ЕТТ, а по названию совпадений нет. Проверьте цифры или введите название товара — например, «лом металлов».</span></div>`};
   }
   let html='';
 

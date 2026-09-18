@@ -312,9 +312,15 @@ function trunc(s,n){return s.length>n ? s.slice(0,n)+'…' : s}
 // при непустом запросе колонка прячется и #result становится широкой сеткой карточек
 // (main-col занимает всю ширину за счёт flex:1), при очистке поля — возвращается.
 function setResultLayout(active){
-  const side=document.querySelector('.content-row > .sidebar:not(.sidebar-left)');
-  if(side) side.style.display=active?'none':'';
+  const qs=document.getElementById('quickSearch');
+  if(qs) qs.style.display=active?'none':'';
+  document.body.classList.toggle('has-result',active);
   document.getElementById('result').classList.toggle('grid',active);
+}
+// Карточки результата лежат либо прямо в контейнере, либо внутри секций
+// (sectionResultCards) — все три прохода пост-обработки берут их отсюда.
+function resCards(container){
+  return Array.prototype.slice.call(container.querySelectorAll(':scope > .card, :scope > .res-sec > .card'));
 }
 // Сворачивает карточки результатов в компактный вид: шапка (иконка+
 // заголовок) и всё до тегов включительно остаются видны всегда, а списки/
@@ -325,7 +331,7 @@ function setResultLayout(active){
 // каждого из ~25 шаблонов карточек в render()) — просто переносит все
 // элементы после последнего из {.rh,.tags} внутрь схлопываемой обёртки.
 function compactifyCards(container){
-  container.querySelectorAll(':scope > .card').forEach(card=>{
+  resCards(container).forEach(card=>{
     if(card.classList.contains('collapsible'))return;
     const anchor=card.querySelector(':scope > .tags')||card.querySelector(':scope > .rh');
     if(!anchor)return;
@@ -408,11 +414,24 @@ function focusResultCard(id){
 
 function enhanceResultCards(container,q){
   if(!container)return;
-  const cards=Array.prototype.slice.call(container.querySelectorAll(':scope > .card'));
+  const cards=resCards(container);
   cards.forEach(card=>{
     if(card.dataset.enh)return;
     card.dataset.enh='1';
     const more=card.querySelector(':scope > .card-more');
+    // Заголовок карточки — мера, а не код: код один и тот же на всех карточках
+    // выдачи, а различает их именно строка .rn. Она переезжает в шапку над кодом,
+    // код становится подписью. «8517…» в шаблонах означает совпадение по
+    // товарной позиции, а читалось как обрезанный код.
+    const rcEl=card.querySelector(':scope > .rh .rc');
+    const rnEl=card.querySelector(':scope > .rn');
+    if(rcEl&&rnEl&&/^[\d\s…]+$/.test(rcEl.textContent.trim())){
+      const rcT=rcEl.textContent.trim();
+      rcEl.classList.add('rc-code');
+      rnEl.classList.add('rn-title');
+      rcEl.parentElement.insertBefore(rnEl,rcEl);
+      if(/…$/.test(rcT)){rcEl.textContent=rcT.replace(/…$/,'');rcEl.insertAdjacentHTML('beforeend','<span class="rc-part"> · совпадение по позиции</span>')}
+    }
     // Ставка пошлины стоит в шаблоне после .tags и потому уезжала внутрь
     // схлопнутой части: ровно то число, за которым в карточку ЕТТ и приходят,
     // приходилось сначала раскрывать. Возвращаем его на вид.
@@ -436,9 +455,9 @@ function enhanceResultCards(container,q){
     if(items.length){
       const lb=document.createElement('div');
       lb.className='legal-basis';
-      lb.innerHTML='<span class="lb-h">📎 Правовое основание</span>'
-        +items.slice(0,4).map(i=>`<a href="${esc(i.href)}" target="_blank" rel="noopener">${esc(trunc(i.txt,64))}</a>`).join('')
-        +(items.length>4?`<span class="lb-h">+ ещё ${items.length-4}</span>`:'');
+      lb.innerHTML='<span class="lb-h">Основание:</span>'
+        +items.map(i=>`<a href="${esc(i.href)}" target="_blank" rel="noopener">${esc(trunc(i.txt,90))}</a>`).join('')
+        +(items.length>1?`<span class="lb-more">и ещё ${items.length-1} — раскройте карточку</span>`:'');
       card.insertBefore(lb,more||null);
     }
   });
@@ -449,7 +468,71 @@ function enhanceResultCards(container,q){
   alerts.forEach(c=>c.classList.add('card-alert'));
   const fresh=alerts.filter(c=>!c.dataset.ord);
   for(let i=fresh.length-1;i>=0;i--){fresh[i].dataset.ord='1';container.insertBefore(fresh[i],container.firstChild)}
-  if(container.id==='result')buildResultSummary(container,q);
+  if(container.id==='result'){sectionResultCards(container);buildResultSummary(container,q)}
+}
+
+// ═══════════════════════════════════════════
+// ВЕРДИКТ И СЕКЦИИ: карточки сгруппированы по типу решения
+// ═══════════════════════════════════════════
+// Классы тегов для этого не годятся: t-nks носят и НКС, и СЭН, и ветконтроль,
+// t-ex — и запрет, и акциз, и Красная книга. Группа определяется по тексту
+// тега и заголовка; новая карточка попадает в группу по словам, без настройки.
+const RES_SECS=[
+  ['danger','Запреты','sv-danger'],
+  ['docs','Разрешительные документы и лицензии','sv-warn'],
+  ['control','Контроль на границе','sv-warn'],
+  ['cert','Сертификация и техрегламенты','sv-warn'],
+  ['pay','Платежи и ставки','sv-pay'],
+  ['info','Справочно','sv-info']];
+function cardTagTexts(card){
+  let tags=Array.prototype.slice.call(card.querySelectorAll(':scope > .tags .tag'));
+  if(!tags.length)tags=Array.prototype.slice.call(card.querySelectorAll('.tag'));
+  return tags.map(t=>(t.textContent||'').replace(/\s+/g,' ').trim()).filter(Boolean);
+}
+function cardTitleText(card){
+  const el=card.querySelector('.rh .rn-title')||card.querySelector(':scope > .rn')||card.querySelector(':scope > .rh .rc');
+  return (el?el.textContent:'').replace(/\s+/g,' ').trim();
+}
+function resSectionOf(card){
+  const t=(cardTagTexts(card).join(' ')+' '+cardTitleText(card)).toLowerCase();
+  if(/не требуется|исключено|разрешён|истёк|истекл|устарел|прецедент|решени[ея] еэк|троис|усир|индикатор|поиск по наименованию|не подтверждено/.test(t))return 'info';
+  if(/запрет/.test(t))return 'danger';
+  if(/лицензи|разрешит|заключени|нкс|двойного|ситес|красная книга|регистрац|ограничение в государстве|односторонн/.test(t))return 'docs';
+  if(/сэн|санитар|ветерин|ветконтроль|фито|карантин|надзор|контрол/.test(t))return 'control';
+  if(/тр еаэс|тр тс|сертифик|деклариров|соответств/.test(t))return 'cert';
+  if(/ставк|пошлин|етт|ндс|акциз|квот|преференц|антидемп|триггер|изъятие|тариф/.test(t))return 'pay';
+  return 'info';
+}
+// Секции создаются один раз и только дополняются: перенос уже стоящей на месте
+// карточки перезапускал бы её анимацию появления при каждой асинхронной добавке.
+function sectionResultCards(container){
+  const cards=resCards(container);
+  if(cards.length<2)return;
+  cards.forEach(c=>{if(!c.dataset.sec)c.dataset.sec=resSectionOf(c)});
+  let prev=null;
+  RES_SECS.forEach(([k,label])=>{
+    const list=cards.filter(c=>c.dataset.sec===k);
+    let sec=document.getElementById('res-sec-'+k);
+    if(!list.length){if(sec)sec.remove();return}
+    if(!sec){
+      sec=document.createElement('section');
+      sec.className='res-sec res-sec-'+k;sec.id='res-sec-'+k;
+      sec.innerHTML='<h2 class="res-sec-h">'+esc(label)+' <span class="res-sec-n"></span></h2>';
+      container.insertBefore(sec,prev?prev.nextSibling:container.firstChild);
+    }
+    sec.querySelector('.res-sec-n').textContent=list.length;
+    list.forEach(c=>{if(c.parentElement!==sec)sec.appendChild(c)});
+    prev=sec;
+  });
+}
+function focusResultSec(k){
+  const sec=document.getElementById('res-sec-'+k);
+  if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function resShortLabel(card){
+  const tags=cardTagTexts(card);
+  const s=(tags[0]||cardTitleText(card)).replace(/^[^\wА-Яа-яЁё0-9«]+/u,'');
+  return trunc(s,42);
 }
 
 // Сводная плашка: чем кончилась проверка (плашки рисков) и что именно нашлось
@@ -458,42 +541,32 @@ function enhanceResultCards(container,q){
 function buildResultSummary(container,q){
   const box=document.getElementById('resultSummary');
   if(!box)return;
-  const cards=Array.prototype.slice.call(container.querySelectorAll(':scope > .card'));
+  const cards=resCards(container);
   if(cards.length<2){box.innerHTML='';box.style.display='none';return}
-  // Одна строка на карточку. Раньше сводка шла двумя рядами — плашки риска по
-  // тегам и кнопки перехода по .rn — и обе говорили об одном и том же, только
-  // разными словами. Теперь тег и заголовок карточки склеены в одну строку, а
-  // цвет по-прежнему берётся из класса тега (SUM_TAG_COLOR), так что новой
-  // карточке ничего специально настраивать не нужно.
-  const items=cards.map((card,idx)=>{
+  const groups={};
+  cards.forEach(card=>{
     if(!card.id)card.id='rescard-'+(++resCardSeq);
-    let tags=Array.prototype.slice.call(card.querySelectorAll(':scope > .tags .tag'));
-    if(!tags.length)tags=Array.prototype.slice.call(card.querySelectorAll('.tag'));
-    let c='f-blue',o=9;
-    if(tags.length){
-      for(let j=0;j<tags[0].classList.length;j++){const k=SUM_TAG_COLOR[tags[0].classList[j]];if(k){c=k;break}}
-      o=SUM_FLAG_ORDER[c]===undefined?9:SUM_FLAG_ORDER[c];
-    }
-    const label=tags.map(t=>(t.textContent||'').replace(/\s+/g,' ').trim()).filter(Boolean).join(' · ');
-    const rnEl=card.querySelector(':scope > .rn')||card.querySelector(':scope > .rh .rc');
-    const rn=(rnEl?rnEl.textContent:'').replace(/\s+/g,' ').trim();
-    const rateEl=card.querySelector('.ett-rate');
-    const rate=rateEl?(rateEl.textContent||'').replace(/\s+/g,' ').trim():'';
-    const icoEl=card.querySelector(':scope > .rh .ico');
-    const head=label||((icoEl?icoEl.textContent.trim()+' ':'')+'Карточка');
-    const html='<button type="button" class="sum-flag sum-item '+c+'" onclick="focusResultCard(\''+card.id+'\')">'
-      +'<span class="si-t">'+esc(trunc(head,64))+'</span>'
-      +(rn&&rn!==head?'<span class="si-r"> — '+esc(trunc(rn,130))+'</span>':'')
-      +(rate?'<span class="si-rate">'+esc(trunc(rate,30))+'</span>':'')
-      +'</button>';
-    return {o:o,i:idx,html:html};
+    const k=card.dataset.sec||resSectionOf(card);card.dataset.sec=k;
+    (groups[k]=groups[k]||[]).push(card);
   });
-  items.sort((a,b)=>(a.o-b.o)||(a.i-b.i));
-  const hasAlert=!!container.querySelector(ALERT_TAG_SEL);
+  const hasAlert=!!groups.danger;
+  const rows=RES_SECS.map(([k,label,sv])=>{
+    const list=groups[k];
+    if(!list&&k!=='danger')return '';
+    const n=list?list.length:0;
+    const seen={},items=[];
+    (list||[]).forEach(c=>{const l=resShortLabel(c);if(l&&!seen[l]){seen[l]=1;items.push(l)}});
+    let extra='';
+    if(k==='pay'&&list){const r=list.map(c=>c.querySelector('.ett-rate')).filter(Boolean)[0];if(r)extra=' · ЕТТ '+trunc((r.textContent||'').replace(/\s+/g,' ').trim(),28)}
+    const tail=items.length>3?' · ещё '+(items.length-3):'';
+    return '<button type="button" class="vd-row '+sv+(n?'':' vd-none')+'"'+(n?' onclick="focusResultSec(\''+k+'\')"':'')+'>'
+      +'<span class="vd-dot"></span><span class="vd-l">'+esc(label)+'</span><span class="vd-n">'+(n?n:'нет')+'</span>'
+      +'<span class="vd-i">'+(n?esc(items.slice(0,3).join(' · ')+tail):'в базе не найдено')+esc(extra)+'</span></button>';
+  }).join('');
   box.className='summary'+(hasAlert?' has-alert':'');
   box.style.display='';
-  box.innerHTML=`<div class="sum-h"><span class="sum-code">${hasAlert?'⚠️':'🧭'} Сводка${q?' по запросу «'+esc(trunc(q.trim(),28))+'»':''}</span><span class="sum-cnt">найдено карточек: ${cards.length} · нажмите строку, чтобы перейти к карточке</span></div>`
-    +`<div class="sum-items">${items.map(x=>x.html).join('')}</div>`;
+  box.innerHTML='<div class="vd-h"><span class="vd-title">'+(hasAlert?'⛔ Есть запрет':'Вердикт')+(q?' по «'+esc(trunc(q.trim(),28))+'»':'')+'</span><span class="vd-cnt">мер найдено: '+cards.length+' · строка ведёт к разделу</span></div>'
+    +'<div class="vd-rows">'+rows+'</div>';
 }
 
 // Карточки собирает сервер (renderHtml в private/base.js): база в браузер не передаётся.
@@ -2526,6 +2599,7 @@ function exportAssistantBilling(){
 }
 function setPage(p){
   currentPage=p;
+  document.body.dataset.page=p;
   document.getElementById('pageSearch').style.display=p==='search'?'':'none';
   document.getElementById('pageTree').style.display=p==='tree'?'':'none';
   document.getElementById('pageNotes').style.display=p==='notes'?'':'none';
@@ -2883,6 +2957,8 @@ function setSearchMode(m){
   // открыть режим, чтобы на экране не появилось ничего чужого.
   if(m==='admin' && (!currentUser || currentUser.role!=='admin')) m='code';
   searchMode=m;
+  document.body.dataset.mode=m;
+  document.body.dataset.page='search';
   // все режимы (code/auto/species/calc/admin) живут внутри #pageSearch — переключение
   // режима поиска всегда должно возвращать видимость на эту страницу, откуда бы её ни вызвали
   // (например, кнопка "Администрирование" в шапке доступна с любой страницы левого меню).
@@ -3383,6 +3459,8 @@ let appInitialized=false;
 function initApp(){
 if(appInitialized)return;
 appInitialized=true;
+document.body.dataset.page='search';
+document.body.dataset.mode='code';
 
 renderAutoCalcPanel();
 renderPersonalCalcPanel();

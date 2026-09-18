@@ -230,12 +230,9 @@ app.get('/', (req,res)=>res.type('html').send(html));
     assert.equal(await page.locator('#pageSearch').isVisible(),false);
     assert.match(await page.inputValue('#lookupQuery'),/^\d{4}/);
 
-    // Чипы «Быстрого поиска» в правой колонке видны и на странице справки —
-    // из неё они тоже должны работать внутри справки.
-    await page.locator('#sg1 button').first().click();
-    await page.locator('#lookupCards .card').first().waitFor();
-    assert.equal(await page.evaluate(()=>currentPage),'lookup');
-    assert.equal(await page.locator('#pageSearch').isVisible(),false);
+    // Примеры быстрого поиска живут только в пустом состоянии поиска по коду:
+    // на странице справки их нет (с 18.09.2026 — под полем, а не в правой колонке).
+    assert.equal(await page.locator('#sg1 button').first().isVisible(),false);
 
     // Уход на другую страницу и возврат не стирают уже полученную справку.
     await page.click('#navTreeBtn');
