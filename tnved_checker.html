@@ -265,7 +265,6 @@
     .tab-bar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-height:44px;background:none;border:0;border-radius:var(--radius-sm);color:var(--muted);font-family:var(--head);font-size:var(--fs-xs);font-weight:600;padding:4px 2px;cursor:pointer;touch-action:manipulation}
     .tab-bar button.active{color:var(--indigo);background:rgba(90,108,255,.12)}
     .tab-bar .tb-i{font-size:var(--fs-3xl);line-height:1}
-    .wrap{padding-bottom:calc(84px + env(safe-area-inset-bottom))}
     .side-panel.nav-panel{display:none}
     body.nav-open .side-panel.nav-panel{display:flex;flex-direction:column;position:fixed;left:12px;right:12px;bottom:calc(72px + env(safe-area-inset-bottom));z-index:59;max-height:70vh;overflow:auto;padding:10px;box-shadow:var(--shadow-lg);-webkit-mask-image:none;mask-image:none}
     body.nav-open .nav-panel .nav-grp{display:block}
@@ -481,8 +480,8 @@
     header,.sidebar,.mode-toggle,.sw,#srchCond,#toTopBtn,.qa-row,.calc-btn,.nav-panel,.no-print,#appWrap::before{display:none!important}
     .content-row{display:block}
     .card{break-inside:avoid;border:1px solid #ccc;box-shadow:none;backdrop-filter:none}
-    .admin-table{font-size:var(--fs-sm)}
-    .admin-table th,.admin-table td{border:1px solid #ccc;padding:6px 8px}
+    html .admin-table{font-size:var(--fs-sm)}
+    html .admin-table th,html .admin-table td{border:1px solid #ccc;padding:6px 8px}
     .admin-table tr{break-inside:avoid}
   }
   .group-btn b{font-size:var(--fs-base);color:var(--indigo)}
@@ -839,7 +838,7 @@
     /* Поля страницы плюс безопасные зоны: вырез сверху, жестовая
        полоса снизу, скруглённые углы по бокам в ландшафтной ориентации. */
     .wrap{padding:calc(10px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right))
-      calc(32px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left))}
+      calc(84px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left))} /* 84 — под нижней панелью разделов */
 
     /* Шапка одной строкой вместо трёх: тема и почта делят верхнюю
        строку, состояние доступа занимает вторую. Раньше три блока
