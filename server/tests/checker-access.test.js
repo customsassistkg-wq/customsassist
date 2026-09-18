@@ -155,6 +155,7 @@ app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send
       await page.reload();
       await page.locator('#appWrap').waitFor({state:'visible'});
       assert.equal(requests,3); // failed request, retry, fresh page with a session
+      await page.locator('#accMenuBtn').click(); // «Выйти» живёт в меню аккаунта
       await page.locator('#logoutBtn').click();
       await page.locator('#authScreen').waitFor({state:'visible'});
       assert.equal((await page.request.get(origin+'/api/checker.js')).status(),401);

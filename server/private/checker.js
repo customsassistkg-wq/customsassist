@@ -305,7 +305,7 @@ const TNVED_CHAPTERS={
   '97':'Произведения искусства, предметы коллекционирования и антиквариат',
 };
 function fmtRate(r){if(r===null||r===undefined||r==='')return 'ставка не указана в базе';if(typeof r==='number')return r+'%';return r}
-function fmtCode(c){return c.length>=9 ? c.slice(0,4)+' '+c.slice(4,6)+' '+c.slice(6,9)+(c.length>9?' '+c.slice(9):'') : c}
+function fmtCode(c){c=String(c==null?'':c).replace(/\s+/g,'');if(c.length<6||!/^\d+$/.test(c))return c;return c.slice(0,4)+' '+c.slice(4,6)+(c.length>6?' '+c.slice(6,9):'')+(c.length>9?' '+c.slice(9):'')}
 function trunc(s,n){return s.length>n ? s.slice(0,n)+'…' : s}
 
 // Правая колонка «Быстрый поиск» освобождает место результату поиска по коду:
@@ -322,6 +322,129 @@ function setResultLayout(active){
 function resCards(container){
   return Array.prototype.slice.call(container.querySelectorAll(':scope > .card, :scope > .res-sec > .card'));
 }
+// ─── Семьи карточек: одна мера — одна карточка (аудит UX 18.09.2026) ───
+// По одному коду база отдаёт три карточки НКС (по одной на список одного акта),
+// две СЭН, до пяти преференций и до трёх льгот по НДС. Для декларанта это одна
+// мера с несколькими основаниями, поэтому карточки семьи собираются в одну:
+// каждая исходная становится подблоком .sub со своей разметкой и data-cty,
+// чтобы фильтр по стране (lkFilter) прятал подблок, а не всю карточку.
+// Шаблоны в base.js не трогаются; семья определяется по заголовку карточки.
+const CARD_FAMILIES=[
+  {k:'nks',re:/^Список \d/i,title:'Экспортный контроль (НКС) — нужна лицензия',unit:['список','списка','списков'],ico:'🔐',tag:['t-nks','🔐 Требует лицензии']},
+  {k:'san',re:/санитарно-эпидемиологическому надзору|отраслевые перечни Единых санитарных/i,title:'Санитарно-эпидемиологический надзор (СЭН)',unit:['основание','основания','оснований'],ico:'🧪',tag:['t-nks','🧪 СЭН']},
+  {k:'pref',re:/перечень исключений к Соглашению|перечень к Соглашению ЕАЭС|ИЗЪЯТИЙ из режима свободной торговли|Единая система тарифных преференций|происходящих из Монголии|происходящих из Сербии|^Ставка ЕАЭС-/i,title:'Преференции по стране происхождения',unit:['перечень','перечня','перечней'],ico:'🌍',tag:['t-льг','🌍 Преференции — только при подтверждённом происхождении'],attrs:{'data-dir':'im','data-kind':'tariff'}},
+  {k:'vat',re:/освобожден\S* от НДС/i,title:'Льготы по НДС при импорте',unit:['перечень','перечня','перечней'],ico:'🧾',tag:['t-ls','🧾 НДС — льготы по перечням'],attrs:{'data-dir':'im'}}];
+function plural(n,f){const m=n%10,h=n%100;return f[(h>=11&&h<=14)?2:m===1?0:(m>=2&&m<=4)?1:2]}
+function mergeCardFamilies(container){
+  if(!container)return;
+  CARD_FAMILIES.forEach(fam=>{
+    const members=resCards(container).filter(c=>!c.classList.contains('c-merged')&&!c.classList.contains('collapsible')&&fam.re.test(cardTitleText(c)));
+    if(members.length<2)return;
+    const first=members[0];
+    const m=document.createElement('div');
+    m.className='card c-merged c-fam-'+fam.k;
+    m.dataset.merged=fam.k;
+    if(fam.attrs)Object.keys(fam.attrs).forEach(a=>m.setAttribute(a,fam.attrs[a]));
+    const ctys=members.map(c=>c.getAttribute('data-cty')||'').filter(Boolean);
+    if(ctys.length)m.setAttribute('data-cty',ctys.join(' '));
+    const rc=first.querySelector(':scope > .rh .rc');
+    m.innerHTML='<div class="rh"><div class="ico">'+fam.ico+'</div><div><div class="rc">'+esc(rc?rc.textContent.trim():'')+'</div></div></div>'
+      +'<div class="rn">'+esc(fam.title)+' <span class="rn-n">· '+members.length+' '+plural(members.length,fam.unit)+'</span></div>'
+      +'<div class="tags"><span class="tag '+fam.tag[0]+'">'+esc(fam.tag[1])+'</span></div><div class="subs"></div>';
+    const subs=m.querySelector('.subs');
+    members.forEach(c=>{
+      const sub=document.createElement('div');
+      sub.className='sub';
+      const cc=c.getAttribute('data-cty');if(cc)sub.setAttribute('data-cty',cc);
+      const rn=c.querySelector(':scope > .rn');
+      sub.innerHTML='<div class="sub-t">'+(rn?rn.innerHTML:'')+'</div>';
+      Array.prototype.slice.call(c.children).forEach(el=>{
+        if(el.matches('.rh, .rn'))return;
+        sub.appendChild(el);
+      });
+      subs.appendChild(sub);
+    });
+    first.parentElement.insertBefore(m,first);
+    members.forEach(c=>c.remove());
+  });
+}
+
+// ─── История и подсказки поиска ───
+// Последние запросы живут в localStorage; подсказки по цифрам — с сервера
+// (calcCodeList), по буквам — тот же поиск по наименованию. Выпадающий список
+// не заменяет результат: Enter в поле по-прежнему ищет то, что набрано.
+const SRCH_HIST_KEY='ca-hist',SRCH_HIST_MAX=6;
+function histLoad(){try{const v=JSON.parse(localStorage.getItem(SRCH_HIST_KEY)||'[]');return Array.isArray(v)?v.filter(x=>typeof x==='string'):[]}catch(e){return []}}
+function histPush(q){
+  q=(q||'').trim();if(!q)return;
+  const list=[q].concat(histLoad().filter(x=>x!==q)).slice(0,SRCH_HIST_MAX);
+  try{localStorage.setItem(SRCH_HIST_KEY,JSON.stringify(list))}catch(e){}
+}
+const SRCH_EXAMPLES=[['8517 13','Смартфоны'],['8703 23','Авто 1.5–3 л'],['7204','Лом металлов — запрет'],['2402 20','Сигареты — акциз'],['3004 90','Лекарства — НДС 0%'],['8802','Авиация — НКС'],['2710 12','Бензин — сертификация'],['лом металлов','поиск по названию']];
+let srchDropSeq=0,srchDropIdx=-1;
+function srchDropEl(){return document.getElementById('srchDrop')}
+function srchDropHide(){const d=srchDropEl();if(d){d.style.display='none';d.innerHTML=''}srchDropIdx=-1}
+function srchDropRows(rows){
+  const d=srchDropEl();if(!d)return;
+  if(!rows.length){srchDropHide();return}
+  d.innerHTML=rows.map((r,i)=>'<button type="button" class="sd-row'+(r.h?' sd-h':'')+'" data-q="'+esc(r.q)+'" onmousedown="event.preventDefault()" onclick="srchPick(this.dataset.q)">'
+    +(r.code?'<span class="sd-code">'+esc(r.code)+'</span>':'')+'<span class="sd-name">'+esc(r.name)+'</span>'+(r.rate?'<span class="sd-rate">'+esc(r.rate)+'</span>':'')+'</button>').join('');
+  d.style.display='';srchDropIdx=-1;
+}
+function srchPick(q){srchDropHide();goToCode(q)}
+async function srchSuggest(v){
+  v=(v||'').trim();
+  const seq=++srchDropSeq;
+  if(!v){
+    const h=histLoad().map(q=>({q:q,name:q,h:true,code:'↺'}));
+    srchDropRows(h.length?h:[]);
+    return;
+  }
+  const digits=v.replace(/\D/g,'');
+  const isCode=/^[\d\s]+$/.test(v);
+  if(isCode&&digits.length>=4&&digits.length<10){
+    let r;try{r=await engine('calcCodeList',v)}catch(e){return}
+    if(seq!==srchDropSeq||document.getElementById('inp').value.trim()!==v)return;
+    const res=document.getElementById('result');
+    if(res&&res.dataset.rq===searchStamp(v)){srchDropHide();return}
+    srchDropRows(r.rows.slice(0,8).map(([c,n,rate])=>({q:c,code:fmtCode(c),name:n.length>90?n.slice(0,90)+'…':n,rate:fmtRate(rate)})));
+    return;
+  }
+  srchDropHide();
+}
+function srchDropKey(e){
+  const d=srchDropEl();if(!d||d.style.display==='none')return false;
+  const rows=d.querySelectorAll('.sd-row');if(!rows.length)return false;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    e.preventDefault();
+    srchDropIdx=e.key==='ArrowDown'?Math.min(srchDropIdx+1,rows.length-1):Math.max(srchDropIdx-1,0);
+    rows.forEach((r,i)=>r.classList.toggle('sel',i===srchDropIdx));
+    return true;
+  }
+  if(e.key==='Enter'&&srchDropIdx>=0){e.preventDefault();rows[srchDropIdx].click();return true}
+  if(e.key==='Escape'){srchDropHide();return true}
+  return false;
+}
+function srchHint(txt,kind){
+  const h=document.getElementById('srchHint');if(!h)return;
+  h.textContent=txt||'';h.className='srch-hint'+(kind?' sh-'+kind:'');h.style.display=txt?'':'none';
+}
+function setSearching(on){
+  const sw=document.querySelector('.sw'),r=document.getElementById('result');
+  if(sw)sw.classList.toggle('loading',!!on);
+  if(r)r.classList.toggle('is-loading',!!on);
+}
+// Открыть калькулятор сразу по коду из результата: поле, режим и выбор кода одним действием.
+function openCalcFor(code){
+  setPage('search');setSearchMode('calc');
+  const inp=document.getElementById('inp');inp.value=code;
+  renderCalcSearch(code);
+}
+function copyCodeText(code,btn){
+  const done=()=>{if(btn){const t=btn.textContent;btn.textContent='Скопировано';setTimeout(()=>btn.textContent=t,1200)}};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(code).then(done,done);else done();
+}
+
 // Сворачивает карточки результатов в компактный вид: шапка (иконка+
 // заголовок) и всё до тегов включительно остаются видны всегда, а списки/
 // таблицы/примечания после тегов (обычно самая объёмная часть) прячутся за
@@ -508,16 +631,24 @@ function resSectionOf(card){
 function sectionResultCards(container){
   const cards=resCards(container);
   if(cards.length<2)return;
-  cards.forEach(c=>{if(!c.dataset.sec)c.dataset.sec=resSectionOf(c)});
-  let prev=null;
+  cards.forEach(c=>{
+    if(!c.dataset.sec){
+      // Список подпозиций (короткий код) — это выбор, а не мера: он стоит первым вне секций.
+      if(c.querySelector('.ett-row[onclick^="goToCode"]')&&/найдено \d+ позиц/i.test(cardTitleText(c))){c.dataset.sec='pick';c.dataset.pick='1'}
+      else c.dataset.sec=resSectionOf(c);
+    }
+  });
+  const picks=cards.filter(c=>c.dataset.pick);
+  for(let i=picks.length-1;i>=0;i--){if(picks[i].parentElement!==container||picks[i]!==container.firstElementChild)container.insertBefore(picks[i],container.firstChild)}
+  let prev=picks.length?picks[picks.length-1]:null;
   RES_SECS.forEach(([k,label])=>{
     const list=cards.filter(c=>c.dataset.sec===k);
     let sec=document.getElementById('res-sec-'+k);
     if(!list.length){if(sec)sec.remove();return}
     if(!sec){
       sec=document.createElement('section');
-      sec.className='res-sec res-sec-'+k;sec.id='res-sec-'+k;
-      sec.innerHTML='<h2 class="res-sec-h">'+esc(label)+' <span class="res-sec-n"></span></h2>';
+      sec.className='res-sec res-sec-'+k+(k==='info'?' res-sec-collapsed':'');sec.id='res-sec-'+k;
+      sec.innerHTML='<h2 class="res-sec-h"'+(k==='info'?' onclick="this.parentElement.classList.toggle(\'open\')"':'')+'>'+esc(label)+' <span class="res-sec-n"></span>'+(k==='info'?'<span class="res-sec-tgl">показать</span>':'')+'</h2>';
       container.insertBefore(sec,prev?prev.nextSibling:container.firstChild);
     }
     sec.querySelector('.res-sec-n').textContent=list.length;
@@ -527,7 +658,9 @@ function sectionResultCards(container){
 }
 function focusResultSec(k){
   const sec=document.getElementById('res-sec-'+k);
-  if(sec)sec.scrollIntoView({behavior:'smooth',block:'start'});
+  if(!sec)return;
+  sec.classList.add('open');
+  sec.scrollIntoView({behavior:'smooth',block:'start'});
 }
 // Аббревиатуры в вердикте расшифровываются: «СЭН» декларанту понятно, а его клиенту — нет.
 // Подпись заменяется целиком, и каждая аббревиатура раскрывается один раз на вердикт:
@@ -560,25 +693,80 @@ function buildResultSummary(container,q){
     const k=card.dataset.sec||resSectionOf(card);card.dataset.sec=k;
     (groups[k]=groups[k]||[]).push(card);
   });
-  const hasAlert=!!groups.danger;
-  // Пробелы внутри span'ов — намеренно: скопированный вердикт должен читаться строками, а не слипаться.
-  const rows=RES_SECS.map(([k,label,sv])=>{
-    const list=groups[k];
-    if(!list)return '';
-    const n=list.length;
-    const seen={},items=[],used={};
-    list.forEach(c=>{const l=resShortLabel(c,used);if(l&&!seen[l]){seen[l]=1;items.push(l)}});
-    let extra='';
-    if(k==='pay'){const r=list.map(c=>c.querySelector('.ett-rate')).filter(Boolean)[0];if(r)extra=' · ставка ЕТТ '+trunc((r.textContent||'').replace(/\s+/g,' ').trim(),28)}
-    const tail=items.length>3?' · ещё '+(items.length-3):'';
-    return '<button type="button" class="vd-row '+sv+'" onclick="focusResultSec(\''+k+'\')">'
-      +'<span><span class="vd-l">'+esc(label)+'</span><span class="vd-n">'+n+'</span><span class="vd-hint">'+esc(RES_HINT[k]||'')+'</span></span>'
-      +'<span class="vd-i">'+esc(items.slice(0,3).join(' · ')+tail+extra)+'</span></button>\n';
-  }).join('');
-  box.className='summary'+(hasAlert?' has-alert':'');
+  const dir=searchCond().dir;
+  const dirWord={im:'при ввозе',ex:'при вывозе',tr:'при транзите'}[dir]||'';
+  const qn=(q||'').replace(/\D/g,'');
+  // Шапка товара: наименование и ставка из карточки ЕТТ, код — из запроса.
+  const ett=cards.filter(c=>c.classList.contains('c-ett')&&c.querySelector('.ett-rate')&&!c.dataset.pick)[0];
+  const pick=cards.filter(c=>c.dataset.pick)[0];
+  const rateEl=ett&&ett.querySelector('.ett-rate');
+  const rateTxt=rateEl?(rateEl.textContent||'').replace(/\s+/g,' ').trim():'';
+  let name='';
+  if(ett){const t=ett.querySelector('.rh .rn-title')||ett.querySelector(':scope > .rn');name=t?t.textContent.replace(/\s+/g,' ').trim():''}
+  const ettCode=ett?((ett.querySelector('.rh .rc')||{textContent:''}).textContent.replace(/\D/g,'')):'';
+  const rq=ettCode.length===10?ettCode:qn;
+  const codeTxt=rq.length>=4?fmtCode(rq):(q||'').trim();
+  let head='';
+  if(pick){
+    const n=(/найдено (\d+)/i.exec(cardTitleText(pick))||[])[1]||'';
+    head='<div class="vd-prod"><div class="vd-name">Позиция '+esc(codeTxt)+(n?' — '+n+' '+plural(+n,['подпозиция','подпозиции','подпозиций']):'')+'</div>'
+      +'<div class="vd-sub">Выберите точный код в списке ниже — меры и ставки показаны для всей позиции</div></div>';
+  } else if(name||rq.length===10){
+    head='<div class="vd-prod"><div class="vd-name">'+esc(name||('Код '+codeTxt))+'</div><div class="vd-sub"><span class="vd-code">'+esc(codeTxt)+'</span>'
+      +(rateTxt?' · пошлина <b class="vd-rate">'+esc(rateTxt)+'</b>':'')+'<span id="vdPay"></span></div>'
+      +(rq.length===10?'<div class="vd-act"><button type="button" class="btn btn-primary" onclick="openCalcFor(\''+rq+'\')">Рассчитать платежи</button><button type="button" class="btn" onclick="copyCodeText(\''+rq+'\',this)">Копировать код</button></div>':'')+'</div>';
+  }
+  // Запрет: какой именно и относится ли к выбранному направлению.
+  const bans=groups.danger||[];
+  const banLabels=[];const used={};
+  bans.forEach(c=>{const l=resShortLabel(c,used);if(l&&banLabels.indexOf(l)<0)banLabels.push(l)});
+  let title,titleCls='';
+  if(bans.length){
+    const txt=banLabels.join(' ').toLowerCase();
+    const im=/ввоз/.test(txt),ex=/вывоз/.test(txt);
+    let tail='';
+    if(dir==='im'&&ex&&!im)tail=' — на ввоз не распространяется';
+    else if(dir==='ex'&&im&&!ex)tail=' — на вывоз не распространяется';
+    title='⛔ '+banLabels.join(' · ')+tail;titleCls=tail?' vd-soft':' vd-danger';
+  } else title='Запретов '+dirWord+' нет';
+  // Что нужно оформить: документы, контроль, сертификация — одной строкой с переходом к карточке.
+  const need=[];const seenL={};const used2={};
+  ['docs','control','cert'].forEach(k=>(groups[k]||[]).forEach(c=>{const l=resShortLabel(c,used2);if(l&&!seenL[l]){seenL[l]=1;need.push({l:l,id:c.id})}}));
+  const needHtml=need.length?need.map(x=>'<button type="button" class="vd-chip vd-need" onclick="focusResultCard(\''+x.id+'\')">'+esc(x.l)+'</button>').join(' '):'<span class="vd-none">разрешительных документов и контроля не найдено</span>';
+  // Платежи: акциз, квота, антидемпинг, льготы — по заголовкам карточек группы.
+  const pay=groups.pay||[];
+  const payItems=[];
+  const payHas=re=>pay.some(c=>re.test(cardTitleText(c)+' '+cardTagTexts(c).join(' ')));
+  if(payHas(/подакцизн/i))payItems.push({l:'акциз',k:'pay'});
+  if(payHas(/квот/i))payItems.push({l:'тарифная квота',k:'pay'});
+  if(payHas(/антидемп|триггер/i))payItems.push({l:'антидемпинговая пошлина',k:'pay'});
+  if(payHas(/льготы по НДС|освобожден/i))payItems.push({l:'льготы по НДС по перечням',k:'pay'});
+  if(payHas(/преференци/i))payItems.push({l:'преференции по стране',k:'pay'});
+  const payHtml=payItems.length?payItems.map(x=>'<button type="button" class="vd-chip" onclick="focusResultSec(\'pay\')">'+esc(x.l)+'</button>').join(' '):'<span class="vd-none">только пошлина и НДС</span>';
+  const info=groups.info||[];
+  const infoHtml=info.length?'<button type="button" class="vd-row-link" onclick="focusResultSec(\'info\')">Справочно: '+esc(info.map(c=>resShortLabel(c,{})).join(' · '))+'</button>':'';
+  box.className='summary'+(titleCls===' vd-danger'?' has-alert':'');
   box.style.display='';
-  box.innerHTML='<div class="vd-h"><span class="vd-title">'+(hasAlert?'⛔ Есть запрет':'Запретов нет')+(q?' — «'+esc(trunc(q.trim(),28))+'»':'')+'</span><span class="vd-cnt">мер: '+cards.length+' · строка ведёт к разделу</span></div>'
-    +'<div class="vd-rows">'+rows+'</div>';
+  box.innerHTML=head
+    +'<div class="vd-h"><span class="vd-title'+titleCls+'">'+esc(title)+'</span></div>'
+    +'<div class="vd-rows">'
+    +'<div class="vd-line"><span class="vd-l">Нужно оформить</span><span class="vd-i">'+needHtml+'</span></div>\n'
+    +(pay.length||ett?'<div class="vd-line"><span class="vd-l">Платежи</span><span class="vd-i">'+payHtml+'</span></div>\n':'')
+    +(infoHtml?'<div class="vd-line vd-info">'+infoHtml+'</div>\n':'')
+    +'</div>';
+  if(rq.length===10)fillVerdictPay(rq);
+}
+// НДС и акциз для шапки — тем же ответом сервера, что и калькулятор (codeBundle): кэш общий.
+async function fillVerdictPay(code){
+  let b;try{b=await engine('codeBundle',[code])}catch(e){return}
+  const el=document.getElementById('vdPay');if(!el)return;
+  const i=b&&b[code];if(!i)return;
+  const nm=document.querySelector('#resultSummary .vd-name');
+  if(nm&&i.rec&&i.rec[1]){nm.textContent=i.rec[1];nm.title=i.rec[1]}
+  const vf=i.vf||{firm:[],cond:[]};
+  const vat=vf.firm.length?'НДС 0%':(vf.cond.length?'НДС 12% (0% при условии перечня)':'НДС 12%');
+  const exc=i.exc&&i.exc.length?' · акциз':'';
+  el.textContent=' · '+vat+exc;
 }
 
 // Карточки собирает сервер (renderHtml в private/base.js): база в браузер не передаётся.
@@ -587,13 +775,24 @@ async function render(q,boxId){
   const box=document.getElementById(id),qt=q.trim();
   if(box.id==='result'){setResultLayout(!!qt);resetResultChrome()}
   const seq=renderSeq[id]=(renderSeq[id]||0)+1;
-  if(!qt){box.innerHTML='';return}
+  if(!qt){box.innerHTML='';srchHint('');return}
+  // Меньше трёх знаков база не ищет — говорим об этом под полем, а не пустым результатом.
+  if(qt.length<3||(/^[\d\s]+$/.test(qt)&&qt.replace(/\D/g,'').length<4)){
+    if(id==='result'){box.innerHTML='';srchHint(/^[\d\s]+$/.test(qt)?'Введите не меньше 4 цифр кода':'Введите не меньше 3 букв названия','soft')}
+    return;
+  }
+  srchHint('');
+  if(id==='result')setSearching(true);
   let r;
   try{r=await engine('renderHtml',qt)}
-  catch(e){if(seq===renderSeq[id])box.innerHTML=engineErrorHtml(e);return}
+  catch(e){if(seq===renderSeq[id]){box.innerHTML=engineErrorHtml(e);setSearching(false)}return}
   if(seq!==renderSeq[id])return;
+  setSearching(false);
+  if(id==='result')srchDropHide();
   box.innerHTML=r.html;
   if(!r.cards){box.dataset.rq=searchStamp(qt);return}
+  histPush(qt);
+  mergeCardFamilies(box);
   compactifyCards(box);
   enhanceResultCards(box,qt);
   if(id==='result')await applySearchConditions(box,qt,seq);
@@ -788,7 +987,7 @@ function personalFee(ecom,kg,valueSom){
 }
 
 function renderPersonalCalcPanel(){
-  let html='<div class="calc-card" style="margin-bottom:16px"><div class="rn" style="margin-bottom:10px">📦 Калькулятор для товаров личного пользования (нормы и единые ставки Решения Совета ЕЭК от 20.12.2017 № 107)</div>';
+  let html='<div class="calc-card" style="margin-bottom:16px"><h1 class="pg-h1">Личные отправления и багаж</h1><div class="pg-sub">Нормы беспошлинного ввоза и единые ставки — Решение Совета ЕЭК от 20.12.2017 № 107</div>';
   html+='<div class="calc-row"><div class="calc-field" style="flex:1 1 100%"><label>Способ ввоза</label><select id="pcChannel">'
     +PERSONAL_CHANNELS.map(c=>'<option value="'+c.k+'">'+esc(c.n)+' — '+c.eur+' € и '+c.kg+' кг</option>').join('')+'</select></div></div>';
   html+='<div class="calc-row"><div class="calc-field"><label>Стоимость товаров (без алкоголя)</label><input type="number" id="pcValue" min="0" step="1" placeholder="напр. 1200"/></div>';
@@ -886,7 +1085,7 @@ let acSelectedCode=null;
 async function renderAutoCalcPanel(){
   // Марки, модели и варианты — из прайс-листа в базе на сервере (AUTO_CALC_IDX в private/base.js).
   const brands=await engine('autoBrands').catch(()=>[]);
-  let html='<div class="calc-card" style="margin-bottom:16px"><div class="rn" style="margin-bottom:10px">🚗 Калькулятор пошлины при ввозе легкового авто физлицом (личное пользование, гл. 8703, по объёму двигателя и возрасту)</div>';
+  let html='<div class="calc-card" style="margin-bottom:16px"><h1 class="pg-h1">Ввоз авто физлицом</h1><div class="pg-sub">Легковые авто гл. 8703 для личного пользования — единая ставка по объёму двигателя и возрасту</div>';
   html+='<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="acManual" onchange="onAcManualToggle()"/> Марки/модели нет в списке — ввести вручную</label>';
   html+='<div id="acListMode">';
   html+='<div class="calc-row"><div class="calc-field"><label>Марка</label><select id="acBrand" onchange="onAcBrandChange()"><option value="">— выберите —</option>'+brands.map(b=>'<option value="'+esc(b)+'">'+esc(b)+'</option>').join('')+'</select></div>';
@@ -1222,21 +1421,29 @@ async function selectCalcCode(code){
   html+='<div class="rh"><div class="ico" style="background:rgba(224,36,94,.29)">💰</div><div><div class="rc">'+esc(fmtCode(code))+'</div></div></div>';
   html+='<div class="rn">'+esc(name)+'</div>';
   html+='<div class="calc-rateinfo">Базовая ставка ЕТТ: <b>'+esc(fmtRate(rate))+'</b>'+(unit?(' · Ед.изм. в базе: '+esc(unit)):'')+'</div>';
-  for(const w of warns){
+  // Красные предупреждения (запрет) — перед формой; остальные — после результата, свёрнутыми:
+  // до расчёта они занимали экран и отодвигали поля ввода.
+  const redWarns=warns.filter(w=>w.level==='red'),softWarns=warns.filter(w=>w.level!=='red');
+  for(const w of redWarns){
     html+='<div class="calc-warn w-'+w.level+'">'+w.text+'</div>';
   }
-  if(warns.some(w=>w.level==='red')){
+  if(redWarns.length){
     html+='<button class="btn" onclick="renderCalcSearch(document.getElementById(\'inp\').value)" style="margin-top:8px">← Назад к выбору кода</button></div>';
     document.getElementById('calcResult').innerHTML=html;
     return;
   }
   if(isPassengerCar){
-    html+='<div class="calc-toggle-row"><input type="checkbox" id="calcAutoToggle" onchange="calcUseAuto=this.checked;selectCalcCode(calcSelectedCode)" '+(calcUseAuto?'checked':'')+'/><label for="calcAutoToggle">Физлицо ввозит авто для личного пользования (единая ставка приложения № 2 к Решению Совета ЕЭК № 107 вместо пошлины по ЕТТ и НДС)</label></div>';
+    html+='<div class="calc-toggle-row"><input type="checkbox" id="calcAutoToggle" onchange="calcUseAuto=this.checked;selectCalcCode(calcSelectedCode)" '+(calcUseAuto?'checked':'')+'/><label for="calcAutoToggle">Физлицо ввозит авто для личного пользования <span class="calc-lbl-note">(единая ставка приложения № 2 к Решению Совета ЕЭК № 107 вместо пошлины по ЕТТ и НДС)</span></label></div>';
   }
   html+='<div id="calcFormFields"></div>';
-  html+='<div style="display:flex;gap:10px;flex-wrap:wrap"><button class="calc-btn" style="flex:2;min-width:180px" onclick="runCalc()">Рассчитать</button>'
-    +'<button class="calc-btn" style="flex:1;min-width:150px;background:var(--pink)" onclick="calcAddToBatch()">＋ В партию</button></div>';
+  html+='<div class="calc-actions"><button class="btn btn-primary btn-lg" onclick="runCalc()">Рассчитать</button>'
+    +'<button class="btn btn-lg" onclick="calcAddToBatch()">＋ В партию</button></div>';
   html+='<div id="calcOut"></div>';
+  if(softWarns.length){
+    html+='<details class="calc-notes"><summary>Примечания по коду ('+softWarns.length+')</summary>';
+    for(const w of softWarns)html+='<div class="calc-warn w-'+w.level+'">'+w.text+'</div>';
+    html+='</details>';
+  }
   html+='</div>';
   document.getElementById('calcResult').innerHTML=html;
   renderCalcFormFields(parsed, isPassengerCar);
@@ -1455,9 +1662,10 @@ function runCalc(){
   out+='<div class="calc-line"><span>НДС ('+vatRate+'%'+(it.auto?' — включён в единую ставку':(isVatFree?' — освобождение ЛС/медизделия':(vatCond?' — условное освобождение по перечню № 596 не применено, см. предупреждение':'')))+')</span><b>'+vat.toFixed(2)+' сом</b></div>';
   out+='<div class="calc-line"><span>Сбор за таможенные операции <span style="color:var(--muted);font-size:11px">('+feeNote+')</span></span><b>'+fee.toFixed(2)+' сом</b></div>';
   out+='<div class="calc-total"><span>Итого таможенных платежей</span><span>'+total.toFixed(2)+' сом</span></div>';
-  out+='<div style="font-size:10px;color:var(--muted);margin-top:10px">Сбор — по '+docLink('Закон КР №52 от 24.04.2019, ст.41,44',DOC_SOURCES.law52)+' и '+docLink('Инструкции к Пост. КМ КР №79 от 13.02.2020 (ред. от 29.06.2026)',DOC_SOURCES.instr79)+'. Для товаров электронной торговли, приобретённых одним физическим лицом для личного пользования, сбор считается иначе — 6 сомов за 1 кг брутто (п.38² той же Инструкции), и показанные здесь 0,4 % к ним не относятся; пошлина и налоги по таким отправлениям тоже считаются не по ЕТТ, а по единым ставкам таблицы 1 приложения № 2 к Решению Совета ЕЭК от 20.12.2017 № 107. Акциз считается по базовым ставкам ст.336 НК КР и только если выбран пункт и введён объём; по ч.2 ст.336 фактическая ставка может быть ниже базовой. Не включает сбор за таможенное сопровождение (актуален только при физическом конвое/транзите) и антидемпинговые меры (см. предупреждения выше).</div>';
+  out+='<details class="calc-foot"><summary>Как считается и что не включено</summary><div>Сбор — по '+docLink('Закон КР №52 от 24.04.2019, ст.41,44',DOC_SOURCES.law52)+' и '+docLink('Инструкции к Пост. КМ КР №79 от 13.02.2020 (ред. от 29.06.2026)',DOC_SOURCES.instr79)+'. Для товаров электронной торговли, приобретённых одним физическим лицом для личного пользования, сбор считается иначе — 6 сомов за 1 кг брутто (п.38² той же Инструкции), и показанные здесь 0,4 % к ним не относятся; пошлина и налоги по таким отправлениям тоже считаются не по ЕТТ, а по единым ставкам таблицы 1 приложения № 2 к Решению Совета ЕЭК от 20.12.2017 № 107. Акциз считается по базовым ставкам ст.336 НК КР и только если выбран пункт и введён объём; по ч.2 ст.336 фактическая ставка может быть ниже базовой. Не включает сбор за таможенное сопровождение (актуален только при физическом конвое/транзите) и антидемпинговые меры (см. примечания по коду ниже).</div></details>';
   out+='</div>';
-  document.getElementById('calcOut').innerHTML=out;
+  const outEl=document.getElementById('calcOut');outEl.innerHTML=out;
+  if(outEl.getBoundingClientRect().top>window.innerHeight*0.6)outEl.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
 // ═══════════════════════════════════════════
@@ -2829,8 +3037,15 @@ function lkFilter(dir,cty,box){
   if(!box)return;
   const hidden=[];
   resCards(box).forEach(card=>{
-    const d=card.getAttribute('data-dir'),cc=card.getAttribute('data-cty');
+    const d=card.getAttribute('data-dir');let cc=card.getAttribute('data-cty');
     let why='';
+    // Объединённая карточка: подблок со своей страной прячется сам, карточка — когда не осталось ни одного.
+    if(card.dataset.merged&&dir==='im'&&cty&&!cty.eaeu){
+      const subs=card.querySelectorAll('.sub[data-cty]');let left=0;
+      subs.forEach(s=>{const hide=!lkCtyMatch(s.getAttribute('data-cty'),cty);s.classList.toggle('sub-hidden',hide);if(!hide)left++});
+      if(subs.length&&!left)cc=subs[0].getAttribute('data-cty');else cc=null;
+      const n=card.querySelector('.rn .rn-n');if(n&&subs.length)n.textContent='· '+left+' из '+subs.length;
+    }
     if(d&&d.split(' ').indexOf(dir)<0)why=LK_WHY[dir]||LK_WHY.ex;
     else if(dir==='im'&&cty&&cty.eaeu&&card.getAttribute('data-kind')==='tariff')why=LK_WHY.eaeu;
     else if(dir==='im'&&cty&&cc&&!lkCtyMatch(cc,cty))why=LK_WHY.cty;
@@ -2978,6 +3193,8 @@ function setSearchMode(m){
   const inp=document.getElementById('inp');
   const lbl=document.querySelector('label.sl');
   document.querySelector('.sw').style.display=(m==='admin'||m==='auto'||m==='personal')?'none':'block';
+  if(lbl) lbl.style.display=(m==='admin'||m==='auto'||m==='personal')?'none':'';
+  srchDropHide();srchHint('');
   document.getElementById('result').style.display='none';
   document.getElementById('autoCalcPanel').style.display='none';
   document.getElementById('personalCalcPanel').style.display='none';
@@ -2992,6 +3209,7 @@ function setSearchMode(m){
     inp.placeholder='например: снежный барс, Panthera, орхидея, Falco';
     if(lbl) lbl.textContent='Введите название вида (рус. или лат.)';
     document.getElementById('speciesResult').style.display='block';
+    renderSpecies('');
   } else if(m==='auto'){
     document.getElementById('autoCalcPanel').style.display='block';
   } else if(m==='personal'){
@@ -3431,12 +3649,13 @@ async function runPendingAction(){
 async function renderSpecies(q){
   const box=document.getElementById('speciesResult');
   const seq=++speciesSeq;
-  if(!(q||'').trim()){box.innerHTML='';return;}
+  if(!(q||'').trim()){box.innerHTML='<div class="nf"><div class="big">🐾</div>Красная книга КР, РК, РФ и приложения СИТЕС<br><span class="nf-sub">Введите название вида по-русски или по-латыни: <button type="button" class="btn" onclick="speciesPick(\'снежный барс\')">снежный барс</button> <button type="button" class="btn" onclick="speciesPick(\'Falco\')">Falco</button> <button type="button" class="btn" onclick="speciesPick(\'орхидея\')">орхидея</button></span></div>';return;}
   let html;
   try{html=await engine('speciesHtml',q)}catch(e){html=engineErrorHtml(e)}
   if(seq===speciesSeq)box.innerHTML=html;
 }
 
+function speciesPick(q){const i=document.getElementById('inp');i.value=q;renderSpecies(q)}
 function goToCode(code){
   // Условия поиска (направление, страна, дата) живут под полем и переход их не трогает:
   // код из списка кандидатов открывается с теми же условиями.
@@ -3468,61 +3687,38 @@ loadNbkrRates();
 let t;
 document.getElementById('inp').addEventListener('input',function(){clearTimeout(t);const v=this.value;t=setTimeout(()=>{if(searchMode==='species'){renderSpecies(v)}else if(searchMode==='calc'){renderCalcSearch(v)}else{render(v)}},250)});
 
-// Быстрые кнопки — Запреты
-[['7204','Лом металлов'],['4403','Бревна'],['0102','КРС'],['2404 12','Эл. сигареты'],['6809','Гипсокартон'],['3102','Удобрения'],['4707','Макулатура'],['0201','Мясо КРС']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn';b.textContent=`${c} · ${l}`;
+// Примеры: одна строка из восьми, по одному на тип ответа; полные группы — за «Больше примеров».
+SRCH_EXAMPLES.forEach(([c,l])=>{
+  const b=document.createElement('button');b.className='btn';b.type='button';
+  b.innerHTML='<b>'+esc(c)+'</b> · '+esc(l);
   b.onclick=()=>goToCode(c);
-  document.getElementById('sg1').appendChild(b);
+  document.getElementById('sgTop').appendChild(b);
+});
+const chipGroups=[
+  ['sg1',[['7204','Лом металлов'],['4403','Бревна'],['0102','КРС'],['2404 12','Эл. сигареты'],['6809','Гипсокартон'],['3102','Удобрения'],['4707','Макулатура'],['0201','Мясо КРС']]],
+  ['sg2',[['3002 90 500 0','Патогены'],['2931 00 950 0','Зарин/Зоман'],['2844','Уран/Изотопы'],['3601','Взрывчатка'],['8802','Авиация'],['8401','Ядерный реактор']]],
+  ['sg3',[['3004 90','Готовые препараты'],['2937 12','Инсулин'],['2939 11','Морфин/Кодеин'],['3002 41','Вакцины'],['2941 10','Антибиотики/цитостатики'],['2936 29','Витамины'],['2924 29','Парацетамол/Лидокаин'],['3006 70','Хлоргексидин'],['9018 31','Шприцы/иглы'],['9018 90','Медоборудование'],['9019 20','ИВЛ/кислород'],['9021 50','Кардиостимулятор'],['3005','Перевязочный материал'],['3004 10','Антибиотики (ЛС)'],['9018 12','УЗИ аппараты']]],
+  ['sg4',[['2710 12','Бензин (НП)'],['2710 19','Дизтопливо'],['7013','Стеклянная посуда'],['6911','Фарфор/фаянс'],['9619','Прокладки/подгузники'],['3402','Моющие средства'],['4818','Бумага туалетная'],['9603 21','Зубные щетки']]],
+  ['sg6',[['2523','Цемент'],['6810','Бетон/ЖБИ'],['7213','Арматура'],['3917','Трубы пластик'],['3921','Утеплитель'],['4410','ДСП'],['6802','Камень облицовочный']]],
+  ['sg7',[['2903 77','ХФУ/фреоны (ОРВ)'],['3824 71','Охлаждающие смеси ОРВ'],['8418','Холодильники с ОРВ'],['3808 92','Запрещённые пестициды'],['4303 10','Одежда из тюленя'],['9306 21','Патроны оружие'],['0106 19','Соболи живые'],['3825','Опасные отходы']]],
+  ['sg5',[['8703 23','Авто 1.5-3л бензин'],['8517 13','Смартфоны'],['1701 99','Сахар белый'],['2208 30','Виски'],['2402 20','Сигареты'],['8471 30','Компьютеры/ноутбуки'],['8450 11','Стиральные машины'],['6403 91','Обувь кожаная']]]];
+chipGroups.forEach(([id,list])=>{
+  const g=document.getElementById(id);if(!g)return;
+  list.forEach(([c,l])=>{
+    const b=document.createElement('button');b.className='btn';b.type='button';b.textContent=c+' · '+l;
+    b.onclick=()=>goToCode(c);
+    g.appendChild(b);
+  });
 });
 
-// Быстрые кнопки — НКС
-[['3002 90 500 0','Патогены'],['2931 00 950 0','Зарин/Зоман'],['2844','Уран/Изотопы'],['3601','Взрывчатка'],['8802','Авиация'],['8401','Ядерный реактор']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn nb';b.textContent=`${c} · ${l}`;
-  b.onclick=()=>goToCode(c);
-  document.getElementById('sg2').appendChild(b);
-});
-
-// Быстрые кнопки — Лекарственные средства
-[['3004 90','Готовые препараты'],['2937 12','Инсулин'],['2939 11','Морфин/Кодеин'],['3002 41','Вакцины'],['2941 10','Антибиотики/цитостатики'],['2936 29','Витамины'],['2924 29','Парацетамол/Лидокаин'],['3006 70','Хлоргексидин']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn lb';b.textContent=`${c} · ${l}`;
-  b.onclick=()=>goToCode(c);
-  document.getElementById('sg3').appendChild(b);
-});
-
-[['2710 12','Бензин (НП)'],['2710 19','Дизтопливо'],['7013','Стеклянная посуда'],['6911','Фарфор/фаянс'],['9619','Прокладки/подгузники'],['3402','Моющие средства'],['4818','Бумага туалетная'],['9603 21','Зубные щетки']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,149,0,.3);color:var(--orange)';b.textContent=`${c} · ${l}`;
-  b.onmouseover=()=>{b.style.background='rgba(255,149,0,.06)'};
-  b.onmouseout=()=>{b.style.background=''};
-  b.onclick=()=>goToCode(c);
-  document.getElementById('sg4').appendChild(b);
-});
-
-[['2523','Цемент'],['6810','Бетон/ЖБИ'],['6809','Гипсокартон'],['7213','Арматура'],['3917','Трубы пластик'],['3921','Утеплитель'],['4410','ДСП'],['6802','Камень облицовочный']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,149,0,.3);color:var(--orange)';b.textContent=`${c} · ${l}`;
-  b.onmouseover=()=>{b.style.background='rgba(255,149,0,.06)'};
-  b.onmouseout=()=>{b.style.background=''};
-  b.onclick=()=>goToCode(c);
-  document.getElementById('sg4').appendChild(b);
-});
-
-[['9018 31','Шприцы/иглы'],['9018 90','Медоборудование'],['9019 20','ИВЛ/кислород'],['9021 50','Кардиостимулятор'],['3005','Перевязочный материал'],['3002 41','Вакцины'],['3004 10','Антибиотики (ЛС)'],['9018 12','УЗИ аппараты']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn lb';b.textContent=`${c} · ${l}`;
-  b.onclick=()=>goToCode(c);
-  document.getElementById('sg3').appendChild(b);
-});
-
-[['2903 77','ХФУ/фреоны (ОРВ)'],['3824 71','Охлаждающие смеси ОРВ'],['8418','Холодильники с ОРВ'],['3808 92','Запрещённые пестициды'],['4303 10','Одежда из тюленя'],['9306 21','Патроны оружие'],['0106 19','Соболи живые'],['3825','Опасные отходы']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(0,180,216,.35);color:var(--cyan)';b.textContent=`${c} · ${l}`;
-  b.onmouseover=()=>{b.style.background='rgba(0,180,216,.06)'};b.onmouseout=()=>{b.style.background=''};
-  b.onclick=()=>goToCode(c);
-  document.getElementById('sg4').appendChild(b);
-});
-// Быстрые кнопки — ЕТТ (ставка пошлины)
-[['8703 23','Авто 1.5-3л бензин'],['8517 13','Смартфоны'],['1701 99','Сахар белый'],['2208 30','Виски'],['2402 20','Сигареты'],['8471 30','Компьютеры/ноутбуки'],['8450 11','Стиральные машины'],['6403 91','Обувь кожаная']].forEach(([c,l])=>{
-  const b=document.createElement('button');b.className='btn';b.style.cssText='border-color:rgba(255,79,163,.3);color:var(--pink)';b.textContent=`${c} · ${l}`;
-  b.onmouseover=()=>{b.style.background='rgba(255,79,163,.06)'};b.onmouseout=()=>{b.style.background=''};
-  b.onclick=()=>goToCode(c);
-  document.getElementById('sg5').appendChild(b);
-});
-
+// История и подсказки: при фокусе на пустом поле — последние запросы, при вводе
+// 4–9 цифр — подпозиции с сервера. Список закрывается кликом вне поля и Escape.
+{
+  const inp=document.getElementById('inp');
+  let st;
+  inp.addEventListener('focus',()=>{if(searchMode==='code')srchSuggest(inp.value)});
+  inp.addEventListener('input',()=>{clearTimeout(st);if(searchMode!=='code'){srchDropHide();return}st=setTimeout(()=>srchSuggest(inp.value),200)});
+  inp.addEventListener('keydown',e=>{if(srchDropKey(e))return;if(e.key==='Enter'){srchDropHide();clearTimeout(t);if(searchMode==='code')render(inp.value)}});
+  inp.addEventListener('blur',()=>setTimeout(srchDropHide,150));
+}
 } // end initApp

@@ -5701,6 +5701,13 @@ function renderHtml(q){
   if(!qt)return {html:'',cards:false};
   const bans=findBan(qt),nksList=findNKS(qt),lsList=findLS(qt),sertList=findSert(qt),medList=findMed(qt),matList=findMat(qt),art297List=findArt297(qt),art300List=findArt300(qt),art301Hit=findArt301(qt),art297PerechenList=findArt297Perechen(qt),art298List=findArt298(qt),art299List=findArt299(qt),app6VetList=findApp6Vet(qt),art297P20List=findArt297P20(qt),art297P26List=findArt297P26(qt),art297P30List=findArt297P30(qt),eecList=findEEC30(qt),wasteList=findEECWaste(qt),ettList=findETT(qt),uaeList=findETTUAE(qt),mnList=findETTMN(qt),rsList=findETTRS(qt),iranList=findETTIran(qt),vnList=findETTVN(qt),usirList=findUSIR(qt),nbndsList=findNBNDS(qt),exciseList=findExcise(qt),kefHit=findKef1606(qt),adList=findAntidump(qt),triggerList=findTrigger(qt),quotaList=findQuota(qt),eecDecList=findEECDec(qt),vetList=findVET(qt),phytoList=findPHYTO(qt),sanRes=findSAN(qt),treaList=findTREAEU(qt),troisList=findTROIS(qt),prefList=findPref(qt),uniList=findUniMeasure(qt);
   if(!bans.length&&!nksList.length&&!lsList.length&&!sertList.length&&!medList.length&&!matList.length&&!art297List.length&&!art300List.length&&!art301Hit&&!art297PerechenList.length&&!art298List.length&&!art299List.length&&!app6VetList.length&&!art297P20List.length&&!art297P26List.length&&!art297P30List.length&&!eecList.length&&!wasteList.length&&!ettList.length&&!uaeList.length&&!mnList.length&&!rsList.length&&!iranList.length&&!vnList.length&&!usirList.length&&!nbndsList.length&&!exciseList.length&&!kefHit&&!adList.length&&!triggerList.length&&!quotaList.length&&!eecDecList.length&&!vetList.length&&!phytoList.length&&!sanRes.sections.length&&!sanRes.reg.length&&!sanRes.sub.length&&!treaList.length&&!troisList.length&&!prefList.length&&!uniList.length){
+    // Запрос из одних цифр — это код, и по наименованию он не ищется: «9999 99 999 9»
+    // находил серебро и платину 999 пробы. Ответ — «кода нет» и ближайшие действующие коды.
+    const qDigits=qt.replace(/\D/g,'');
+    if(/^[\d\s]+$/.test(qt)&&qDigits.length>=4){
+      const hint=specNotFoundHint(qDigits);
+      return {cards:false,html:`<div class="nf"><div class="big">🔍</div>Кода <strong>${esc(fmtCode(qDigits))}</strong> нет в действующем ЕТТ ЕАЭС<br><span style="color:var(--hint);margin-top:6px;display:block">${esc(hint.charAt(0).toUpperCase()+hint.slice(1))}. Проверьте цифры или введите название товара.</span></div>`};
+    }
     // Запрос не похож ни на один известный код — пробуем как название товара,
     // чтобы поиск по коду и по наименованию работали из одного поля.
     const nameList=findByName(qt);
@@ -6902,11 +6909,11 @@ function nameMatchesHtml(qq,list){
   for(const r of shown){
     const [code,name,unit,rate]=r;
     rows+=`<div class="usir-row" style="cursor:pointer" onclick="goToCode('${code}')">`
-      +`<div class="un"><span style="font-family:var(--mono);color:var(--pink);font-weight:600">${esc(fmtCode(code))}</span> — ${esc(trunc(name,110))}${notesIconHtml(code)}</div>`
-      +`<div class="uu">Ставка: ${esc(String(fmtRate(rate)))}${unit?' · Ед.изм.: '+esc(unit):''} · нажмите, чтобы открыть карточку кода</div></div>`;
+      +`<div class="un"><span style="font-family:var(--mono);color:var(--indigo);font-weight:600">${esc(fmtCode(code))}</span> — ${esc(name)}${notesIconHtml(code)}</div>`
+      +`<div class="uu">Ставка: ${esc(String(fmtRate(rate)))}${unit?' · Ед.изм.: '+esc(unit):''}</div></div>`;
   }
   const more=list.length>shown.length?`<div class="ett-more">Показаны первые ${shown.length} из ${list.length} — уточните запрос</div>`:'';
-  return `<div class="card c-ett"><div class="rh"><div class="ico">📝</div><div><div class="rc">${esc(qq)}</div></div></div><div class="rn">Найдено товаров по наименованию: ${list.length}</div><div class="tags"><span class="tag t-ett">📝 Поиск по наименованию</span></div><div class="usir-list">${rows}</div>${more}</div>`;
+  return `<div class="card c-ett"><div class="rh"><div class="ico">📝</div><div><div class="rc">${esc(qq)}</div></div></div><div class="rn">Найдено товаров по наименованию: ${list.length} — нажмите строку, чтобы открыть карточку кода</div><div class="tags"><span class="tag t-ett">📝 Поиск по наименованию</span></div><div class="usir-list">${rows}</div>${more}</div>`;
 }
 
 // ═══════════════════════════════════════════

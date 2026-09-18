@@ -60,13 +60,26 @@
      картинка чужой темы не качается тоже — она задана токеном, а не тегом. */
   #appWrap::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(var(--app-scrim),var(--app-scrim)),var(--app-bg) center/cover no-repeat}
   /* Условия поиска — то, чем была отдельная «Справка по товару»: направление, страна, дата. */
-  .srch-cond{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:-20px 0 22px;font-size:12px;color:var(--muted)}
-  .srch-cond label{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
-  .srch-cond select,.srch-cond input{height:32px;background:var(--glass);border:1px solid var(--glass-border);border-radius:8px;color:var(--text);font-family:var(--head);font-size:13px;padding:0 9px;color-scheme:dark light}
-  .srch-cond input[type="text"]{width:220px}
-  .srch-cond .sc-h{font-weight:600;color:var(--text)}
+  .srch-cond{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:-20px 0 22px;font-size:12px;color:var(--muted)}
+  .srch-cond label{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;height:32px;padding:0 4px 0 12px;background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-pill)}
+  .srch-cond label:focus-within{border-color:var(--indigo)}
+  .srch-cond select,.srch-cond input{height:28px;background:transparent;border:0;color:var(--text);font-family:var(--head);font-size:13px;padding:0 6px;color-scheme:dark light}
+  .srch-cond select:focus,.srch-cond input:focus{outline:none}
+  .srch-cond input[type="text"]{width:150px}
+  .srch-cond .sc-h{display:none}
   body:not([data-mode="code"]) #srchCond{display:none}
-  @media (max-width:640px){.srch-cond{margin-top:-8px;gap:8px 12px}.srch-cond input[type="text"]{width:150px}}
+  .srch-hint{font-size:12px;color:var(--hint);margin:-12px 0 16px}
+  .srch-drop{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:30;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);padding:6px;max-height:360px;overflow:auto}
+  .sd-row{display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:8px 10px;font-family:var(--head);font-size:13px;color:var(--text);cursor:pointer}
+  .sd-row:hover,.sd-row.sel{background:rgba(90,108,255,.12)}
+  .sd-code{font-family:var(--mono);font-weight:600;color:var(--indigo);white-space:nowrap}
+  .sd-h .sd-code{font-family:var(--head);color:var(--hint)}
+  .sd-name{flex:1;min-width:0}
+  .sd-rate{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .sw.loading::after{content:'';position:absolute;left:14px;right:14px;bottom:-4px;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--indigo),transparent);background-size:40% 100%;background-repeat:no-repeat;animation:srchbar .9s linear infinite}
+  @keyframes srchbar{from{background-position:-60% 0}to{background-position:160% 0}}
+  #result.is-loading{opacity:.45;transition:opacity .15s}
+  @media (max-width:640px){.srch-cond{margin-top:-8px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}.srch-cond input[type="text"]{width:120px}}
   .hdr-tools{order:9}
   #userBar.user-bar{margin:0;order:7;font-size:12px}
   #accountPanel{order:6;margin:0}
@@ -85,7 +98,8 @@
   .sl{font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;display:block}
   .si{width:100%;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:var(--radius-lg);color:var(--text);font-family:var(--mono);font-size:20px;font-weight:600;padding:15px 70px 15px 18px;outline:none;letter-spacing:.02em;transition:border-color .2s;box-shadow:var(--shadow-sm)}
   .si::placeholder{color:var(--placeholder)}
-  .si:focus{border-color:var(--indigo);box-shadow:none}
+  .si:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(90,108,255,.22)}
+  .si:focus-visible{outline:none}
   .sico{position:absolute;right:8px;top:8px;bottom:8px;width:46px;border-radius:calc(var(--radius-lg) - 4px);background:var(--indigo-surface);color:#fff;font-size:17px;display:flex;align-items:center;justify-content:center;pointer-events:none}
   #result{min-height:60px}
   /* AI-ассистент */
@@ -183,6 +197,58 @@
   .sv-pay .vd-n{background:rgba(90,108,255,.16);color:var(--indigo)}
   .vd-i{font-size:12.5px;color:var(--muted)}
   .vd-hint{display:block;font-size:12px;color:var(--hint);margin-top:2px}
+  .vd-prod{padding-bottom:10px;margin-bottom:8px;border-bottom:1px solid var(--border)}
+  .vd-name{font-size:16px;font-weight:600;line-height:1.35;color:var(--text);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .vd-sub{font-size:13px;color:var(--muted);margin-top:4px}
+  .vd-code{font-family:var(--mono);font-weight:600;color:var(--text)}
+  .vd-rate{color:var(--text);font-size:15px}
+  .vd-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .vd-title.vd-danger{color:var(--red)} .vd-title.vd-soft{color:var(--yellow)}
+  .vd-line{display:grid;grid-template-columns:128px 1fr;gap:6px 14px;align-items:baseline;padding:7px 0;border-top:1px solid var(--border);font-size:13px}
+  .vd-line:first-child{border-top:none}
+  .vd-line .vd-i{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+  .vd-chip{background:rgba(90,108,255,.12);border:1px solid rgba(90,108,255,.32);color:var(--indigo);border-radius:var(--radius-pill);padding:3px 10px;font-family:var(--head);font-size:12px;font-weight:600;cursor:pointer;text-align:left;line-height:1.35}
+  .vd-chip:hover{background:rgba(90,108,255,.22)}
+  .vd-chip.vd-need{background:rgba(201,112,0,.12);border-color:rgba(201,112,0,.36);color:var(--orange)}
+  .vd-chip.vd-need:hover{background:rgba(201,112,0,.22)}
+  .vd-line.vd-info{grid-template-columns:1fr}
+  .vd-row-link{background:none;border:0;padding:0;color:var(--hint);font-family:var(--head);font-size:12px;cursor:pointer;text-align:left}
+  .vd-row-link:hover{color:var(--indigo)}
+  .vd-none{color:var(--hint)}
+  /* Семьи карточек: одна карточка на меру, исходные карточки — подблоки. */
+  .rn-n{font-weight:500;color:var(--hint)}
+  .card .subs{display:flex;flex-direction:column;gap:12px}
+  .card .sub{padding-top:12px;border-top:1px solid var(--border)}
+  .card .sub-t{font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;line-height:1.4}
+  .card .sub.sub-hidden{display:none}
+  .res-sec-docs,.res-sec-control,.res-sec-cert{grid-template-columns:1fr}
+  .res-sec-collapsed .res-sec-h{cursor:pointer}
+  .res-sec-collapsed:not(.open) > .card{display:none}
+  .res-sec-tgl{margin-left:auto;font-size:11px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--indigo)}
+  .res-sec-collapsed.open .res-sec-tgl{visibility:hidden}
+  .summary,.res-sec,#result > .card,#result > .lk-hidden,#result > .calc-warn{max-width:1180px}
+  .pg-h1{font-size:20px;font-weight:700;margin:0 0 2px;line-height:1.25}
+  .pg-sub{font-size:12px;color:var(--muted);margin-bottom:14px}
+  .calc-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .calc-actions .btn-primary{flex:2;min-width:180px}
+  .calc-actions .btn:not(.btn-primary){flex:1;min-width:150px}
+  .calc-notes{margin-top:14px}
+  .calc-notes>summary,.calc-foot>summary{cursor:pointer;font-size:12px;color:var(--muted);font-weight:600;padding:4px 0}
+  .calc-foot{margin-top:10px;font-size:11px;color:var(--muted);line-height:1.5}
+  .calc-lbl-note{color:var(--hint);font-weight:400}
+  .nf .nf-sub{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:center;color:var(--hint);margin-top:8px}
+  #accountPanel{display:none!important}
+  .acc-wrap{position:relative}
+  .acc-btn{max-width:280px}
+  .acc-btn b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+  .acc-menu{display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:260px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);padding:8px;text-align:left}
+  .acc-wrap.open .acc-menu{display:block}
+  .acc-menu .acc-email{font-size:12px;color:var(--muted);padding:4px 6px 8px;word-break:break-all}
+  .acc-menu .acc-status{display:block;margin:0 0 8px;font-size:12px;padding:6px 10px;border-radius:var(--radius-sm)}
+  .acc-menu .btn{display:flex;width:100%;justify-content:flex-start;margin-top:4px}
+  .qs-more>summary{cursor:pointer;font-size:12px;color:var(--indigo);font-weight:600;margin:2px 0 14px;list-style:none}
+  .qs-more>summary::before{content:'▸ '} .qs-more[open]>summary::before{content:'▾ '}
+  #sgTop .btn b{color:var(--indigo);font-family:var(--mono);font-weight:600}
   [data-theme="light"] .vd-n{background:rgba(20,28,48,.07)}
   [data-theme="light"] .vd-row:hover{background:rgba(20,28,48,.03)}
   @media (max-width:640px){.vd-row{grid-template-columns:1fr}}
@@ -407,14 +473,20 @@
     .nav-item{width:auto;flex-shrink:0;white-space:nowrap;padding:9px 12px}
     .nav-panel ~ .side-panel{order:1;align-self:stretch;width:100%;margin-top:16px}
   }
-  .btn{background:var(--glass);border:1px solid var(--border);color:var(--muted);font-family:var(--head);font-weight:600;font-size:12px;padding:6px 13px;border-radius:8px;cursor:pointer;transition:all .15s;letter-spacing:.02em}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:32px;line-height:1.2;background:var(--glass);border:1px solid var(--border);color:var(--muted);font-family:var(--head);font-weight:600;font-size:12px;padding:6px 13px;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s;letter-spacing:.02em}
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled,.btn[disabled]{opacity:.55;cursor:not-allowed;transform:none}
+  .btn.btn-primary{background:var(--indigo-surface);border-color:var(--indigo-surface);color:#fff}
+  .btn.btn-primary:hover{background:#3a46b0;border-color:#3a46b0;color:#fff}
+  .btn.btn-lg{min-height:42px;padding:10px 20px;font-size:14px;font-weight:700}
+  :focus-visible{outline:2px solid var(--indigo);outline-offset:2px}
   .btn.danger{color:var(--red);border-color:rgba(224,52,43,.4)}
   .btn:hover{border-color:var(--indigo);color:var(--indigo);background:rgba(10,132,255,0.1)}
   .btn.nb:hover{border-color:var(--purple);color:var(--purple);background:rgba(155,63,196,0.132)}
   .btn.lb:hover{border-color:var(--teal);color:var(--teal);background:rgba(14,138,150,0.132)}
   footer{margin-top:60px;font-size:11px;color:var(--muted);text-align:center;line-height:1.8;border-top:1px solid var(--border);padding-top:20px}
-  .app-footer{margin-top:60px;padding-top:28px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:32px;flex-wrap:wrap;text-align:left}
-  .app-footer .af-brand{font-family:var(--head);font-weight:800;font-size:18px;color:var(--text);letter-spacing:-.02em}
+  .app-footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:32px;flex-wrap:wrap;text-align:left}
+  .app-footer .af-brand{font-family:var(--head);font-weight:700;font-size:14px;color:var(--text);letter-spacing:-.02em}
   .app-footer .af-copy{font-size:11px;color:var(--muted);margin-top:10px}
   .app-footer .af-lic{font-size:11px;color:var(--muted);margin-top:4px;max-width:340px;line-height:1.6}
   .app-footer .af-links{margin-top:14px;display:flex;flex-direction:column;gap:6px}
@@ -544,6 +616,7 @@
   }
   [data-theme="light"] body::before{background:radial-gradient(900px 620px at 10% -8%,rgba(91,108,255,.10),transparent 62%),radial-gradient(760px 620px at 100% 8%,rgba(47,107,255,.08),transparent 58%),radial-gradient(900px 700px at 45% 112%,rgba(120,86,214,.07),transparent 60%)}
   [data-theme="light"] .btn{background:var(--glass)}
+  [data-theme="light"] .btn.btn-primary{background:var(--indigo-surface);border-color:var(--indigo-surface);color:#fff}
   [data-theme="light"] .mode-btn.active{background:#fff;box-shadow:0 2px 8px rgba(24,32,56,.12)}
   [data-theme="light"] .modal{background:rgba(255,255,255,.92)}
   /* Плашки тегов: подложка задана полупрозрачным оттенком и на светлом фоне
@@ -1042,6 +1115,7 @@
       <div class="sw">
         <input id="inp" class="si" type="text" placeholder="например: 3004, 7204 2931 00 950 0 или «лом металлов»" maxlength="60" autocomplete="off" spellcheck="false"/>
         <span class="sico">🔍</span>
+        <div id="srchDrop" class="srch-drop" style="display:none"></div>
       </div>
       <div class="srch-cond" id="srchCond">
         <span class="sc-h">Условия:</span>
@@ -1050,6 +1124,7 @@
         <label>Дата <input type="date" id="lookupDate"></label>
         <datalist id="lkCtyList"></datalist>
       </div>
+      <div id="srchHint" class="srch-hint" style="display:none"></div>
 
       <div id="resultSummary" class="summary" style="display:none"></div>
 
@@ -1057,16 +1132,25 @@
 
       <div id="result"></div>
       <div id="quickSearch">
-        <div class="sug-l">Примеры: ставка пошлины (ЕТТ)</div>
-        <div class="sug-g" id="sg5"></div>
-        <div class="sug-l">Запреты КР</div>
-        <div class="sug-g" id="sg1"></div>
-        <div class="sug-l">НКС — требует лицензии</div>
-        <div class="sug-g" id="sg2"></div>
-        <div class="sug-l">Лекарственные средства — НДС 0%</div>
-        <div class="sug-g" id="sg3"></div>
-        <div class="sug-l">Обязательная сертификация</div>
-        <div class="sug-g" id="sg4"></div>
+        <div class="sug-l">Примеры</div>
+        <div class="sug-g" id="sgTop"></div>
+        <details class="qs-more">
+          <summary>Больше примеров</summary>
+          <div class="sug-l">Ставка пошлины (ЕТТ)</div>
+          <div class="sug-g" id="sg5"></div>
+          <div class="sug-l">Запреты КР</div>
+          <div class="sug-g" id="sg1"></div>
+          <div class="sug-l">НКС — требует лицензии</div>
+          <div class="sug-g" id="sg2"></div>
+          <div class="sug-l">Лекарственные средства и медизделия — НДС 0%</div>
+          <div class="sug-g" id="sg3"></div>
+          <div class="sug-l">Обязательная сертификация</div>
+          <div class="sug-g" id="sg4"></div>
+          <div class="sug-l">Стройматериалы — сертификация</div>
+          <div class="sug-g" id="sg6"></div>
+          <div class="sug-l">Особый порядок: ОРВ, пестициды, оружие, отходы</div>
+          <div class="sug-g" id="sg7"></div>
+        </details>
       </div>
       <div id="autoCalcPanel" style="display:none"></div>
       <div id="personalCalcPanel" style="display:none"></div>
@@ -1507,12 +1591,19 @@ async function showApp(){
   const bar=document.getElementById('userBar');
   bar.style.display='flex';
   const isAdmin=currentUser.role==='admin';
-  bar.innerHTML=(isAdmin?'<button class="btn admin-link-btn" id="adminLinkBtn" type="button">🛡️ Администрирование</button>':'')
-    +'<span title="Вы вошли в этот аккаунт"><b>'+esc(currentUser.email)+'</b></span>'
-    +'<button class="btn" id="logoutBtn" type="button">Выйти</button>';
-  document.getElementById('logoutBtn').onclick=doLogout;
-  if(isAdmin) document.getElementById('adminLinkBtn').onclick=()=>{setPage('search');setSearchMode(searchMode==='admin'?'code':'admin');};
+  bar.innerHTML='<div class="acc-wrap" id="accWrap"><button class="btn acc-btn" id="accMenuBtn" type="button" aria-haspopup="true" aria-expanded="false" title="Аккаунт"><b>'+esc(currentUser.email)+'</b> ▾</button>'
+    +'<div class="acc-menu" id="accMenu"><div class="acc-email">'+esc(currentUser.email)+'</div><div id="accMenuStatus"></div>'
+    +(isAdmin?'<button class="btn admin-link-btn" id="adminLinkBtn" type="button">🛡️ Администрирование</button>':'')
+    +'<button class="btn" id="logoutBtn" type="button">Выйти</button></div></div>';
+  const accWrap=document.getElementById('accWrap');
+  const closeAccMenu=()=>{accWrap.classList.remove('open');document.getElementById('accMenuBtn').setAttribute('aria-expanded','false')};
+  document.getElementById('logoutBtn').onclick=()=>{closeAccMenu();doLogout()};
+  if(isAdmin) document.getElementById('adminLinkBtn').onclick=()=>{closeAccMenu();setPage('search');setSearchMode(searchMode==='admin'?'code':'admin');};
+  document.getElementById('accMenuBtn').onclick=(e)=>{e.stopPropagation();const open=!accWrap.classList.contains('open');accWrap.classList.toggle('open',open);document.getElementById('accMenuBtn').setAttribute('aria-expanded',String(open));
+    if(open&&!window.__accMenuBound){window.__accMenuBound=true;document.addEventListener('click',(ev)=>{const w=document.getElementById('accWrap');if(w&&!w.contains(ev.target))w.classList.remove('open')})}};
   renderAccountPanel();
+  // Статус доступа рисуется прежней функцией, но показывается в меню, а не чипом в шапке.
+  const st=document.getElementById('accMenuStatus');if(st)st.innerHTML=document.getElementById('accountPanel').innerHTML;
   renderVerifyBar();
   initApp();
 }
