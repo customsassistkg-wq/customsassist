@@ -721,6 +721,13 @@ const a = require('../src/services/assistant');
   r = await a.ask([{ role: 'user', content: 'Разбери инвойсы' }], invTotal);
   assert.equal(calls.length, 4);
   assert.match(r.answer, /_Расчёт выше — не весь пакет: расчёт выполнен на 600,00, а по sum_check документы пакета — 1\s100,00\._$/);
+  // слагаемое, уже вошедшее в расчёт (строка «аренда склада» к итогу, который её включает), — не другой инвойс: без раунда
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: { ...two, total: 1100 } }]
+    : n === 2 ? [{ type: 'tool_use', id: 't2', name: 'sum_check', input: { amounts: [1100, 500] } }]
+    : [{ type: 'text', text: 'Готово.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери инвойс' }], { docs: [{ name: 'inv.pdf', pages: 1, text: 'Goods 600,00\nRent 500,00\nTotal 1 100,00 USD' }] });
+  assert.deepEqual([calls.length, r.answer], [3, 'Готово.']);
   // позиция с кодом, которого нет в ЕТТ, не посчитана (Keramin: «8479 89 970 8» — два варианта) — тоже ещё один раунд
   calls.length = 0;
   script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: { currency: 'USD', total: 1100, items: [{ code: '8517130000', value: 600 }, { code: '8479899708', value: 500 }] } }]
@@ -864,6 +871,23 @@ const a = require('../src/services/assistant');
     };
     r = await a.readPage(page, { checkOrientation: false });
     assert.ok(docaiCalls.length === 0 && r.usage.costUsd < 0.03, JSON.stringify([docaiCalls, r.usage.costUsd]));
+    // страница, где чтения модели выдумывают (ЭСФ под водяным знаком «ОБРАЗЕЦ», живой прогон 18.09.2026): Vision не видел
+    // ни одного их числа — расшифровка отбрасывается, идут текст Vision с пометкой и разбор полей
+    docaiCalls = [];
+    global.fetch = async (url, opts) => {
+      if (/documentai\.googleapis\.com/.test(url)) { docaiCalls.push(url); return { ok: true, json: async () => ({ document: { entities: [{ type: 'grand_total', mentionText: '290150,78' }] } }) }; }
+      if (/vision\.googleapis\.com/.test(url)) return { ok: true, json: async () => ({ responses: [{ fullTextAnnotation: { text: 'ЭСФ 3696 39,25 145075,39 145075,39 290150,78' } }] }) };
+      if (/googleapis\.com/.test(url)) return modelFetch(url, opts);
+      return { ok: true, json: async () => ({ content: [{ type: 'text', text: 'ООО "ПРОБА" ИНН 1234567890\n| 1 | Макароны | 1000 | 39,75 | 143 075,39 |\n| 2 | Макароны | 1000 | 39,75 | 143 075,39 |\nИтого 286 150,78\nСчёт 50492 от 03.01.2018, БИК 044525225, 7801414001031' }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }) };
+    };
+    r = await a.readPage(page, { checkOrientation: false });
+    assert.match(r.text, /^\[Страница прочитана ненадёжно: из \d+ чисел расшифровки распознавание Google подтвердило 0\. [^\]]*\]\nЭСФ 3696 39,25 145075,39/);
+    assert.doesNotMatch(r.text, /ПРОБА|143 075,39/);
+    assert.match(r.text, /Разбор полей документа[^\]]*grand_total: 290150,78/);
+    assert.equal(docaiCalls.length, 1);
+    // обычная страница, где Vision видит числа чтения, правилом не задевается
+    assert.equal(a.pageUnreliable('| 1 | 39,25 | 145 075,39 |\nИтого 290 150,78', 'x'), null); // чисел меньше восьми — не судим
+    assert.equal(a.pageUnreliable('3696 | 39,25 | 145 075,39 | 290 150,78 | 50492 | 1234567890 | 044525225 | 7801414 | 3000 | 4000', '3696 39,25 145075,39 290150,78 50492 7801414'), null); // 6 из 10
     delete process.env.OCR_DOCAI_PROCESSOR;
     global.fetch = modelFetch;
     // без Google решает большинство чтений модели — и ошибается на количестве

@@ -464,6 +464,10 @@ async function calcOne({ code, value, currency, quantity, country: countryName, 
   const alt = digits.length >= 4 ? ettAlternatives(c, digits) : '';
   if (alt) return alt + '\nРасчёт — только по действующему 10-значному коду: выбери подходящий по описанию товара и повтори расчёт с ним.';
   if (!row) return `Код ${code} не найден в ЕТТ: расчёт возможен только по 10-значному действующему коду.`;
+  // Без стоимости расчёта нет: живой прогон 18.09.2026 (сертификат происхождения без цены) дал «итого 500 сом» —
+  // один минимальный сбор от нулевой стоимости.
+  if (!(num(value) > 0)) return `Стоимость позиции ${c.fmtCode(digits)} не передана — расчёта нет. Если в документах цены нет, `
+    + 'так и скажи пользователю и попроси инвойс; расчёт с нулевой стоимостью не приводи.';
   const rates = await nbkrRates.getRates();
   if (!rates) return 'Курсы НБКР сейчас недоступны — расчёт невозможен.';
   const cur = curOf(currency);
@@ -499,7 +503,7 @@ async function calcOne({ code, value, currency, quantity, country: countryName, 
 
   // Взаимная торговля ЕАЭС — не таможенное оформление: считать ей пошлину, НДС
   // при ввозе и таможенный сбор так же, как из третьей страны, было бы неверно.
-  if (cty && cty.eaeu) return `Товар из государства — члена ЕАЭС (${cty.name}): взаимная торговля, тарифные меры ЕТТ не применяются, таможенного оформления нет. Этот расчёт — для ввоза из третьих стран.`;
+  if (cty && cty.eaeu) return `Товар из государства — члена ЕАЭС (${cty.name}): взаимная торговля, тарифные меры ЕТТ не применяются, таможенного оформления нет. Косвенные налоги (НДС, акциз) при этом есть — их взимает налоговый орган, а не таможня, и в этот расчёт они не входят: не пиши, что НДС не возникает. Этот расчёт — для ввоза из третьих стран.`;
   let duty = null, dutyEtt = null;
   {
     const options = [{ rate: ettRate, basis: 'ставка ЕТТ ' + c.fmtRate(ettRate), ett: true }];
@@ -1136,6 +1140,16 @@ function reconcileWords(base, others, vision) {
 // повёрнутой (пересжатие JPEG само портило цифры: одна сумма неверна почти в каждом прогоне) и присылает снова с
 // checkOrientation: false. Ненужные чтения перевёрнутой страницы дожидаются конца, чтобы их расход попал в журнал.
 // raw: true — вместе с итогом сырые чтения (основное, два повторных, Vision, Document AI): по ним калибруется сверка.
+// Страница, где чтения модели выдумывают: мелкий шрифт под водяным знаком «ОБРАЗЕЦ» (ЭСФ Казахстана, 1123 × 793) —
+// все три чтения сочинили разные правдоподобные документы («ТОО "Фирма"», «ТОО "Прогресс"», Брянск вместо Актобе), а
+// Google Vision прочёл настоящие суммы. Признак — доля важных чисел чтения, которые видел Vision: на 19 нормальных
+// страницах 0,63–1,00 (обычно 0,9–1,0), на двух выдуманных — 0,00 и 0,21.
+function pageUnreliable(main, vision) {
+  const vn = new Set(flatNumbers(vision));
+  const n = [...new Set(flatNumbers(main).filter(numMatters))];
+  const ok = n.filter((k) => vn.has(k)).length;
+  return n.length >= 8 && ok < n.length * 0.4 ? { n: n.length, ok } : null;
+}
 async function readPage(img, { checkOrientation = true, parts = [], raw = false } = {}) {
   const usage = { input: 0, output: 0, cacheRead: 0, costUsd: 0 };
   const read = (x) => readImage(x.media_type, x.data, TRANSCRIBE_PROMPT, 16000, usage);
@@ -1165,7 +1179,16 @@ async function readPage(img, { checkOrientation = true, parts = [], raw = false 
     const seen = (await ocr)?.text || null;
     const mainText = text;
     let docai = null;
-    if (others.length === 2) {
+    const bad = seen ? pageUnreliable(text, seen) : null;
+    if (bad) {
+      docai = docaiUrl() ? await docaiRead(img).catch((e) => { console.error('assistant: Document AI failed:', e.message); return null; }) : null;
+      if (docai) usage.costUsd += DOCAI_USD;
+      text = `[Страница прочитана ненадёжно: из ${bad.n} чисел расшифровки распознавание Google подтвердило ${bad.ok}. Расшифровка модели `
+        + 'отброшена — ниже текст распознавания Google, без разметки таблицы. Опирайся на него; скажи пользователю, что страница '
+        + 'читается плохо (мелкий шрифт, водяной знак или низкое разрешение), и попроси прислать её чётче или сверить числа с оригиналом.]\n'
+        + seen
+        + (docai ? '\n[Разбор полей документа (Google Document AI, машинное чтение полей):\n' + docai + ']' : '');
+    } else if (others.length === 2) {
       let r = reconcileReadings(text, others, seen);
       // Разбор полей нужен там, где чтения разошлись: на согласной странице он ничего не добавит, а стоит дорого.
       docai = r.doubtful.length && docaiUrl()
@@ -1477,6 +1500,7 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
         calcVals.push(...vals);
         calcDone = true;
         calcTotal = u.input?.total != null ? Math.round(num(u.input.total) * 100) : null;
+        calcItems = vals.map((v) => Math.round(v * 100));
         calcSkipped = /\nНе посчитаны — /.test(result);
       }
       if (u.name === 'calc_payments') {
@@ -1499,10 +1523,16 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   // Расчёт покрыл только часть пакета: итог, переданный в calc_payments, — одно из слагаемых суммы, которую модель сама
   // сложила через sum_check (итоги инвойсов одной CMR), или часть позиций не посчитана. Живой прогон 18.09.2026 (Keramin):
   // посчитан один инвойс из трёх (38 419,17 из 44 061,70 EUR), и ответ просил пользователя «добавить платежи» по остальным.
-  let calcTotal = null, calcSkipped = false, partialAsked = false;
+  let calcTotal = null, calcItems = [], calcSkipped = false, partialAsked = false;
   const sumParts = [];
   const partialCalc = () => {
-    const whole = calcTotal ? sumParts.find((p) => p.parts.length >= 2 && p.parts.includes(calcTotal) && p.sum > calcTotal) : null;
+    // Остальные слагаемые — позиции самого расчёта: это строка, уже вошедшая в итог, а не другой инвойс (живой прогон
+    // 18.09.2026: 76 743,17 + 139,01 «аренды склада», которая в итог 76 743,17 и входит).
+    const whole = calcTotal ? sumParts.find((p) => {
+      const at = p.parts.indexOf(calcTotal);
+      if (p.parts.length < 2 || at < 0 || p.sum <= calcTotal) return false;
+      return !p.parts.filter((_, i) => i !== at).every((v) => calcItems.includes(v));
+    }) : null;
     const fmt = (cents) => (cents / 100).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return [whole ? `расчёт выполнен на ${fmt(calcTotal)}, а по sum_check документы пакета — ${fmt(whole.sum)}` : '',
       calcSkipped ? 'в расчёте есть непосчитанные позиции' : ''].filter(Boolean).join(', ');
@@ -1597,7 +1627,8 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
           again && incomplete.length ? `в расчёте есть позиции с кодами ${incomplete.map((code) => checker().fmtCode(code)).join(', ')}, а в ответе их нет — `
             + 'таблицу платежей по кодам бери из расчёта целиком, со всеми строками' : '',
           needCalc ? 'в вопросе просили посчитать платежи, а расчёта нет — вызови calc_payments по стоимостям документов (строки как есть '
-            + 'и total); сомнительные места назови отдельно, но расчёт не откладывай и не проси пользователя указать, что считать' : '',
+            + 'и total); сомнительные места назови отдельно, но расчёт не откладывай и не проси пользователя указать, что считать. '
+            + 'Если стоимости в документах нет (сертификат, CMR без цены), не вызывай расчёт, а скажи, что для него нужен инвойс' : '',
           askPartial ? `${partial} — посчитай весь пакет одним вызовом calc_payments: items всех инвойсов, для непосчитанных позиций — `
             + 'действующий код из вариантов в выдаче, total — сумма итогов через sum_check; не проси пользователя досчитать остальное' : '',
         ].filter(Boolean).join('; ') + '. Затем верни исправленный ответ целиком, без упоминания этой проверки.' });
@@ -1625,4 +1656,4 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   throw Object.assign(new Error('no answer after tool rounds'), { usage });
 }
 
-module.exports = { ask, readPage, reconcileReadings, reconcileWords, flatNumbers, searchBase, calcPayments, groupNotes, sumCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, unknownNumbers, checker, roundCost };
+module.exports = { ask, readPage, pageUnreliable, reconcileReadings, reconcileWords, flatNumbers, searchBase, calcPayments, groupNotes, sumCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, unknownNumbers, checker, roundCost };
