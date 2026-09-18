@@ -139,7 +139,7 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
       await page.fill('#authPassword', 'valid');
       await page.click('#authSubmit');
       await page.locator('#appWrap').waitFor({ state: 'visible' });
-      await page.click('#navAiBtn');
+      await page.locator('#navAiBtn:visible, #tabBar [data-nav=navAiBtn]:visible').first().click();
       await page.locator('#aiInput').waitFor({ state: 'visible' });
 
       // фото документа: читается сразу при прикреплении, вопрос несёт расшифровку, в пузыре — документ
@@ -185,7 +185,7 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
       // переписка переживает перезагрузку вкладки — вместе с документом
       await page.reload();
       await page.locator('#appWrap').waitFor({ state: 'visible' });
-      await page.click('#navAiBtn');
+      await page.locator('#navAiBtn:visible, #tabBar [data-nav=navAiBtn]:visible').first().click();
       await page.locator('.ai-msg.a h4').waitFor();
       assert.equal(await page.evaluate(() => document.querySelectorAll('.ai-msg').length), 2);
       assert.equal(await page.evaluate(() => aiDialogDocs().map((d) => d.name).join()), 'invoice.png');
@@ -234,7 +234,7 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
       await page.fill('#authPassword', 'valid');
       await page.click('#authSubmit');
       await page.locator('#appWrap').waitFor({ state: 'visible' });
-      await page.click('#navAiBtn');
+      await page.locator('#navAiBtn:visible, #tabBar [data-nav=navAiBtn]:visible').first().click();
       await page.locator('#aiInput').waitFor({ state: 'visible' });
 
       // файл прочитан (или отклонён с сообщением); вложения потом снимаются, чтобы не уйти с вопросом
