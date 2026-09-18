@@ -116,6 +116,32 @@ const PREF_FTA=[
    d:'По кодам вне перечня — ставка 0%, по кодам перечня — график ставок по календарным годам; если пошлина по ЕТТ ниже, применяется ЕТТ (п.2 Решения Коллегии ЕЭК №113 от 25.08.2026).',
    w:'График вступает в силу 06.10.2026 — до этой даты приведённые в карточках ставки не применяются.'}
 ];
+// Зона свободной торговли СНГ. Кыргызская Республика не применяет ввозных пошлин к товарам, происходящим со сторон
+// Договора о зоне свободной торговли от 18.10.2011: в части I приложения 1 к Договору против неё стоит «Не применяет»,
+// а п.1 части I приложения 1 к Протоколу с Узбекистаном от 31.05.2013 называет её прямо. Здесь — стороны вне ЕАЭС
+// (члены ЕАЭС — взаимная торговля, LK_EAEU). from — вступление в силу для пары «КР — страна» по Единому реестру
+// правовых актов СНГ (записи 3183 и 3868, прочитаны 18.09.2026). Живой прогон 18.09.2026: без этого помощник
+// посчитал узбекским салфеткам пошлину по ставке ЕТТ (131 тыс. сом) и написал «преференций для Узбекистана нет».
+const CIS_FTA_ACT='Договор о зоне свободной торговли от 18.10.2011, ст.2 и часть I приложения 1 (у Кыргызской Республики — «Не применяет»); ратифицирован Законом КР от 09.12.2013 № 212';
+const CIS_FTA_ORIG='сертификат о происхождении формы СТ-1 по Правилам определения страны происхождения товаров в СНГ от 20.11.2009 (ст.4 Договора)';
+const LK_CIS=[
+  {n:'Узбекистан',flag:'🇺🇿',from:'2017-04-13',doc:'cisFtaUz',
+   act:'Протокол о применении Договора о зоне свободной торговли от 18.10.2011 между его Сторонами и Республикой Узбекистан от 31.05.2013, п.1 части I приложения 1; ратифицирован Законом КР от 01.03.2017 № 37',
+   orig:'сертификат о происхождении по Правилам определения страны происхождения товаров от 24.09.1993 (п.3 ст.2 Протокола)'},
+  {n:'Таджикистан',flag:'🇹🇯',from:'2016-03-19',doc:'cisFta',act:CIS_FTA_ACT,orig:CIS_FTA_ORIG},
+  {n:'Молдова',alt:['Молдавия'],flag:'🇲🇩',from:'2014-01-12',doc:'cisFta',act:CIS_FTA_ACT,orig:CIS_FTA_ORIG},
+  {n:'Украина',flag:'🇺🇦',from:'2014-01-12',doc:'cisFta',act:CIS_FTA_ACT,orig:CIS_FTA_ORIG}
+];
+// Акты пишут «Республика Узбекистан», пользователь и модель — «из Узбекистана», «Украины»: кроме начала слова
+// совпадает и основа названия с окончанием падежа (не длиннее двух букв), а «Республика …» — целиком.
+function cisCountry(txt){
+  const q=prefNormC(txt).replace(/^республика/,'');
+  if(q.length<3)return null;
+  return LK_CIS.find(x=>[x.n].concat(x.alt||[]).some(n=>{
+    const stem=prefNormC(n).replace(/[аяыиоеу]$/,'');
+    return prefCountryHit(n,q)||(q.startsWith(stem)&&q.length<=stem.length+2);
+  }))||null;
+}
 function prefNormC(s){return (s||'').toLowerCase().replace(/ё/g,'е').replace(/[^a-zа-я0-9]/g,'')}
 // Слово-в-начале плюс вхождение для запросов от пяти знаков: «мали» не должно
 // находить Малави, а «котдивуар» и «тиморлесте» — должны, хотя официальное
@@ -155,6 +181,11 @@ function docLink(label,url){return url?`<a href="${esc(url)}" target="_blank" re
 // но официальная прямая ссылка не была найдена (сайт-источник плохо индексируется/не отдаёт статический текст).
 const DOC_SOURCES={
   tkEaes:'https://eec.eaeunion.org/upload/iblock/93c/TK-EAES.pdf',
+  cisFta:'https://cis.minsk.by/reestrv2/doc/3183',
+  cisFtaUz:'https://cis.minsk.by/reestrv2/doc/3868',
+  cisOrigin:'https://cis.minsk.by/reestrv2/doc/6710',
+  krLaw212:'https://cbd.minjust.gov.kg/4-4964/edition/482462/ru',
+  krLaw37:'https://cbd.minjust.gov.kg/4-2356/edition/782858/ru',
   trois:'https://customs.gov.kg/site/ru/master/customskg/_/attachment/inline/253d6317-97a6-46df-ba64-1f48134ae572:74dabc7b819147c0861cc132cd894ee32d21492a/21%20%D0%B0%D0%B2%D0%B3%D1%83%D1%81%D1%82%D0%B0%202026%20%D0%B3%D0%BE%D0%B4%D0%B0%20%D0%A2%D0%A0%D0%9E%D0%98%D0%A1%20%D0%93%D0%A2%D0%A1.pdf',
   troisPage:'https://customs.gov.kg/site/ru/master/customskg/intellektualdyk-menchik-ukuktaryn-korgoo',
   trois694:'https://cbd.minjust.gov.kg/7-1580/edition/641478/ru',
@@ -2701,8 +2732,8 @@ function aiAppend(m){
   d.scrollIntoView({block:'nearest',behavior:'smooth'});
   return d;
 }
-const AI_STEP={search_base:s=>'🔎 Ищу в базе: '+(s.query||''),calc_payments:s=>'🧮 Считаю платежи по '+(s.code||''),
-  group_notes:s=>'📖 Читаю примечания к группе '+(s.chapter||''),verify:s=>'✔ Проверяю коды: '+((s.codes||[]).join(', ')),
+const AI_STEP={search_base:s=>'🔎 Ищу в базе: '+(s.query||''),calc_payments:s=>'🧮 Считаю платежи '+(s.items&&s.items.length?'по позициям: '+s.items.length:'по '+(s.code||'')),
+  group_notes:s=>'📖 Читаю примечания к группе '+(s.chapter||''),verify:s=>'✔ Проверяю '+[(s.codes||[]).length?'коды: '+s.codes.join(', '):'',(s.numbers||[]).length?'числа: '+s.numbers.slice(0,6).join('; '):''].filter(Boolean).join(', '),
   sum_check:s=>'🧾 Сверяю итог документа: строк '+((s.rows||s.amounts||[]).length),
   read_images:s=>'📄 Читаю документ: изображений '+(s.count||'')};
 async function aiRate(box,rating,comment){
@@ -3016,6 +3047,8 @@ function lkCountry(txt){
   const alias=PREF_C_ALIAS[q];
   for(const n of LK_EAEU)if(n===alias||prefCountryHit(n,q))return{name:n,names:[n],eaeu:true};
   for(const n of LK_CN)if(prefCountryHit(n,q))return{name:'Китай (КНР)',names:LK_CN};
+  const cis=cisCountry(raw);
+  if(cis)return{name:cis.n,names:[cis.n].concat(cis.alt||[]),cis:cis};
   const pref=findPrefByCountry(raw);
   if(pref.length)return{name:pref.map(p=>p.name).join(', '),names:pref.map(p=>p.name),
     estp:pref.some(p=>p.dev||p.ldc),fta:pref.some(p=>p.fta),pref:pref};
@@ -3071,6 +3104,7 @@ function lkHeadHtml(dir,cty){
   if(cty){
     if(cty.eaeu)ch=`<div class="calc-warn w-blue">Страна: <b>${esc(cty.name)}</b> — государство-член ЕАЭС. Это взаимная торговля: ввозная пошлина ЕТТ, тарифные преференции и защитные меры к товару Союза не применяются, косвенные налоги взимает налоговый орган, а не таможня. Тарифные карточки убраны вниз; запреты, разрешительный порядок и контроль остаются.</div>`;
     else if(dir!=='im')ch=`<div class="calc-warn w-blue">Страна: <b>${esc(cty.name)}</b>. При выбранном направлении база отбирает карточки по направлению: страна учитывается только при ввозе — тарифные преференции и защитные меры привязаны к происхождению товара.</div>`;
+    else if(cty.cis)ch=`<div class="calc-warn w-blue">Страна происхождения: <b>${esc(cty.name)}</b> — сторона зоны свободной торговли СНГ: Кыргызская Республика не применяет ввозную пошлину к товарам, происходящим из этой страны, с ${cty.cis.from.split('-').reverse().join('.')} (${esc(cty.cis.act)}). Условие — ${esc(cty.cis.orig)}. НДС, акцизы, запреты, разрешения и контроль — как при обычном ввозе.</div>`;
     else if(cty.estp||cty.fta)ch=`<div class="calc-warn w-blue">Страна происхождения: <b>${esc(cty.name)}</b>${cty.estp?' — пользователь единой системы тарифных преференций ЕАЭС':''}${cty.fta?(cty.estp?', и с ней действует собственное соглашение с ЕАЭС':' — с ней действует собственное соглашение с ЕАЭС'):''}. Преференция даётся не стране, а товару этой страны и требует подтверждения происхождения — карточки ниже показывают, что действует по вашему коду.</div>`;
     else ch=`<div class="calc-warn w-blue">Страна происхождения: <b>${esc(cty.name)}</b> — не пользователь ЕСТП и не партнёр ЕАЭС по соглашению о свободной торговле, поэтому преференциальные ставки к товару не применяются и их карточки убраны вниз. Если страна названа иначе (например, официальным именем), уточните ввод.</div>`;
   }
@@ -3156,7 +3190,7 @@ function lkDirChanged(){
 // ставка ЕТТ без преференций).
 function lkCountryOptions(){
   const seen={};let out='';
-  for(const n of LK_EAEU.concat(['Китай'],PREF_FTA.map(f=>f.n),PREF_DEV_C,PREF_LDC_C)){
+  for(const n of LK_EAEU.concat(['Китай'],LK_CIS.map(x=>x.n),PREF_FTA.map(f=>f.n),PREF_DEV_C,PREF_LDC_C)){
     if(seen[n])continue;seen[n]=1;out+=`<option value="${esc(n)}"></option>`;
   }
   return out;
