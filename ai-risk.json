@@ -7,7 +7,7 @@
     "name": "AI-ассистент сервиса «Customs Assist KG»",
     "url": "https://customsassist.trade",
     "owner": "«Customs Assist KG», Кыргызская Республика, г. Бишкек",
-    "contact": "tshalabaev@gmail.com",
+    "contact": "info@customsassist.trade",
     "purpose": "Ответы на вопросы о классификации товаров по ТН ВЭД ЕАЭС, ставках, мерах регулирования и таможенных платежах по базе сервиса; чтение приложенных пользователем документов",
     "language_model": "DeepSeek (Hangzhou DeepSeek Artificial Intelligence Co., Ltd.)",
     "document_reading": ["DeepSeek", "Google Cloud Vision", "Google Document AI"],
