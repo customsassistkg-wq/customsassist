@@ -1443,7 +1443,7 @@ async function selectCalcCode(code){
   }
   if(redWarns.length){
     html+='<button class="btn" onclick="renderCalcSearch(document.getElementById(\'inp\').value)" style="margin-top:8px">← Назад к выбору кода</button></div>';
-    document.getElementById('calcResult').innerHTML=html;
+    document.getElementById('calcResult').innerHTML=html;iconizeCards(document.getElementById('calcResult'));
     return;
   }
   if(isPassengerCar){
@@ -1460,6 +1460,7 @@ async function selectCalcCode(code){
   }
   html+='</div>';
   document.getElementById('calcResult').innerHTML=html;
+  iconizeCards(document.getElementById('calcResult'));
   renderCalcFormFields(parsed, isPassengerCar);
 }
 
