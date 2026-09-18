@@ -573,6 +573,28 @@ const a = require('../src/services/assistant');
   assert.deepEqual([calls.length, r.unverified], [2, []]);
   console.log('PASS: числа ответа, которых нет в документах, — повторный раунд и пометка; код из документа не выдуман');
 
+  // вызовы инструментов текстом (разметка DSML DeepSeek): одна просьба вызвать как положено, затем ответ (живой прогон 18.09.2026)
+  const dsml = '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="sum_check">\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>';
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: '8517130000' } }]
+    : [{ type: 'text', text: n === 2 ? dsml : 'Итого по инвойсу 25 543,94 EUR.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери инвойс' }], invDocs);
+  assert.equal(calls.length, 3);
+  assert.match(calls[2].messages[calls[2].messages.length - 1].content, /^Служебно: вызовы инструментов пришли текстом/);
+  assert.equal(r.answer, 'Итого по инвойсу 25 543,94 EUR.');
+  // разметка и после просьбы — ошибка «ответ не получен», а не разметка пользователю
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: '8517130000' } }] : [{ type: 'text', text: dsml }]);
+  await assert.rejects(a.ask([{ role: 'user', content: 'Разбери инвойс' }], invDocs), /no answer after tool rounds/);
+  // разговор о документах — 12 раундов и последний без инструментов, без документов — 8
+  calls.length = 0;
+  script = (n) => [{ type: 'tool_use', id: 't' + n, name: 'search_base', input: { query: '8517130000' } }];
+  await assert.rejects(a.ask([{ role: 'user', content: 'Разбери инвойс' }], invDocs), /no answer after tool rounds/);
+  assert.deepEqual([calls.length, calls[12].tool_choice], [13, { type: 'none' }]);
+  calls.length = 0;
+  await assert.rejects(a.ask([{ role: 'user', content: 'Разбери инвойс' }]), /no answer after tool rounds/);
+  assert.deepEqual([calls.length, calls[8].tool_choice], [9, { type: 'none' }]);
+  console.log('PASS: вызовы инструментов текстом не уходят пользователю; разговору о документах — 12 раундов');
+
   // ── чтение страницы: положение, предел ответа, второе распознавание ──
   {
     const bodies = [];

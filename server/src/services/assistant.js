@@ -15,6 +15,12 @@ const PROMPT = fs.readFileSync(path.join(__dirname, '../assistant-prompt.md'), '
 const API_URL = (process.env.AI_BASE_URL || 'https://api.deepseek.com/anthropic').replace(/\/+$/, '') + '/v1/messages';
 const MODEL = process.env.AI_MODEL || 'deepseek-chat';
 const MAX_TOOL_ROUNDS = 8;
+// Разговор о документах: пакет на 12 кодов со сверками (sum_check, итог документа, поиск кодов ЕС) в восемь раундов
+// не укладывался — живой прогон 18.09.2026 кончился раундом без инструментов посреди работы.
+const MAX_TOOL_ROUNDS_DOCS = 12;
+// DeepSeek в раунде без инструментов (а иногда и в обычном) пишет вызовы текстом своей разметкой:
+// «<｜｜DSML｜｜ invoke name="sum_check">…». Пользователю такой «ответ» уходил как есть.
+const DSML_RE = /<[｜|]{1,2}\s*DSML/;
 const MAX_TOOL_CHARS = 40000; // полная выдача по коду — до ~31 тыс. знаков; 14 тыс. отрезали сертификацию
 const DIRS = { im: 'ввоз', ex: 'вывоз', tr: 'транзит' };
 
@@ -1276,12 +1282,14 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
     messages.push({ role: 'assistant', content: uses }, { role: 'user', content: results });
     firstRound = 1;
   }
-  for (let round = firstRound; round <= MAX_TOOL_ROUNDS; round++) {
+  const maxRounds = docTexts.length ? MAX_TOOL_ROUNDS_DOCS : MAX_TOOL_ROUNDS;
+  let dsmlRetried = false;
+  for (let round = firstRound; round <= maxRounds; round++) {
     // Первый раунд — только поиск: ответить, не заглянув в базу, модель не может.
     // Именно type:'tool' с именем: DeepSeek молча игнорирует type:'any' (проверено
     // 16.09.2026 — на «ping» пришёл текст без вызова), а именованный выбор соблюдает.
     // Последний раунд — без инструментов, чтобы ответ пришёл в любом случае.
-    const choice = round === 0 ? { type: 'tool', name: 'search_base' } : (round === MAX_TOOL_ROUNDS ? { type: 'none' } : null);
+    const choice = round === 0 ? { type: 'tool', name: 'search_base' } : (round === maxRounds ? { type: 'none' } : null);
     let data;
     // Упавший на середине вопрос уже стоил денег: расход прошлых раундов уходит с ошибкой в журнал.
     try {
@@ -1306,7 +1314,24 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
     const content = data.content || [];
     const uses = content.filter((b) => b.type === 'tool_use');
     if (!uses.length) {
-      const answer = content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim() || 'Не удалось получить ответ.';
+      let answer = content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim() || 'Не удалось получить ответ.';
+      // Вызовы текстом: один раз просим вызвать инструменты как положено, а в последнем раунде — ответить по уже
+      // полученному (ещё одна попытка без инструментов). Не вышло — ответом остаётся текст до разметки, а если его
+      // нет — ошибка «ответ не получен», но не разметка.
+      if (DSML_RE.test(answer)) {
+        const before = answer.slice(0, answer.search(DSML_RE)).trim();
+        if (!dsmlRetried) {
+          dsmlRetried = true;
+          messages.push({ role: 'assistant', content: before || 'Нужны ещё вызовы инструментов.' });
+          messages.push({ role: 'user', content: round < maxRounds
+            ? 'Служебно: вызовы инструментов пришли текстом и не выполнены. Вызови нужные инструменты обычным способом или, если данных хватает, дай итоговый ответ.'
+            : 'Служебно: инструменты больше недоступны. Дай итоговый ответ по уже полученным результатам, без вызовов инструментов; что не успел проверить — назови одной строкой.' });
+          if (round === maxRounds) round--;
+          continue;
+        }
+        if (!before) throw Object.assign(new Error('no answer after tool rounds'), { usage });
+        answer = before;
+      }
       // Код в ответе, которого не было ни в вопросе, ни в выдаче инструментов,
       // модель взяла из памяти. Один раз просим проверить; если снова — помечаем.
       const unverified = [...codesIn(answer)].filter((code) => !seen.has(code));
@@ -1314,7 +1339,7 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
       const numbers = docTexts.length
         ? unknownNumbers(answer, [...docTexts, ...seenText, ...history.filter((m) => m.role === 'user').map((m) => m.content)].join('\n'))
         : [];
-      if ((unverified.length || numbers.length) && !verified && round < MAX_TOOL_ROUNDS) {
+      if ((unverified.length || numbers.length) && !verified && round < maxRounds) {
         verified = true;
         onStep({ tool: 'verify', input: { codes: unverified, numbers } });
         messages.push({ role: 'assistant', content: answer });
