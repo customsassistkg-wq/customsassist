@@ -325,6 +325,11 @@ const a = require('../src/services/assistant');
   assert.match(t, /^⚠ Сумма стоимостей позиций 1\s000,00 USD не равна итогу документа 1\s200,00 USD[^]*Расчёт не выполнен/);
   assert.doesNotMatch(t, /Итого:/);
   assert.doesNotMatch(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD' }), /Сумма стоимостей/);
+  // итог, которого нет ни в документах, ни в выдаче sum_check, не принимается (Keramin: 54 537,70, посчитанное в уме)
+  const two = { currency: 'USD', total: 1100, items: [{ code: '8517130000', value: 600 }, { code: '4016930005', value: 500 }] };
+  assert.match(await a.calcPayments(two, { totalKnown: (x) => x === 1000 }), /^Итог 1\s100,00 USD не найден ни в документах, ни в выдаче sum_check — расчёт не выполнен/);
+  assert.match(await a.calcPayments(two, { totalKnown: (x) => x === 1100 }), /Всего к уплате/);
+  assert.match(await a.calcPayments(two), /Всего к уплате/);                                   // без документов итог не проверяется
   console.log('PASS: calc_payments — действующие коды вместо «не найден», сверка с итогом документа');
 
   // ЗСТ СНГ: товар узбекского происхождения — пошлина 0% с основанием, НДС и сбор как обычно (живой прогон 18.09.2026)
@@ -652,7 +657,17 @@ const a = require('../src/services/assistant');
   assert.equal(calls.length, 4);
   assert.match(calls[2].messages[calls[2].messages.length - 1].content, /в вопросе просили посчитать платежи, а расчёта нет/);
   assert.equal(r.answer, 'Посчитано.');
-  console.log('PASS: полнота ответа — коды расчёта, пропавшие из таблицы, возвращаются; расчёт, о котором просили, обязателен');
+  // в разговоре о документах итог сверяется с ними и с выдачей sum_check, но не с выдачей самого расчёта
+  const invTotal = { docs: [{ name: 'inv.pdf', pages: 1, text: 'Invoice A total 600,00 USD\nInvoice B total 500,00 USD' }] };
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: { ...two, total: 1000 } }]
+    : n === 2 ? [{ type: 'tool_use', id: 't2', name: 'sum_check', input: { amounts: [600, 500], total: 1100 } }]
+    : n === 3 ? [{ type: 'tool_use', id: 't3', name: 'calc_payments', input: two }]
+    : [{ type: 'text', text: 'Готово.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери инвойсы' }], invTotal);
+  assert.match(calls[1].messages[calls[1].messages.length - 1].content[0].content, /^Итог 1\s000,00 USD не найден ни в документах/);
+  assert.match(calls[3].messages[calls[3].messages.length - 1].content[0].content, /Всего к уплате/); // 1 100 — из выдачи sum_check
+  console.log('PASS: полнота ответа — коды расчёта, пропавшие из таблицы, возвращаются; расчёт, о котором просили, обязателен; итог — из документов');
 
   // ── чтение страницы: положение, предел ответа, второе распознавание ──
   {

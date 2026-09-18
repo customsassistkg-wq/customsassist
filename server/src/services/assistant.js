@@ -404,14 +404,26 @@ const sumsMismatch = (values, total) => total != null && num(total) > 0
 const TOTAL_FIX = '\nРасчёт не выполнен: платежи по несходящимся позициям неверны. Передай в items все строки документа как есть, '
   + 'каждую со своей суммой, — одинаковые коды сервер сложит сам; если строки до скидки, а итог после неё, бери стоимости после скидки '
   + '(например, таблицу итогов по кодам). Если разница объяснима (бесплатные позиции со стоимостью для таможни, строки другого '
-  + 'инвойса пакета) — назови её пользователю и передай total, равный сумме позиций.';
+  + 'инвойса пакета) — сложи через sum_check напечатанные итоги с этими суммами, передай полученный total и назови разницу пользователю.';
+// Итог — число из документов, реплик пользователя или выдачи sum_check, но не из выдачи самого расчёта. Живой прогон
+// 18.09.2026 (Keramin): модель передала верные 18 строк, но итог трёх инвойсов посчитала в уме — 54 537,70 вместо
+// 44 061,70; расчёт отказал, и тогда она убрала три строки и взяла «сумму позиций» из отказа за итог — пакет посчитан
+// без 2 442 EUR. hint.totalKnown задаёт ask(), когда в разговоре есть документы.
+function totalUnknown(total, cur, hint) {
+  if (total == null || !(num(total) > 0) || !hint || !hint.totalKnown || hint.totalKnown(num(total))) return '';
+  return `Итог ${num(total).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur} не найден ни в документах, `
+    + 'ни в выдаче sum_check — расчёт не выполнен. Передай в total итог, как он напечатан; если инвойсов несколько, сложи их '
+    + 'напечатанные итоги (и стоимости бесплатных позиций для таможни) через sum_check и передай полученную сумму. В уме не складывай.';
+}
 const curOf = (currency) => String(currency || 'USD').toUpperCase().replace('KGS', 'СОМ').replace('SOM', 'СОМ');
 
 // Вход модели. Внутренние флаги сюда не попадают: одна позиция — calcOne, инвойс — calcBatch.
-async function calcPayments(input) {
+async function calcPayments(input, hint = {}) {
   const { items, code, value, total } = input || {};
-  if (Array.isArray(items) && items.length) return calcBatch(items, input);
+  if (Array.isArray(items) && items.length) return calcBatch(items, input, hint);
   if (code == null && value == null) return 'Передай code и value (одна позиция) или items (весь инвойс).';
+  const unknown = totalUnknown(total, curOf(input.currency), hint);
+  if (unknown) return unknown;
   if (sumsMismatch([value], total)) return totalLine([value], total, curOf(input.currency)) + TOTAL_FIX;
   const r = await calcOne(input, false);
   if (typeof r === 'string') return r;
@@ -539,15 +551,17 @@ async function calcOne({ code, value, currency, quantity, country: countryName, 
 // computeBatch калькулятора в режиме «по стоимости»; позиция со своим transport его сохраняет. Из позиции берутся
 // только её поля: валюта, дата и условие поставки — общие, иначе итог сложил бы сомы по разным курсам.
 const ITEM_KEYS = ['code', 'value', 'quantity', 'country', 'transport'];
-async function calcBatch(items, { currency, country, date, incoterm, transport, total }) {
+async function calcBatch(items, { currency, country, date, incoterm, transport, total }, hint = {}) {
   const c = checker();
   // Итог документа обязателен: без него пакет из трёх инвойсов посчитан по одному и выдан за весь (живой прогон
   // 18.09.2026, 782 тыс. сом вместо 880 тыс.), — сверка с ним ловит и пропущенную позицию, и посчитанную дважды.
   if (items.length > 1 && total == null) {
-    return 'Передай total — итог документа, как напечатан; несколько инвойсов — сумма их итогов, бесплатные позиции со стоимостью '
-      + 'для таможни — прибавь. Документа нет — сумма стоимостей позиций. Сервер сверит с ним сумму позиций, чтобы ни одна не выпала '
-      + 'и не посчиталась дважды. Повтори вызов с total.';
+    return 'Передай total — итог документа, как напечатан; несколько инвойсов — сложи их итоги через sum_check, бесплатные позиции со '
+      + 'стоимостью для таможни — прибавь. Документа нет — сумма стоимостей позиций. Сервер сверит с ним сумму позиций, чтобы ни одна '
+      + 'не выпала и не посчиталась дважды. Повтори вызов с total.';
   }
+  const unknown = totalUnknown(total, curOf(currency), hint);
+  if (unknown) return unknown;
   const check = totalLine(items.map((it) => it && it.value), total, curOf(currency));
   if (sumsMismatch(items.map((it) => it && it.value), total)) return check + TOTAL_FIX;
   const totalValue = items.reduce((s, it) => s + num(it && it.value), 0);
@@ -1319,7 +1333,7 @@ function sumCheck({ amounts, total, rows } = {}) {
 async function runTool(u, hint) {
   if (u.name === 'sum_check') return sumCheck(u.input);
   if (u.name === 'search_base') return searchBase(u.input, hint);
-  if (u.name === 'calc_payments') return calcPayments(u.input);
+  if (u.name === 'calc_payments') return calcPayments(u.input, hint);
   if (u.name === 'group_notes') return groupNotes(u.input);
   return 'Неизвестный инструмент.';
 }
@@ -1392,6 +1406,12 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   for (const t of docTexts) for (const code of codesIn(t)) seen.add(code);
   const question = history[history.length - 1].content;
   const hint = { question };
+  // Итог для calc_payments — из документов, реплик пользователя и выдачи sum_check (см. totalUnknown).
+  const sumTexts = [];
+  if (docTexts.length) {
+    hint.totalKnown = (t) => !unknownNumbers(t.toFixed(2).replace('.', ','),
+      [...docTexts, ...sumTexts, ...history.filter((m) => m.role === 'user').map((m) => m.content)].join('\n')).length;
+  }
   const runUses = async (uses) => {
     const results = [];
     for (const u of uses) {
@@ -1399,6 +1419,7 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
       let result;
       try { result = String(await runTool(u, hint)); } catch (e) { console.error('assistant tool', u.name, e); result = 'Ошибка инструмента.'; }
       if (u.name === 'search_base') searched.push(String(u.input?.query || ''));
+      if (u.name === 'sum_check') sumTexts.push(result);
       // Коды посчитанных позиций последнего расчёта: ответ, где они перечислены, должен перечислить все (см. ниже).
       if (u.name === 'calc_payments' && /\nВсего к уплате: |\nИтого: /.test(result)) calcDone = true;
       if (u.name === 'calc_payments') {
