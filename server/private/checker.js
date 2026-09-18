@@ -1122,7 +1122,7 @@ async function renderAutoCalcPanel(){
   html+='<div class="calc-row" id="acUsdRateRow" style="display:none"><div class="calc-field"><label id="acCurRateLbl">Курс $ → сом (для стоимости авто)</label><input type="number" id="acCurRate" min="0" step="0.01" placeholder="напр. 87.00"/></div></div>';
   html+='<button class="calc-btn" onclick="runAutoCalc()">Рассчитать</button>';
   html+='<div id="acOut"></div>';
-  html+='<div style="font-size:10px;color:var(--muted);margin-top:10px">Стоимость из прайс-листа — справочный ориентир (ТПО/ИТС/УСИР), фактическая таможенная стоимость определяется по инвойсу/декларации, поэтому её можно скорректировать вручную выше. Электромобили и коммерческий ввоз юрлицом сюда не входят — используйте вкладку «🧮 Калькулятор пошлины» по коду ТН ВЭД.</div>';
+  html+='<div style="font-size:10px;color:var(--muted);margin-top:10px">Стоимость из прайс-листа — справочный ориентир (ТПО/ИТС/УСИР), фактическая таможенная стоимость определяется по инвойсу/декларации, поэтому её можно скорректировать вручную выше. Электромобили и коммерческий ввоз юрлицом сюда не входят — используйте раздел «Таможенный калькулятор» по коду ТН ВЭД.</div>';
   html+='</div>';
   const panel=document.getElementById('autoCalcPanel');
   if(panel){
