@@ -628,10 +628,16 @@ const a = require('../src/services/assistant');
   calls.length = 0;
   script = (n) => [{ type: 'tool_use', id: 't' + n, name: 'search_base', input: { query: '8517130000' } }];
   await assert.rejects(a.ask([{ role: 'user', content: 'Разбери инвойс' }], invDocs), /no answer after tool rounds/);
-  assert.deepEqual([calls.length, calls[12].tool_choice], [13, { type: 'none' }]);
+  assert.deepEqual([calls.length, calls[12].tool_choice, calls[13].tool_choice], [14, { type: 'none' }, { type: 'none' }]);
   calls.length = 0;
   await assert.rejects(a.ask([{ role: 'user', content: 'Разбери инвойс' }]), /no answer after tool rounds/);
-  assert.deepEqual([calls.length, calls[8].tool_choice], [9, { type: 'none' }]);
+  assert.deepEqual([calls.length, calls[8].tool_choice], [10, { type: 'none' }]);
+  // вызов в последнем раунде вопреки «none» (живой прогон 18.09.2026, Würth) не выполняется — ещё одна попытка ответить
+  calls.length = 0;
+  script = (n) => (n <= 13 ? [{ type: 'tool_use', id: 't' + n, name: 'search_base', input: { query: '8517130000' } }] : [{ type: 'text', text: 'Ответ.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери инвойс' }], invDocs);
+  assert.equal(r.answer, 'Ответ.');
+  assert.match(calls[13].messages[calls[13].messages.length - 1].content[0].content, /^Не выполнено: вызовы инструментов исчерпаны/);
   console.log('PASS: вызовы инструментов текстом не уходят пользователю; разговору о документах — 12 раундов');
 
   // полнота: ответ перечислил два кода расчёта из трёх — повторный раунд; сводка без таблицы — без него
@@ -661,13 +667,40 @@ const a = require('../src/services/assistant');
   const invTotal = { docs: [{ name: 'inv.pdf', pages: 1, text: 'Invoice A total 600,00 USD\nInvoice B total 500,00 USD' }] };
   calls.length = 0;
   script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: { ...two, total: 1000 } }]
-    : n === 2 ? [{ type: 'tool_use', id: 't2', name: 'sum_check', input: { amounts: [600, 500], total: 1100 } }]
+    : n === 2 ? [{ type: 'tool_use', id: 't2', name: 'sum_check', input: { amounts: [600, 500] } }]
     : n === 3 ? [{ type: 'tool_use', id: 't3', name: 'calc_payments', input: two }]
     : [{ type: 'text', text: 'Готово.' }]);
   r = await a.ask([{ role: 'user', content: 'Разбери инвойсы' }], invTotal);
   assert.match(calls[1].messages[calls[1].messages.length - 1].content[0].content, /^Итог 1\s000,00 USD не найден ни в документах/);
   assert.match(calls[3].messages[calls[3].messages.length - 1].content[0].content, /Всего к уплате/); // 1 100 — из выдачи sum_check
-  console.log('PASS: полнота ответа — коды расчёта, пропавшие из таблицы, возвращаются; расчёт, о котором просили, обязателен; итог — из документов');
+  // sum_check складывает только напечатанное (Würth: строка удвоена — 4 032 × 213,36 = 8 602,68), и его отказ числа не узаконивает
+  assert.match(a.sumCheck({ rows: [{ quantity: 4032, price: 213.36, per: 100, amount: 8602.68 }] }, { numberKnown: (x) => !['4032', '8602,68'].includes(x) }),
+    /^Не выполнено: чисел 8602,68; 4032 нет в документах/);
+  assert.match(a.sumCheck({ amounts: [600, 500] }, { numberKnown: () => true }), /^Сумма 2 чисел: 1\s100,00/);
+  // total, посчитанный моделью, — без сверки и без его числа в выдаче (иначе он стал бы «известным» для calc_payments)
+  t = a.sumCheck({ amounts: [600, 500], total: 1150 }, { numberKnown: (x) => x !== '1150,00' });
+  assert.match(t, /^Сумма 2 чисел: 1\s100,00\. Переданного total в документах нет — с ним не сверено/);
+  assert.doesNotMatch(t, /1\s150/);
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'sum_check', input: { amounts: [600, 700] } }]
+    : n === 2 ? [{ type: 'tool_use', id: 't2', name: 'calc_payments', input: { ...two, total: 1300 } }]
+    : [{ type: 'text', text: 'Готово.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери инвойсы' }], invTotal);
+  assert.match(calls[1].messages[calls[1].messages.length - 1].content[0].content, /^Не выполнено: чисел 700,00 нет в документах/);
+  assert.match(calls[2].messages[calls[2].messages.length - 1].content[0].content, /^Итог 1\s300,00 USD не найден/);
+  // второй расчёт других позиций — другой инвойс той же поставки: сбор один, расчёты не складываются (Keramin)
+  calls.length = 0;
+  const one = (v) => ({ code: '8517130000', value: v, currency: 'USD' });
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: one(600) }]
+    : n === 2 ? [{ type: 'tool_use', id: 't2', name: 'calc_payments', input: one(500) }]
+    : n === 3 ? [{ type: 'tool_use', id: 't3', name: 'calc_payments', input: one(500) }]
+    : [{ type: 'text', text: 'Готово.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери инвойсы' }], invTotal);
+  const res = (i) => calls[i].messages[calls[i].messages.length - 1].content[0].content;
+  assert.doesNotMatch(res(1), /уже посчитаны другие позиции/);
+  assert.match(res(2), /⚠ В этом разговоре уже посчитаны другие позиции/);
+  assert.doesNotMatch(res(3), /уже посчитаны другие позиции/);                                // пересчёт тех же позиций
+  console.log('PASS: полнота ответа — коды расчёта, пропавшие из таблицы, возвращаются; расчёт, о котором просили, обязателен; итог и входы sum_check — из документов; одна поставка — один расчёт');
 
   // ── чтение страницы: положение, предел ответа, второе распознавание ──
   {
