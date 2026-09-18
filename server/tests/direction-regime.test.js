@@ -68,3 +68,22 @@ console.log('PASS: дата проверки доходит до реестра 
 assert.ok(/data-nocode="1"/.test(cards('0102290000')[0].attrs), 'кода нет — первая карточка');
 assert.ok(!cards('0102291000').some((c) => /data-nocode/.test(c.attrs)), 'действующий код — без пометки');
 console.log('PASS: несуществующий код');
+
+// ── вторая партия (18.09.2026, ночь): уголь по стране назначения, НКС по закону, транзит у 2.1/2.3, реестр, НБ НДС, калькулятор ──
+{
+  const coal = ban('2701121000')[0];
+  assert.ok(coal && /data-except-cty="китай кнр"/.test(coal.attrs) && /data-except-cty-note="[^"]*Иркештам/.test(coal.attrs), 'уголь: исключение по КНР в атрибуте');
+  assert.match(coal.body, /Исключение по стране назначения:<\/strong> п\.1 ПКМ КР № 430/);
+  const nks = cards('8411110000').find((c) => /Список 5/.test(c.body));
+  assert.match(nks.body, /экспорт, импорт, реэкспорт и транзит/i, 'НКС: ст. 11 Закона № 30');
+  const ozone = cards('2903710000').filter((c) => /Разрешительный порядок ЕАЭС/.test(c.body));
+  assert.ok(ozone.some((c) => /data-dir="im ex tr"/.test(c.attrs) && /Транзит:<\/strong>/.test(c.body)), 'раздел 2.1 — и транзит');
+  const uni = cards('2620110000').find((c) => /Односторонние меры/.test(c.body));
+  assert.ok(uni && /data-partial="1"/.test(uni.attrs), 'реестр ЕЭК: совпадение «из» — проверка');
+  const nb = cards('6809110000').find((c) => /налоговая база НДС/.test(c.body));
+  assert.ok(nb && /data-eaeu-only="1"/.test(nb.attrs), 'НБ НДС — только ввоз из ЕАЭС');
+  const w = b.calcWarnings('2309903100');
+  assert.ok(w.some((x) => x.level === 'yellow' && /частично/.test(x.text)) && !w.some((x) => x.level === 'red'), 'калькулятор: «из» — жёлтое, не красное');
+  assert.ok(b.calcWarnings('2404120000').some((x) => x.level === 'red'), 'калькулятор: точный запрет — красное');
+}
+console.log('PASS: уголь по стране, НКС по закону, транзит 2.1, реестр, НБ НДС, калькулятор');

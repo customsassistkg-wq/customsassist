@@ -207,6 +207,11 @@ function filterCards(html, dir, cty, c, ettZero, topics = new Set()) {
     const dd = attr('data-dir');
     if (dd && dd.split(' ').indexOf(dir) < 0) continue;
     if (dir === 'im' && cty && cty.eaeu && attr('data-kind') === 'tariff') continue;
+    // Те же признаки, что читает lkFilter с 18.09.2026: Единый перечень — только с третьими странами,
+    // запрет с исключением для товаров из ЕАЭС, мера только для ввоза из ЕАЭС.
+    if (cty && cty.eaeu && attr('data-scope') === 'third') continue;
+    if (dir === 'im' && cty && cty.eaeu && attr('data-except-eaeu')) continue;
+    if (dir === 'im' && cty && !cty.eaeu && attr('data-eaeu-only')) continue;
     if (dir === 'im' && cty && attr('data-cty') && !c.lkCtyMatch(attr('data-cty'), cty)) continue;
     if (ettZero && /class="card c-ett"/.test(head) && attr('data-cty')) continue;
     const kind = cardKind(card);
