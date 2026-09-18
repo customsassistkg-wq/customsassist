@@ -549,10 +549,8 @@
 
   /* Экран входа в светлой теме */
   [data-theme="light"] #authScreen{--ac-ink:#232A38;--ac-dim:#545C6C;--ac-line:rgba(20,28,48,.14);--ac-field:rgba(255,255,255,.82)}
-  [data-theme="light"] .auth-screen{background:radial-gradient(900px 620px at 12% -10%,rgba(91,108,255,.13),transparent 62%),radial-gradient(760px 620px at 104% 12%,rgba(47,107,255,.10),transparent 58%),radial-gradient(900px 700px at 50% 120%,rgba(120,86,214,.09),transparent 60%),linear-gradient(160deg,#EFF1F6 0%,#E7EAF2 48%,#DFE3EE 100%)}
+  [data-theme="light"] .auth-screen{background:linear-gradient(180deg,#E6F1FB,#DDEBFA)}
   [data-theme="light"] .auth-card{background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(250,251,254,.86));box-shadow:0 24px 60px rgba(24,32,56,.14),inset 0 1px 0 rgba(255,255,255,.9)}
-  [data-theme="light"] .auth-hero-title{background:linear-gradient(180deg,#1C2330 20%,#3E4C78 100%);-webkit-background-clip:text;background-clip:text}
-  [data-theme="light"] .af-ico{background:rgba(255,255,255,.7)}
   [data-theme="light"] .auth-btn.ghost{background:rgba(255,255,255,.72)}
   [data-theme="light"] .auth-eye:hover{background:rgba(20,28,48,.07)}
   [data-theme="light"] .auth-lrow a,[data-theme="light"] .auth-back{color:#2F4BC8}
@@ -592,44 +590,35 @@
      namespace'ятся под #authScreen, чтобы ничего не протекало в светлый интерфейс. */
   #authScreen{--ac-ink:#D7DBE3;--ac-dim:#98A0B0;--ac-brand:#5B6CFF;--ac-brand2:#2F6BFF;--ac-line:rgba(255,255,255,.10);--ac-field:rgba(255,255,255,.05)}
   .auth-screen{position:fixed;inset:0;z-index:50;display:flex;align-items:stretch;justify-content:center;overflow-y:auto;
-    background:radial-gradient(900px 620px at 12% -10%,rgba(96,110,190,.18),transparent 62%),radial-gradient(760px 620px at 104% 12%,rgba(70,110,170,.13),transparent 58%),radial-gradient(900px 700px at 50% 120%,rgba(110,90,160,.12),transparent 60%),linear-gradient(160deg,#1B1F27 0%,#171A21 48%,#14171D 100%);color:var(--ac-ink)}
-  .auth-shell{width:100%;max-width:1180px;margin:auto;display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:40px 32px}
+    background:linear-gradient(180deg,#002562,#011945);color:var(--ac-ink)}
+  .auth-shell{width:100%;margin:auto;display:flex;justify-content:flex-end;align-items:center;padding:40px var(--auth-pad)}
+  .auth-shell>.auth-pane{flex:0 0 420px}
 
-  /* ── Левая половина: о сервисе ── */
-  .auth-hero{position:relative;min-width:0}
-  /* Схема маршрутов лежит фоном за всей левой половиной и заметно приглушена:
-     это подложка, а не иллюстрация, и она не должна спорить с заголовком. */
-  .auth-hero-art{position:absolute;left:-90px;right:-70px;top:-70px;bottom:-70px;width:auto;height:auto;opacity:.42;pointer-events:none}
-  .auth-hero::before{content:'';position:absolute;left:-40px;top:40px;width:420px;height:320px;pointer-events:none;
-    background:radial-gradient(closest-side,rgba(91,108,255,.22),transparent 70%);filter:blur(6px)}
-  .auth-hero-art .acnode{animation:acpulse 3.8s ease-in-out infinite}
-  .auth-hero-art .acnode:nth-child(2){animation-delay:.9s}
-  .auth-hero-art .acnode:nth-child(3){animation-delay:1.8s}
-  .auth-hero-art .acnode:nth-child(4){animation-delay:2.7s}
-  @keyframes acpulse{0%,100%{opacity:.45}50%{opacity:1}}
-  .auth-hero-inner{position:relative}
-  /* Логотип — горизонтальный локап (эмблема и название) на белой плашке, поэтому отдельной текстовой
-     подписи рядом с ним не нужно: она была бы третьим повтором имени на экране.
-     Картинка вшита в файл как data-URI — приложение остаётся одним файлом. */
-  .auth-logo-img{display:block;width:100%;max-width:330px;height:auto;margin-bottom:32px}
-  .auth-hero-title{font-family:var(--head);font-size:46px;line-height:1.08;font-weight:800;letter-spacing:-.03em;margin:0 0 20px;
-    background:linear-gradient(180deg,#EDEFF4 25%,#AEB6C8 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
-  .auth-hero-sub{font-size:15px;line-height:1.65;color:var(--ac-dim);max-width:46ch;margin:0 0 34px}
-  .auth-feats{list-style:none;display:flex;flex-direction:column;gap:14px;margin:0;padding:0}
-  .auth-feats li{display:flex;align-items:flex-start;gap:14px}
-  .af-ico{width:38px;height:38px;flex-shrink:0;border-radius:11px;display:grid;place-items:center;font-size:17px;
-    background:rgba(255,255,255,.06);border:1px solid var(--ac-line)}
-  .af-t{display:block;font-size:14px;font-weight:600;color:var(--ac-ink);line-height:1.35}
-  .af-s{display:block;font-size:12.5px;color:var(--ac-dim);line-height:1.5;margin-top:2px}
+  /* ── Фон входа (18.09.2026): иллюстрация бренда, своя для каждой темы ──
+     Под содержимым — градиент из цветов краёв самой картинки (размытая копия картинки
+     не годится: в неё попадает «KG» и даёт красное пятно под карточкой), над ним ::after
+     (z-index:-1 внутри контекста наложения .auth-screen) — картинка целиком, с растворёнными
+     краями, по центру свободной области
+     слева от карточки. Название в картинке стоит по центру (0,499 ширины) и занимает 0,912
+     её высоты, поэтому высота слоя ограничена шириной свободной области — название никогда
+     не уходит под карточку. Файлы отдельные: браузер качает только картинку своей темы. */
+  #authScreen{--auth-pad:clamp(24px,5vw,72px);--auth-col:calc(420px + var(--auth-pad));
+    --bg-h:min(100vh,calc((100vw - var(--auth-col) - 56px) / .912));--bg-img:url(/login-bg-dark.webp)}
+  [data-theme="light"] #authScreen{--bg-img:url(/login-bg-light.webp)}
+  .auth-screen::after{content:'';position:fixed;z-index:-1;pointer-events:none;background:var(--bg-img) center/100% 100% no-repeat}
+  .auth-screen::after{height:var(--bg-h);width:calc(var(--bg-h) * 1.3333);top:calc(50vh - var(--bg-h) / 2);
+    left:calc((100vw - var(--auth-col)) / 2 - var(--bg-h) * .6657);
+    -webkit-mask-image:linear-gradient(to right,transparent,#000 7%,#000 90%,transparent),linear-gradient(to bottom,transparent,#000 6%,#000 94%,transparent);
+    -webkit-mask-composite:source-in;
+    mask-image:linear-gradient(to right,transparent,#000 7%,#000 90%,transparent),linear-gradient(to bottom,transparent,#000 6%,#000 94%,transparent);
+    mask-composite:intersect}
 
   /* ── Правая половина: карточка ── */
   .auth-pane{display:flex;justify-content:center;min-width:0}
   .auth-card{width:100%;max-width:420px;border-radius:24px;padding:36px 34px 26px;
-    background:linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.03));
-    backdrop-filter:blur(26px) saturate(1.4);-webkit-backdrop-filter:blur(26px) saturate(1.4);
+    background:rgba(23,26,33,.84);
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(26px) saturate(1.4);
     border:1px solid var(--ac-line);box-shadow:0 34px 80px rgba(4,7,20,.55),inset 0 1px 0 rgba(255,255,255,.09)}
-  .auth-card-logo{display:none;margin-bottom:22px}
-  .auth-card-logo .auth-logo-img{max-width:100%;margin:0 auto}
   .auth-card h1{font-family:var(--head);font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0 0 7px;color:var(--ac-ink)}
   .auth-card .sub{font-size:13.5px;line-height:1.55;color:var(--ac-dim);margin:0 0 26px}
 
@@ -683,19 +672,18 @@
   #authScreen .auth-ok{background:rgba(31,163,77,.15);border-color:rgba(31,163,77,.42);color:#7BE0A2}
 
   @media (max-width:980px){
-    .auth-shell{grid-template-columns:1fr;gap:0;padding:24px 18px;max-width:520px}
-    .auth-hero{display:none}
-    .auth-card-logo{display:flex}
+    #authScreen{--m-h:min(75vw,58vh)}
+    .auth-shell{display:block;max-width:520px;padding:calc(var(--m-h) * .79) 18px 24px}
+    .auth-screen::after{height:var(--m-h);width:calc(var(--m-h) * 1.3333);top:0;left:calc(50vw - var(--m-h) * .6667)}
     .auth-card{max-width:none;padding:30px 24px 22px;border-radius:22px}
     .auth-card h1{font-size:22px}
   }
   @media (max-width:400px){
-    .auth-shell{padding:16px 12px}
+    .auth-shell{padding-left:12px;padding-right:12px;padding-bottom:16px}
     .auth-card{padding:26px 18px 20px}
   }
   @media (prefers-reduced-motion:reduce){
     .auth-btn,.auth-field input{transition:none}
-    .auth-hero-art .acnode{animation:none}
   }
   .user-bar{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-3);font-size:11px;color:var(--muted);margin-bottom:var(--space-3)}
   .user-bar b{color:var(--text)}
@@ -835,54 +823,10 @@
   <button class="auth-theme" id="authThemeBtn" type="button" aria-label="Сменить тему" title="Сменить тему"><span class="at-ico">☀️</span><span class="at-txt">Светлая тема</span></button>
   <div class="auth-shell">
 
-    <!-- Левая половина — о сервисе. На узком экране скрывается целиком, а логотип
-         дублируется внутри карточки, чтобы на телефоне он всё равно был сверху. -->
-    <section class="auth-hero">
-      <!-- Декоративная схема торговых маршрутов: узлы и пунктирные связи.
-           Чисто оформление, поэтому спрятана от скринридеров. -->
-      <svg class="auth-hero-art" viewBox="0 0 720 560" preserveAspectRatio="xMidYMid slice" fill="none" aria-hidden="true" focusable="false">
-        <defs>
-          <linearGradient id="acline" x1="0" y1="0" x2="1" y2="0.6">
-            <stop offset="0%" stop-color="#6E7CFF" stop-opacity="0"/>
-            <stop offset="28%" stop-color="#7C8CFF" stop-opacity=".85"/>
-            <stop offset="100%" stop-color="#2F6BFF" stop-opacity="0"/>
-          </linearGradient>
-          <linearGradient id="acline2" x1="0" y1="1" x2="1" y2="0">
-            <stop offset="0%" stop-color="#4B5EF0" stop-opacity="0"/>
-            <stop offset="45%" stop-color="#8FA2FF" stop-opacity=".6"/>
-            <stop offset="100%" stop-color="#8FA2FF" stop-opacity="0"/>
-          </linearGradient>
-        </defs>
-        <g stroke-linecap="round">
-          <path d="M-40 430 C 140 430, 210 210, 400 190 S 640 120, 780 96" stroke="url(#acline)" stroke-width="1.7" stroke-dasharray="9 11"/>
-          <path d="M-40 508 C 170 500, 268 360, 452 340 S 660 296, 780 238" stroke="url(#acline2)" stroke-width="1.3" stroke-dasharray="3 12"/>
-          <path d="M-20 150 C 150 168, 226 286, 404 300 S 660 330, 780 404" stroke="url(#acline2)" stroke-width="1.3" stroke-dasharray="3 12"/>
-          <path d="M-30 300 C 200 296, 330 250, 780 274" stroke="url(#acline)" stroke-width="1" stroke-dasharray="2 14" opacity=".6"/>
-        </g>
-        <g fill="#9DB0FF">
-          <circle class="acnode" cx="400" cy="190" r="3.6"/>
-          <circle class="acnode" cx="452" cy="340" r="3"/>
-          <circle class="acnode" cx="404" cy="300" r="2.6"/>
-          <circle class="acnode" cx="140" cy="430" r="3"/>
-        </g>
-      </svg>
-      <div class="auth-hero-inner">
-        <svg class="auth-logo-img" viewBox="0 0 800 172" role="img" aria-label="Customs Assist KG"><use href="#caLogo"/></svg>
-        <h2 class="auth-hero-title">Проверяйте.<br>Анализируйте.<br>Оформляйте.</h2>
-        <p class="auth-hero-sub">Быстрый доступ к информации по ТН ВЭД, ограничениям, ставкам и таможенным данным Кыргызской Республики.</p>
-        <ul class="auth-feats">
-          <li><span class="af-ico">📗</span><div><span class="af-t">ТН ВЭД КР 2025/2026</span><span class="af-s">Действующая номенклатура, ставки и пояснения</span></div></li>
-          <li><span class="af-ico">⛔</span><div><span class="af-t">Ограничения и запреты</span><span class="af-s">Лицензии, квоты, разрешительный порядок, контроль</span></div></li>
-          <li><span class="af-ico">✨</span><div><span class="af-t">AI-ассистент</span><span class="af-s">Отвечает по базе, считает платежи, читает фото инвойсов</span></div></li>
-        </ul>
-      </div>
-    </section>
-
     <!-- Правая половина: карточка авторизации. Внутри четыре режима, переключает
          showAuthView() — идентификаторы менять нельзя, на них завязан весь JS. -->
     <section class="auth-pane">
       <div class="auth-card">
-        <div class="auth-card-logo"><svg class="auth-logo-img" viewBox="0 0 800 172" role="img" aria-label="Customs Assist KG"><use href="#caLogo"/></svg></div>
 
     <div id="authViewLoading" role="status" aria-live="polite">
       <h1>Открываем приложение</h1>
@@ -1031,14 +975,14 @@
     <div class="sidebar sidebar-left">
 
 
-      <div class="side-panel nav-panel">
+      <div class="side-panel nav-panel">
         <button class="nav-item active" id="navSearchBtn" type="button" onclick="setPage('search');setSearchMode('code')"><span class="nav-ico">🔍</span> Поиск ТН ВЭД</button>
         <button class="nav-item" id="navAiBtn" type="button" onclick="setPage('ai')"><span class="nav-ico"><svg class="ai-mark" width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="aiGradNav" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B5CF6"/><stop offset=".5" stop-color="#3B6BFF"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="13" fill="url(#aiGradNav)"/><path d="M4 15C4 8 8 4 15 4h18c7 0 11 4 11 11v2C33 13 17 13 4 21z" fill="#fff" opacity=".13"/><path d="M22 11c1.2 6.3 4.7 9.8 11 11-6.3 1.2-9.8 4.7-11 11-1.2-6.3-4.7-9.8-11-11 6.3-1.2 9.8-4.7 11-11z" fill="#fff"/><path d="M35 8c.5 2.6 1.9 4 4.5 4.5-2.6.5-4 1.9-4.5 4.5-.5-2.6-1.9-4-4.5-4.5 2.6-.5 4-1.9 4.5-4.5z" fill="#fff" opacity=".85"/><circle cx="34.5" cy="34.5" r="2.2" fill="#fff" opacity=".7"/></svg></span> AI-ассистент</button>
-        <div class="nav-grp">Калькуляторы</div>
+        <div class="nav-grp">Калькуляторы</div>
         <button class="nav-item" id="navCalcBtn" type="button" onclick="setPage('search');setSearchMode('calc')"><span class="nav-ico">🧮</span> Таможенный калькулятор</button>
         <button class="nav-item" id="navAutoBtn" type="button" onclick="setPage('search');setSearchMode('auto')"><span class="nav-ico">🚗</span> Поиск авто</button>
         <button class="nav-item" id="navPersonalBtn" type="button" onclick="setPage('search');setSearchMode('personal')"><span class="nav-ico">📦</span> Личные отправления</button>
-        <div class="nav-grp">Справочники</div>
+        <div class="nav-grp">Справочники</div>
         <button class="nav-item" id="navTreeBtn" type="button" onclick="setPage('tree')"><span class="nav-ico">🌳</span> Классификатор ТН ВЭД</button>
         <button class="nav-item" id="navNotesBtn" type="button" onclick="setPage('notes')"><span class="nav-ico">📖</span> Пояснения и примечания</button>
         <button class="nav-item" id="navSpeciesBtn" type="button" onclick="setPage('search');setSearchMode('species')"><span class="nav-ico">🐾</span> Красная книга / СИТЕС</button>
