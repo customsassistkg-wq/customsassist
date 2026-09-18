@@ -363,6 +363,23 @@ const a = require('../src/services/assistant');
   assert.match(a.sumCheck({ rows: [{ quantity: 96, price: 0.058, amount: 801.79 }] }), /строка 1: 96 × 0,058 = 5,57, а в документе 801,79 — сумме и цене соответствует количество 13\s824/);
   console.log('PASS: sum_check — сумма строк без ошибки дробей, расхождение с итогом, количество × цена по строкам');
 
+  // ── слова в строках таблиц (замер на 19 страницах трёх пакетов, 18.09.2026): решает Vision ──
+  const wrow = (w) => `| 13 | Влажные салфетки SUNLIGHT XL ${w} 17 шт | 40 | 200 | 957,20 |`;
+  const wvis = 'Влажные салфетки SUNLIGHT Baby Божья коровка 120 шт\nВлажные салфетки SUNLIGHT XL Коровка 17 шт\nВлажные салфетки SUNLIGHT XL Зайчик 17 шт';
+  let wr = a.reconcileWords(wrow('Коробка'), [wrow('Корова'), wrow('Корова')], wvis);        // инвойс Аман: модель ×3 мимо, Vision верно
+  assert.deepEqual([wr.text, wr.fixed, wr.doubtful], [wrow('Коровка'), 1, []]);
+  wr = a.reconcileWords(wrow('Коровка'), [wrow('Коробка'), wrow('Коробка')], wvis);          // упаковочный лист: большинство неправо
+  assert.deepEqual([wr.text, wr.fixed], [wrow('Коровка'), 0]);
+  wr = a.reconcileWords(wrow('Зайчик'), [wrow('Зайчик'), wrow('Зайчик')], wvis.replace('XL Зайчик', 'XL Заичик'));
+  assert.deepEqual([wr.text, wr.fixed], [wrow('Зайчик'), 0]);                                 // три чтения модели согласны — Vision не перебивает
+  wr = a.reconcileWords(wrow('Минка'), [wrow('Мишка'), wrow('Мишка')], null);                 // без Vision — два согласных чтения
+  assert.deepEqual([wr.text, wr.fixed], [wrow('Мишка'), 1]);
+  wr = a.reconcileWords(wrow('Мишко'), [wrow('Мишка'), wrow('Мышка')], null);                 // разнобой — пометка, слово не меняется
+  assert.deepEqual([wr.text, wr.doubtful], [wrow('Мишко'), ['строка 13 — «Мишко»']]);
+  wr = a.reconcileWords('18 Carrier reservation', ['18 Carrier reservations', '18 Carrier reservations'], null);
+  assert.equal(wr.fixed, 0);                                                                   // шапки и печатные поля не трогаются
+  console.log('PASS: слова в строках таблиц — решает Vision, без него два согласных чтения, разнобой — пометка');
+
   // ── стоимость раунда по ценам DeepSeek ──
   const u = { input_tokens: 1e6, cache_read_input_tokens: 1e6, output_tokens: 1e6 };
   const peak = new Date('2026-09-16T07:00:00Z');    // среда 07:00 UTC — пик
@@ -605,6 +622,21 @@ const a = require('../src/services/assistant');
   await assert.rejects(a.ask([{ role: 'user', content: 'Разбери инвойс' }]), /no answer after tool rounds/);
   assert.deepEqual([calls.length, calls[8].tool_choice], [9, { type: 'none' }]);
   console.log('PASS: вызовы инструментов текстом не уходят пользователю; разговору о документах — 12 раундов');
+
+  // полнота: ответ перечислил два кода расчёта из трёх — повторный раунд; сводка без таблицы — без него
+  calls.length = 0;
+  const calc3 = { currency: 'USD', total: 300, items: [{ code: '8517130000', value: 100 }, { code: '4016930005', value: 100 }, { code: '8708803509', value: 100 }] };
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: calc3 }]
+    : [{ type: 'text', text: n === 2 ? 'Коды 8517 13 000 0 и 4016 93 000 5.' : 'Коды 8517 13 000 0, 4016 93 000 5 и 8708 80 350 9.' }]);
+  r = await a.ask([{ role: 'user', content: 'Посчитай инвойс' }]);
+  assert.equal(calls.length, 3);
+  assert.match(calls[2].messages[calls[2].messages.length - 1].content, /в расчёте есть позиции с кодами 8708 80 350 9, а в ответе их нет/);
+  assert.equal(r.answer, 'Коды 8517 13 000 0, 4016 93 000 5 и 8708 80 350 9.');
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: calc3 }] : [{ type: 'text', text: 'Всего к уплате — по расчёту выше.' }]);
+  r = await a.ask([{ role: 'user', content: 'Посчитай инвойс' }]);
+  assert.equal(calls.length, 2);
+  console.log('PASS: полнота ответа — коды расчёта, пропавшие из таблицы, возвращаются');
 
   // ── чтение страницы: положение, предел ответа, второе распознавание ──
   {

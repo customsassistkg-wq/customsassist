@@ -1003,6 +1003,92 @@ function reconcileReadings(base, others, vision) {
   return { text: lines.join('\n'), fixed: edits.length, doubtful };
 }
 
+// Слова в строках таблиц — наименования товаров — сверяются так же, как числа, но решает Google Vision. Замер на 19
+// страницах трёх настоящих пакетов (18.09.2026): в инвойсе строка 13 «SUNLIGHT XL Коровка» прочитана моделью как
+// «Коробка», «Корова», «Корова», а в упаковочном листе той же поставки — «Коровка», «Коробка», «Коробка»; Vision оба
+// раза прочёл «Коровка». Большинство чтений модели здесь неправо, как с количеством «6/8», поэтому голос Vision весит
+// больше: слово меняется на прочитанное Vision, если только все три чтения модели не сошлись на другом. Без Vision
+// слово меняется, когда два других чтения согласны, а их разнобой идёт пометкой. Шапки, штампы и печатные поля CMR
+// не трогаются: там замены шумели («reservation», «фрахту») и ошибка не стоит денег. На 105 строках таблиц — две
+// замены (обе верные: «Минка → Мишка», «Коробка → Коровка») и ни одной ложной пометки. До этого модель выдавала
+// разницу чтений за расхождение документов: «Коробка» в инвойсе против «Коровка» в упаковочном листе.
+const WORD_RE = /[A-Za-zА-Яа-яЁё]{4,}/g;
+const TOK_RE = /[A-Za-zА-Яа-яЁё]{2,}|\d+(?:[.,]\d+)*/g;
+const VROW_RE = /^\s*\|?\s*(\d{1,3})\s*\|?\s+(?=[A-Za-zА-Яа-яЁё])/;
+const wordKey = (w) => w.toLowerCase().replace(/ё/g, 'е');
+// Расстояние Левенштейна с ранним выходом, когда оно заведомо больше max.
+function lev(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (cur[j] < best) best = cur[j];
+    }
+    if (best > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+// Похожие слова — одно и то же слово, прочитанное по-разному: одна буква у короткого, две у длинного (и тогда с
+// общей первой буквой).
+const closeWord = (a, b) => { const max = a.length <= 5 ? 1 : 2; const d = lev(a, b, max); return d <= max && (d <= 1 || a[0] === b[0]); };
+const wordLines = (text) => String(text || '').split('\n').map((l, i) => {
+  const r = l.match(ROW_RE) || l.match(VROW_RE);
+  return { i, key: r ? r[1] : null, table: ROW_RE.test(l),
+    words: [...l.matchAll(WORD_RE)].map((m) => ({ raw: m[0], k: wordKey(m[0]), at: m.index })),
+    toks: [...l.matchAll(TOK_RE)].map((m) => wordKey(m[0])) };
+});
+// Строка Vision для строки таблицы: у Vision нет таблицы, есть строки текста. Берётся строка с тем же номером, иначе —
+// лучшая по доле общих слов и чисел (похожие слова — с половинным весом); ничья — строки нет. Считать только слова
+// нельзя: «SUNLIGHT XL Коробка» делит три слова и с «XL Зайчик», и с «Божья коровка» — решают «XL», «17» и «шт».
+function visionLine(line, src) {
+  const byKey = src.filter((l) => l.key === line.key);
+  if (byKey.length === 1 && byKey[0].words.filter((w) => line.words.some((x) => x.k === w.k)).length >= 2) return byKey[0];
+  let best = null, bs = 0, tie = false;
+  for (const l of src) {
+    let m = 0;
+    for (const t of line.toks) if (l.toks.includes(t)) m++; else if (t.length >= 4 && l.toks.some((u) => closeWord(t, u))) m += 0.5;
+    const sc = (2 * m) / (line.toks.length + l.toks.length);
+    if (sc > bs + 1e-9) { best = l; bs = sc; tie = false; } else if (Math.abs(sc - bs) < 1e-9 && sc > 0) tie = true;
+  }
+  return best && !tie && bs >= 0.4 ? best : null;
+}
+// Как слово w прочитано в строке другого чтения: то же слово, ближайшее похожее или никак.
+function wordIn(w, l) {
+  if (!l) return null;
+  if (l.words.some((x) => x.k === w.k)) return w.raw;
+  let best = null, bd = 9;
+  for (const x of l.words) if (closeWord(w.k, x.k)) { const d = lev(w.k, x.k, 2); if (d < bd) { bd = d; best = x; } }
+  return best ? best.raw : null;
+}
+function reconcileWords(base, others, vision) {
+  const L0 = wordLines(base), Lo = others.map(wordLines), Lv = vision ? wordLines(vision) : null;
+  const lines = String(base).split('\n');
+  const same = (a, b) => !!a && !!b && wordKey(a) === wordKey(b);
+  const edits = [], doubtful = [];
+  for (const line of L0) {
+    if (!line.table || !line.words.length) continue;
+    const mo = Lo.map((src) => src.find((l) => l.table && l.key === line.key) || null);
+    const mv = Lv ? visionLine(line, Lv) : null;
+    for (const w of line.words) {
+      const ov = mo.map((l) => wordIn(w, l));
+      const vv = wordIn(w, mv);
+      if (vv) {
+        if (!same(vv, w.raw) && !ov.every((x) => same(x, w.raw))) edits.push({ line: line.i, at: w.at, from: w.raw, to: vv });
+      } else if (ov.length === 2 && same(ov[0], ov[1]) && !same(ov[0], w.raw)) edits.push({ line: line.i, at: w.at, from: w.raw, to: ov[0] });
+      else if (ov.some((x) => x && !same(x, w.raw))) doubtful.push(`строка ${line.key} — «${w.raw}»`);
+    }
+  }
+  for (const e of edits.sort((a, b) => b.line - a.line || b.at - a.at)) {
+    const l = lines[e.line];
+    lines[e.line] = l.slice(0, e.at) + e.to + l.slice(e.at + e.from.length);
+  }
+  return { text: lines.join('\n'), fixed: edits.length, doubtful };
+}
+
 // Страница читается трижды: основное чтение — двумя полосами из отрисовки в 2 400 px (parts: у полосы мелкие цифры
 // крупнее) и ещё два — целиком; числа сверяются (reconcileReadings). Замер на реальном инвойсе на 21 строку
 // (17.09.2026): одно чтение давало верными суммы строк, итог и строки 1–4 в 2–3 прогонах из 4 — случайные «7 128,00»
@@ -1012,7 +1098,8 @@ function reconcileReadings(base, others, vision) {
 // Положение спрашивается параллельно; перевёрнутая страница возвращается браузеру с rotate: 180 — он рисует её заново
 // повёрнутой (пересжатие JPEG само портило цифры: одна сумма неверна почти в каждом прогоне) и присылает снова с
 // checkOrientation: false. Ненужные чтения перевёрнутой страницы дожидаются конца, чтобы их расход попал в журнал.
-async function readPage(img, { checkOrientation = true, parts = [] } = {}) {
+// raw: true — вместе с итогом сырые чтения (основное, два повторных, Vision, Document AI): по ним калибруется сверка.
+async function readPage(img, { checkOrientation = true, parts = [], raw = false } = {}) {
   const usage = { input: 0, output: 0, cacheRead: 0, costUsd: 0 };
   const read = (x) => readImage(x.media_type, x.data, TRANSCRIBE_PROMPT, 16000, usage);
   try {
@@ -1039,23 +1126,30 @@ async function readPage(img, { checkOrientation = true, parts = [] } = {}) {
     let text = main.value;
     const others = extra.filter((r) => r.status === 'fulfilled').map((r) => r.value);
     const seen = (await ocr)?.text || null;
+    const mainText = text;
+    let docai = null;
     if (others.length === 2) {
       let r = reconcileReadings(text, others, seen);
       // Разбор полей нужен там, где чтения разошлись: на согласной странице он ничего не добавит, а стоит дорого.
-      const docai = r.doubtful.length && docaiUrl()
+      docai = r.doubtful.length && docaiUrl()
         ? await docaiRead(img).catch((e) => { console.error('assistant: Document AI failed:', e.message); return null; })
         : null;
       if (docai) {
         usage.costUsd += DOCAI_USD;
         r = reconcileReadings(text, others, (seen || '') + '\n' + docai);
       }
-      text = r.text + (r.doubtful.length
+      const w = reconcileWords(r.text, others, seen);
+      text = w.text + (r.doubtful.length
         ? `\n[Не подтверждено повторным чтением: ${r.doubtful.slice(0, 12).join('; ')}${r.doubtful.length > 12 ? `; и ещё ${r.doubtful.length - 12}` : ''}. `
           + 'Эти числа могут быть прочитаны неверно — назови их пользователю, чтобы он сверил с оригиналом.]'
         : '')
+        + (w.doubtful.length
+          ? `\n[Слова, прочитанные неуверенно (чтения разошлись): ${w.doubtful.slice(0, 8).join('; ')}${w.doubtful.length > 8 ? `; и ещё ${w.doubtful.length - 8}` : ''}. `
+            + 'Это вопрос чтения, а не расхождение документов: попроси пользователя сверить написание с оригиналом.]'
+          : '')
         + (docai ? '\n[Разбор полей документа (Google Document AI, машинное чтение полей; при расхождении с таблицей выше верь ему):\n' + docai + ']' : '');
     }
-    return { text, usage };
+    return raw ? { text, usage, raw: { main: mainText, others, vision: seen, docai } } : { text, usage };
   } catch (e) {
     e.usage = usage;
     throw e;
@@ -1281,6 +1375,11 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
       let result;
       try { result = String(await runTool(u, hint)); } catch (e) { console.error('assistant tool', u.name, e); result = 'Ошибка инструмента.'; }
       if (u.name === 'search_base') searched.push(String(u.input?.query || ''));
+      // Коды посчитанных позиций последнего расчёта: ответ, где они перечислены, должен перечислить все (см. ниже).
+      if (u.name === 'calc_payments') {
+        const counted = [...new Set([...result.matchAll(/(?:^|\n)(?:Позиция \d+\. )?Код (\d{4} \d{2} \d{3} \d) —/g)].map((m) => m[1].replace(/\s/g, '')))];
+        if (counted.length) calcCodes = counted;
+      }
       // «Проверен» только тот код, который вернул инструмент: запрос несуществующего
       // кода сам по себе его не подтверждает.
       for (const code of codesIn(result)) seen.add(code);
@@ -1290,6 +1389,7 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
     return results;
   };
   let verified = false;
+  let calcCodes = [];
   let firstRound = 0, preAt = -1;
   const pre = images.length || docs.length ? [] : preTools(question);
   if (pre.length) {
@@ -1357,7 +1457,13 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
       const numbers = docTexts.length
         ? unknownNumbers(answer, [...docTexts, ...seenText, ...history.filter((m) => m.role === 'user').map((m) => m.content)].join('\n'))
         : [];
-      if ((unverified.length || numbers.length) && !verified && round < maxRounds) {
+      // Полнота: ответ, где перечислены коды расчёта, должен перечислить все. Живой прогон 18.09.2026 (Keramin):
+      // в таблице платежей модели пропала строка 3917 39 000 8, хотя в расчёт и в итог она вошла. Ответ, где кодов
+      // расчёта меньше двух, — сводка, а не таблица, и к ней правило не относится.
+      const inAnswer = codesIn(answer);
+      const missing = calcCodes.filter((code) => !inAnswer.has(code));
+      const incomplete = missing.length && calcCodes.length - missing.length >= 2 ? missing : [];
+      if ((unverified.length || numbers.length || incomplete.length) && !verified && round < maxRounds) {
         verified = true;
         onStep({ tool: 'verify', input: { codes: unverified, numbers } });
         messages.push({ role: 'assistant', content: answer });
@@ -1365,10 +1471,13 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
           unverified.length ? `коды ${unverified.join(', ')} не встречались в результатах инструментов — проверь каждый через search_base или убери его` : '',
           numbers.length ? `числа ${numbers.slice(0, 15).join('; ')} не встречаются ни в документах, ни в результатах инструментов — `
             + 'сверь каждое с документом (суммы и разности — через sum_check), неподтверждённое исправь или убери, выдуманное расхождение убери целиком' : '',
+          incomplete.length ? `в расчёте есть позиции с кодами ${incomplete.map((code) => checker().fmtCode(code)).join(', ')}, а в ответе их нет — `
+            + 'таблицу платежей по кодам бери из расчёта целиком, со всеми строками' : '',
         ].filter(Boolean).join('; ') + '. Затем верни исправленный ответ целиком, без упоминания этой проверки.' });
         continue;
       }
-      const note = numbers.length ? `\n\n_Сверьте с документами: ${numbers.slice(0, 8).join('; ')} — этих чисел нет ни в документах, ни в расчёте сайта._` : '';
+      const note = (numbers.length ? `\n\n_Сверьте с документами: ${numbers.slice(0, 8).join('; ')} — этих чисел нет ни в документах, ни в расчёте сайта._` : '')
+        + (incomplete.length ? `\n\n_В расчёт вошли и позиции с кодами ${incomplete.map((code) => checker().fmtCode(code)).join(', ')} — в таблице выше их нет._` : '');
       return { answer: keepKnownLinks(answer + note, seenText.join('\n')), searched, usage, unverified };
     }
     messages.push({ role: 'assistant', content });
@@ -1378,4 +1487,4 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   throw Object.assign(new Error('no answer after tool rounds'), { usage });
 }
 
-module.exports = { ask, readPage, reconcileReadings, flatNumbers, searchBase, calcPayments, groupNotes, sumCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, unknownNumbers, checker, roundCost };
+module.exports = { ask, readPage, reconcileReadings, reconcileWords, flatNumbers, searchBase, calcPayments, groupNotes, sumCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, unknownNumbers, checker, roundCost };
