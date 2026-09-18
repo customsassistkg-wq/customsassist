@@ -115,7 +115,7 @@ app.use('/api/assistant', require('./routes/assistant'));
 // if the Node process is ever reached directly.
 if (process.env.NODE_ENV !== 'production') {
   const root = path.join(__dirname, '..', '..');
-  app.get(['/', '/tnved_checker.html', '/privacy.html', '/manifest.webmanifest', '/email-logo.jpg', '/app-bg-dark.webp', '/app-bg-light.webp', '/app-logo-dark.webp', '/app-logo-light.webp'], (req, res) => {
+  app.get(['/', '/tnved_checker.html', '/privacy.html', '/manifest.webmanifest', '/email-logo.jpg', '/app-bg-dark.webp', '/app-bg-light.webp', '/app-logo-dark.webp', '/app-logo-light.webp', '/login-bg-dark.webp', '/login-bg-light.webp', '/login-logo-dark.webp', '/login-logo-light.webp'], (req, res) => {
     res.sendFile(path.join(root, req.path === '/' ? 'tnved_checker.html' : req.path.slice(1)));
   });
   app.use('/icons', express.static(path.join(root, 'icons')));
