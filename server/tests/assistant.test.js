@@ -260,7 +260,7 @@ const a = require('../src/services/assistant');
   assert.doesNotMatch(t, /расчёт занижен/);
   assert.doesNotMatch(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'CIP Бишкек' }), /занижен/);
   // инвойс целиком: сбор один на декларацию, а не по строке (0,4% от общей стоимости, минимум 500 сом один раз)
-  t = await a.calcPayments({ currency: 'USD', country: 'Турция', items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] });
+  t = await a.calcPayments({ currency: 'USD', country: 'Турция', total: 4300, items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] });
   assert.match(t, /Позиция 1./);
   assert.match(t, /Позиция 2./);
   assert.match(t, /— Итого по декларации —/);
@@ -273,13 +273,13 @@ const a = require('../src/services/assistant');
   assert.equal(sum(/Всего к уплате: ([\d\s]+,\d\d)/).toFixed(2),
     (sum(/Ввозная пошлина: ([\d\s]+,\d\d) сом\nНДС/) + sum(/\nНДС: ([\d\s]+,\d\d)/) + 1504.14).toFixed(2));
   // фрахт на весь инвойс делится по стоимости: 430 USD → 330 и 100; предупреждения FOB нет
-  t = await a.calcPayments({ currency: 'USD', incoterm: 'FOB Shanghai', transport: 430, items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] });
+  t = await a.calcPayments({ currency: 'USD', incoterm: 'FOB Shanghai', transport: 430, total: 4300, items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] });
   assert.match(t, /3300 \+ перевозка 330 = 3630 USD/);
   assert.match(t, /1000 \+ перевозка 100 = 1100 USD/);
   assert.match(t, /Перевозка 430 USD распределена/);
   assert.doesNotMatch(t, /занижен/);
   // позиция с неизвестным кодом или из ЕАЭС не входит в итог и названа отдельно; валюта позиции не перекрывает общую
-  t = await a.calcPayments({ currency: 'USD', items: [{ code: '8517130000', value: 1000, currency: 'EUR' }, { code: '1', value: 1 }, { code: '8517130000', value: 1, country: 'Казахстан' }] });
+  t = await a.calcPayments({ currency: 'USD', total: 1002, items: [{ code: '8517130000', value: 1000, currency: 'EUR' }, { code: '1', value: 1 }, { code: '8517130000', value: 1, country: 'Казахстан' }] });
   assert.match(t, /Позиций посчитано: 1 из 3/);
   assert.match(t, /Не посчитаны[^]*Позиция 2 \(1\): Код 1 не найден[^]*Позиция 3 \(8517130000\): Товар из государства — члена ЕАЭС/);
   assert.match(t, /1000 USD ×/);
@@ -296,14 +296,19 @@ const a = require('../src/services/assistant');
   assert.match(await a.calcPayments({ code: '1008900001', value: 1, currency: 'USD' }), /^Кода 1008 90 000 1 нет в действующем ЕТТ \(.+\)\. Ему соответствует:\n1008 90 000 0 — /);
   assert.match(a.searchBase({ query: '84248970' }), /^Кода 8424 89 70 нет в действующем ЕТТ\. Действующие коды, начинающиеся с 8424 89:/);
   assert.doesNotMatch(a.searchBase({ query: '8517130000' }), /нет в действующем ЕТТ/);
-  t = await a.calcPayments({ currency: 'EUR', items: [{ code: '8517130000', value: 10 }, { code: '3924900000', value: 5 }] });
+  t = await a.calcPayments({ currency: 'EUR', total: 15, items: [{ code: '8517130000', value: 10 }, { code: '3924900000', value: 5 }] });
   assert.match(t, /Не посчитаны[^]*Позиция 2 \(3924900000\): Кода 3924 90 000 0 нет в действующем ЕТТ[^]*3924 90 000 9/);
   // итог документа: сумма позиций сверяется с ним первой строкой — двойной счёт позиции виден сразу
   t = await a.calcPayments({ currency: 'USD', total: 4300, items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] });
   assert.match(t, /^Сумма стоимостей позиций совпадает с итогом документа: 4\s300,00 USD\.\n/);
   t = await a.calcPayments({ currency: 'USD', total: 22083.3, items: [{ code: '3307900008', value: 22083.3 }, { code: '8212101000', value: 1209.6 }, { code: '9619007101', value: 2460 }] });
   assert.match(t, /^⚠ Сумма стоимостей позиций 25\s752,90 USD не равна итогу документа 22\s083,30 USD \(разница 3\s669,60\)/);
-  assert.match(await a.calcPayments({ currency: 'USD', items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] }), /^Сумма стоимостей позиций: 4\s300,00 USD\. Итог документа не передан/);
+  // без итога документа пакет не считается: пакет из трёх инвойсов посчитан по одному и выдан за весь (живой прогон)
+  assert.match(await a.calcPayments({ currency: 'USD', items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] }), /^Передай total — итог документа/);
+  // итоги по кодам: 18 строк инвойса на 3 кода — суммы по коду даёт сервер, а не модель
+  t = await a.calcPayments({ currency: 'USD', total: 2830.27, items: [{ code: '3307900008', value: 801.79 }, { code: '3307900008', value: 1428.48 }, { code: '9619007101', value: 600 }] });
+  assert.match(t, /Итого по кодам — одинаковый код идёт в декларации одной позицией[^\n]*\n3307 90 000 8 — строк 2: стоимость 2\s230,27 USD, таможенная стоимость [\d\s]+,\d\d сом, пошлина [\d\s]+,\d\d сом, НДС [\d\s]+,\d\d сом\n9619 00 710 1 — строк 1: стоимость 600,00 USD/);
+  assert.doesNotMatch(await a.calcPayments({ currency: 'USD', total: 4300, items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] }), /Итого по кодам/);
   assert.match(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', total: 1200 }), /^⚠ Сумма стоимостей позиций 1\s000,00 USD не равна итогу документа 1\s200,00 USD/);
   assert.doesNotMatch(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD' }), /Сумма стоимостей/);
   console.log('PASS: calc_payments — действующие коды вместо «не найден», сверка с итогом документа');
@@ -312,6 +317,10 @@ const a = require('../src/services/assistant');
   t = await a.calcPayments({ currency: 'USD', country: 'UZ', total: 3669.6, items: [{ code: '8212101000', value: 1209.6 }, { code: '9619007101', value: 2460 }] });
   assert.match(t, /Сравнены основания: ЗСТ СНГ \(Узбекистан\): 0% — ввозная пошлина не применяется — Протокол[^\n]*→ 0,00 сом; ставка ЕТТ 15%/);
   assert.match(t, /— Итого по декларации —\nПозиций посчитано: 2 из 2\nТаможенная стоимость: [\d\s]+,\d\d сом\nВвозная пошлина: 0,00 сом\n/);
+  // вариант без сертификата считает сервер: пошлина по ставкам ЕТТ 15% и 5%, НДС с неё, тот же сбор
+  assert.match(t, /\nЕсли преференцию не подтвердят \(нет сертификата о происхождении\) — по ставкам ЕТТ: пошлина [\d\s]+,\d\d сом, НДС [\d\s]+,\d\d сом, всего к уплате [\d\s]+,\d\d сом/);
+  assert.match(await a.calcPayments({ code: '8212101000', value: 1209.6, currency: 'USD', country: 'Узбекистан' }), /\nИтого по ставке ЕТТ — если преференцию не подтвердят/);
+  assert.doesNotMatch(await a.calcPayments({ code: '8212101000', value: 1209.6, currency: 'USD' }), /по ставке ЕТТ — если/);
   assert.match(a.searchBase({ query: '3307900008', country: 'Узбекистан' }), /^Страна происхождения: Узбекистан\nСтавка 0%: ввозная пошлина не применяется — Протокол/);
   assert.match(a.checker().renderHtml('Таджикистан').html, /Зона свободной торговли СНГ[^]*с 19\.03\.2016[^]*СТ-1/);
   console.log('PASS: зона свободной торговли СНГ — расчёт, выдача с country, карточка страны');
@@ -557,7 +566,12 @@ const a = require('../src/services/assistant');
   r = await a.ask([{ role: 'user', content: 'Разбери инвойс' }]);
   assert.equal(calls.length, 2);
   assert.equal(r.answer, 'Итого 43 952,77 EUR.');
-  console.log('PASS: числа ответа, которых нет в документах, — повторный раунд и пометка');
+  // код, напечатанный в документе (здесь — телефон перевозчика из CMR), выдуманным не считается
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: '8517130000' } }] : [{ type: 'text', text: 'Телефон 9983444840.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери CMR' }], { docs: [{ name: 'cmr.pdf', pages: 1, text: 'Тел. 9983444840' }] });
+  assert.deepEqual([calls.length, r.unverified], [2, []]);
+  console.log('PASS: числа ответа, которых нет в документах, — повторный раунд и пометка; код из документа не выдуман');
 
   // ── чтение страницы: положение, предел ответа, второе распознавание ──
   {
