@@ -371,12 +371,17 @@ function ettAlternatives(c, digits) {
       + (digits.length > 8 && !m ? ' (код другой страны, дополненный нулями, кодом ТН ВЭД ЕАЭС не становится — 9–10 знаки свои)' : '') + ':';
   }
   // Наименование ЕТТ — путь по уровням через «: », и соседние коды различаются последними уровнями.
+  return [head, ...ettRowLines(c, rows)].join('\n');
+}
+// Строки кандидатов: код, наименование, ставка. Наименование ЕТТ — путь по уровням через «: », и соседние коды
+// различаются последними уровнями.
+function ettRowLines(c, rows) {
   const name = (s) => {
     const parts = String(s).split(': ');
     return String(s).length > 220 && parts.length > 2 ? parts[0].slice(0, 80) + '…: ' + parts.slice(-2).join(': ') : String(s);
   };
-  return [head, ...rows.slice(0, 12).map((r) => `${c.fmtCode(r[0])} — ${name(r[1])} — ставка ${c.fmtRate(r[3])}`),
-    rows.length > 12 ? `…и ещё ${rows.length - 12}: уточни search_base по началу кода.` : ''].filter(Boolean).join('\n');
+  return [...rows.slice(0, 12).map((r) => `${c.fmtCode(r[0])} — ${name(r[1])} — ставка ${c.fmtRate(r[3])}`),
+    ...(rows.length > 12 ? [`…и ещё ${rows.length - 12}: уточни search_base по началу кода.`] : [])];
 }
 
 // Итог документа против суммы позиций. Живой прогон 18.09.2026 (инвойс на 18 строк из Узбекистана): модель передала
@@ -412,7 +417,21 @@ async function calcPayments(input) {
 // сноски и акциз идут в tail, чтобы 21 строка одного кода не повторяла их 21 раз.
 async function calcOne({ code, value, currency, quantity, country: countryName, date, transport, incoterm }, batch) {
   const c = checker();
-  const digits = String(code || '').replace(/\D/g, '');
+  let digits = String(code || '').replace(/\D/g, '');
+  // Код документа другой страны (8 знаков ЕС, 6 знаков HS) — как есть: если с этого начала в ЕТТ ровно один
+  // действующий код, это он и есть; иначе — список вариантов. Живой прогон 18.09.2026: инвойсы Hansgrohe дают
+  // стоимость по 8-значным кодам ЕС, и модель, сопоставив коды в таблице, отказалась считать платежи.
+  let mapped = '';
+  if (digits.length >= 6 && digits.length < 10) {
+    const kids = c.ETT_DB.filter((r) => r[0].startsWith(digits) && !c.TNVED_MAP[r[0]]);
+    if (kids.length === 1) {
+      mapped = `Код ${digits} из документа — действующий код ЕАЭС ${c.fmtCode(kids[0][0])}: единственный с этим началом.`;
+      digits = kids[0][0];
+    } else if (kids.length > 1) {
+      return [`Код ${digits} — не 10-значный; действующие коды ЕАЭС с этим началом:`, ...ettRowLines(c, kids),
+        'Выбери подходящий по описанию товара и повтори расчёт с ним.'].join('\n');
+    }
+  }
   const row = c.ETT_DB.find((r) => r[0] === digits);
   // Код из TNVED_MAP (опечатка базы, упразднённый) тоже не считается: ставка по коду, которого нет в ЕТТ, — неверный ответ.
   const alt = digits.length >= 4 ? ettAlternatives(c, digits) : '';
@@ -431,7 +450,7 @@ async function calcOne({ code, value, currency, quantity, country: countryName, 
   const [, name, unit, ettRate] = row;
   const cty = country(c, countryName);
   const term = String(incoterm || '').toUpperCase();
-  const lines = [`Код ${c.fmtCode(digits)} — ${name}`,
+  const lines = [...(mapped ? [mapped] : []), `Код ${c.fmtCode(digits)} — ${name}`,
     `Таможенная стоимость: ${freightCur ? `${goodsCur} + перевозка ${freightCur} = ${valueCur}` : valueCur} ${cur}`
       + ` × ${curRate} (курс НБКР на ${rates.date || 'сегодня'}) = ${som(valueSom)}`];
   if (INCOTERM_ADD.test(term) && !freightCur) {
@@ -656,7 +675,7 @@ function tools() {
     input_schema: {
       type: 'object',
       properties: {
-        code: { type: 'string', description: '10-значный код ТН ВЭД ЕАЭС. Код другой страны (8 знаков ЕС, 6 знаков HS) нулями не дополняй — сервер назовёт действующие коды' },
+        code: { type: 'string', description: '10-значный код ТН ВЭД ЕАЭС. Код из документа другой страны (8 знаков ЕС, 6 знаков HS) передавай как есть, нулями не дополняй: однозначный сервер заменит действующим сам, для остальных назовёт варианты' },
         value: { type: 'number', description: 'Таможенная стоимость в валюте' },
         currency: { type: 'string', enum: ['USD', 'EUR', 'CNY', 'RUB', 'KZT', 'СОМ'] },
         quantity: { type: 'number', description: 'Количество в единице специфической ставки (кг, шт, л, см³) — если ставка специфическая или комбинированная' },
