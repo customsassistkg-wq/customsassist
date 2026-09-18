@@ -378,6 +378,9 @@ function mergeCardFamilies(container){
     if(fam.attrs)Object.keys(fam.attrs).forEach(a=>m.setAttribute(a,fam.attrs[a]));
     const ctys=members.map(c=>c.getAttribute('data-cty')||'').filter(Boolean);
     if(ctys.length)m.setAttribute('data-cty',ctys.join(' '));
+    const dirsM=members.map(c=>c.getAttribute('data-dir')||'');
+    if(dirsM.every(Boolean)&&new Set(dirsM).size===1)m.setAttribute('data-dir',dirsM[0]);
+    if(members.every(c=>c.dataset.partial))m.dataset.partial='1';
     const rc=first.querySelector(':scope > .rh .rc');
     m.innerHTML='<div class="rh"><div class="ico">'+fam.ico+'</div><div><div class="rc">'+esc(rc?rc.textContent.trim():'')+'</div></div></div>'
       +'<div class="rn">'+esc(fam.title)+' <span class="rn-n">· '+members.length+' '+plural(members.length,fam.unit)+'</span></div>'
@@ -670,7 +673,7 @@ function cardTitleText(card){
 }
 function resSectionOf(card){
   const t=(cardTagTexts(card).join(' ')+' '+cardTitleText(card)).toLowerCase();
-  if(/не требуется|исключено|разрешён|истёк|истекл|устарел|прецедент|решени[ея] еэк|троис|усир|индикатор|поиск по наименованию|не подтверждено/.test(t))return 'info';
+  if(/не требуется|исключено|разрешён|истёк|истекл|устарел|прецедент|решени[ея] еэк|троис|усир|индикатор|поиск по наименованию|не подтвержд|кода нет в/.test(t))return 'info';
   if(/запрет/.test(t))return 'danger';
   if(/лицензи|разрешит|заключени|нкс|двойного|ситес|красная книга|регистрац|ограничение в государстве|односторонн/.test(t))return 'docs';
   if(/сэн|санитар|ветерин|ветконтроль|фито|карантин|надзор|контрол/.test(t))return 'control';
@@ -769,7 +772,9 @@ function buildResultSummary(container,q){
       +(rq.length===10?'<div class="vd-act"><button type="button" class="btn btn-primary" onclick="openCalcFor(\''+rq+'\')">Рассчитать платежи</button><button type="button" class="btn" onclick="copyCodeText(\''+rq+'\',this)">Копировать код</button></div>':'')+'</div>';
   }
   // Запрет: какой именно и относится ли к выбранному направлению.
-  const bans=groups.danger||[];
+  const bans=(groups.danger||[]).filter(c=>!c.dataset.partial);
+  const maybe=(groups.danger||[]).filter(c=>c.dataset.partial);
+  const maybeLabels=[];maybe.forEach(c=>{const l=resShortLabel(c,{});if(l&&maybeLabels.indexOf(l)<0)maybeLabels.push(l)});
   const banLabels=[];const used={};
   bans.forEach(c=>{const l=resShortLabel(c,used);if(l&&banLabels.indexOf(l)<0)banLabels.push(l)});
   let title,titleCls='';
@@ -781,9 +786,11 @@ function buildResultSummary(container,q){
     else if(dir==='ex'&&im&&!ex)tail=' — на вывоз не распространяется';
     title='⛔ '+banLabels.join(' · ')+tail;titleCls=tail?' vd-soft':' vd-danger';
   } else title='Запретов '+dirWord+' нет';
+  if(maybeLabels.length){const mt='проверьте по наименованию: '+maybeLabels.join(' · ');if(bans.length)title+=' · '+mt;else{title='⚠ Возможный запрет — '+mt;titleCls=' vd-soft'}}
+  if(cards.some(c=>c.dataset.nocode))title='❓ Кода нет в действующем ЕТТ · '+title;
   // Что нужно оформить: документы, контроль, сертификация — одной строкой с переходом к карточке.
   const need=[];const seenL={};const used2={};
-  ['docs','control','cert'].forEach(k=>(groups[k]||[]).forEach(c=>{const l=resShortLabel(c,used2);if(l&&!seenL[l]){seenL[l]=1;need.push({l:l,id:c.id})}}));
+  ['docs','control','cert'].forEach(k=>(groups[k]||[]).forEach(c=>{const l0=resShortLabel(c,used2);const l=l0&&c.dataset.partial?l0+' — проверить по наименованию':l0;if(l&&!seenL[l]){seenL[l]=1;need.push({l:l,id:c.id})}}));
   const needHtml=need.length?need.map(x=>'<button type="button" class="vd-chip vd-need" onclick="focusResultCard(\''+x.id+'\')">'+esc(x.l)+'</button>').join(' '):'<span class="vd-none">разрешительных документов и контроля не найдено</span>';
   // Платежи: акциз, квота, антидемпинг, льготы — по заголовкам карточек группы.
   const pay=groups.pay||[];
@@ -836,7 +843,7 @@ async function render(q,boxId){
   srchHint('');
   if(id==='result')setSearching(true);
   let r;
-  try{r=await engine('renderHtml',qt)}
+  try{r=await engine('renderHtml',qt,searchCond().date)}
   catch(e){if(seq===renderSeq[id]){box.innerHTML=engineErrorHtml(e);setSearching(false)}return}
   if(seq!==renderSeq[id])return;
   setSearching(false);
@@ -3030,6 +3037,10 @@ const LK_CTY_LABEL={im:'Страна происхождения товара',ex
 // он же объясняет пользователю, почему справка короче, чем обычный поиск.
 const LK_WHY={
   ex:'мера применяется при ввозе — к вывозу не относится',
+  im:'мера применяется при вывозе — к ввозу не относится',
+  trBan:'запрет ввоза или вывоза относится к помещению под процедуры ввоза/вывоза, а не к транзиту (ПКМ № 606 и № 357 исключают транзит прямо); условия транзита — по акту',
+  third:'Единый перечень мер нетарифного регулирования ЕАЭС (Решение Коллегии ЕЭК № 30) применяется в торговле с третьими странами, а не между государствами-членами',
+  eaeuEx:'акт исключает из запрета товары, ввозимые с территории государств-членов ЕАЭС',
   tr:'при таможенном транзите таможенные пошлины и налоги не уплачиваются (п.1 ст.142 ТК ЕАЭС)',
   eaeu:'товар из государства-члена ЕАЭС: взаимная торговля, тарифные меры ЕТТ не применяются',
   cty:'мера привязана к другой стране происхождения'
@@ -3076,7 +3087,9 @@ function lkFilter(dir,cty,box){
       if(subs.length&&!left)cc=subs[0].getAttribute('data-cty');else cc=null;
       const n=card.querySelector('.rn .rn-n');if(n&&subs.length)n.textContent='· '+left+' из '+subs.length;
     }
-    if(d&&d.split(' ').indexOf(dir)<0)why=LK_WHY[dir]||LK_WHY.ex;
+    if(d&&d.split(' ').indexOf(dir)<0)why=(dir==='tr'&&/запрет/i.test(cardTagTexts(card).join(' ')))?LK_WHY.trBan:(LK_WHY[dir]||LK_WHY.ex);
+    else if(cty&&cty.eaeu&&card.getAttribute('data-scope')==='third')why=LK_WHY.third;
+    else if(dir==='im'&&cty&&cty.eaeu&&card.getAttribute('data-except-eaeu'))why=LK_WHY.eaeuEx;
     else if(dir==='im'&&cty&&cty.eaeu&&card.getAttribute('data-kind')==='tariff')why=LK_WHY.eaeu;
     else if(dir==='im'&&cty&&cc&&!lkCtyMatch(cc,cty))why=LK_WHY.cty;
     if(why){card.dataset.lkWhy=why;hidden.push(card)}
@@ -3098,11 +3111,12 @@ function lkHeadHtml(dir,cty){
   const tk=docLink('ТК ЕАЭС',DOC_SOURCES.tkEaes);
   let dh='';
   if(dir==='ex')dh=`<div class="calc-warn w-yellow">Направление: <b>вывоз из Кыргызской Республики</b>. Показаны запреты и разрешительный порядок вывоза, экспортный контроль (НКС), ветеринарные, фитосанитарные и санитарные требования, товарные знаки. Ввозные ставки, налоги и льготы к вывозу не относятся и убраны в отдельный блок внизу.</div>`;
-  else if(dir==='tr')dh=`<div class="calc-warn w-yellow">Направление: <b>таможенный транзит</b>. Товары перевозятся без уплаты таможенных пошлин, налогов, специальных, антидемпинговых и компенсационных пошлин (п.1 ст.142 ${tk}), но условиями помещения под процедуру остаются обеспечение уплаты этих платежей и соблюдение запретов и ограничений (подпункты 1, 2 и 5 пункта 1 статьи 143 и статья 7 ${tk}). Поэтому тарифные и налоговые карточки убраны вниз, а запреты, разрешительный порядок и виды контроля показаны полностью.</div>`;
+  else if(dir==='tr')dh=`<div class="calc-warn w-yellow">Направление: <b>таможенный транзит</b>. Товары перевозятся без уплаты таможенных пошлин, налогов, специальных, антидемпинговых и компенсационных пошлин (п.1 ст.142 ${tk}), но условиями помещения под процедуру остаются обеспечение уплаты этих платежей и соблюдение запретов и ограничений (подпункты 1, 2 и 5 пункта 1 статьи 143 и статья 7 ${tk}). Тарифные и налоговые карточки убраны вниз. Национальные запреты ввоза и вывоза Кыргызской Республики относятся к помещению под процедуры ввоза и вывоза, а не к транзиту (ПКМ № 606 и № 357 исключают транзит прямо) — они тоже убраны вниз. Разрешительный порядок Единого перечня ЕАЭС установлен Положениями к Решению № 30 для ввоза и вывоза; транзит наркотических средств, опасных отходов и оружия регулируется отдельными актами — проверьте по акту. Виды контроля показаны полностью.</div>`;
   else dh=`<div class="calc-warn w-blue">Направление: <b>ввоз в Кыргызскую Республику</b>. Показаны меры при ввозе: ставка и преференции, налоги и льготы, разрешительный порядок, виды контроля.</div>`;
   let ch='';
   if(cty){
-    if(cty.eaeu)ch=`<div class="calc-warn w-blue">Страна: <b>${esc(cty.name)}</b> — государство-член ЕАЭС. Это взаимная торговля: ввозная пошлина ЕТТ, тарифные преференции и защитные меры к товару Союза не применяются, косвенные налоги взимает налоговый орган, а не таможня. Тарифные карточки убраны вниз; запреты, разрешительный порядок и контроль остаются.</div>`;
+    if(cty.eaeu&&dir==='im')ch=`<div class="calc-warn w-blue">Страна: <b>${esc(cty.name)}</b> — государство-член ЕАЭС. Это взаимная торговля: ввозная пошлина ЕТТ, тарифные преференции и защитные меры к товару Союза не применяются, косвенные налоги взимает налоговый орган, а не таможня. Тарифные карточки и разрешительный порядок Единого перечня ЕАЭС (он для торговли с третьими странами) убраны вниз; национальный запрет ввоза Кыргызской Республики действует, если акт не исключает товары из ЕАЭС (гипсокартон, корма для рыб — исключает); ветеринарный, фитосанитарный и санитарный контроль остаются.</div>`;
+    else if(cty.eaeu&&dir==='ex')ch=`<div class="calc-warn w-blue">Страна назначения: <b>${esc(cty.name)}</b> — государство-член ЕАЭС. Это взаимная торговля: меры Единого перечня ЕАЭС (лицензии и запреты для торговли с третьими странами) не применяются и убраны вниз. Временные запреты вывоза Кыргызской Республики действуют и при вывозе в ЕАЭС, если акт не говорит иного (запрет вывоза нефтепродуктов ППКР № 66 — прямо «включая страны ЕАЭС»). Экспортный контроль (НКС), ветеринарные и фитосанитарные требования — по национальному законодательству и актам Союза о взаимной торговле; косвенные налоги — по принципу страны назначения (п.1 ст.72 Договора о ЕАЭС).</div>`;
     else if(dir!=='im')ch=`<div class="calc-warn w-blue">Страна: <b>${esc(cty.name)}</b>. При выбранном направлении база отбирает карточки по направлению: страна учитывается только при ввозе — тарифные преференции и защитные меры привязаны к происхождению товара.</div>`;
     else if(cty.cis)ch=`<div class="calc-warn w-blue">Страна происхождения: <b>${esc(cty.name)}</b> — сторона зоны свободной торговли СНГ: Кыргызская Республика не применяет ввозную пошлину к товарам, происходящим из этой страны, с ${cty.cis.from.split('-').reverse().join('.')} (${esc(cty.cis.act)}). Условие — ${esc(cty.cis.orig)}. НДС, акцизы, запреты, разрешения и контроль — как при обычном ввозе.</div>`;
     else if(cty.estp||cty.fta)ch=`<div class="calc-warn w-blue">Страна происхождения: <b>${esc(cty.name)}</b>${cty.estp?' — пользователь единой системы тарифных преференций ЕАЭС':''}${cty.fta?(cty.estp?', и с ней действует собственное соглашение с ЕАЭС':' — с ней действует собственное соглашение с ЕАЭС'):''}. Преференция даётся не стране, а товару этой страны и требует подтверждения происхождения — карточки ниже показывают, что действует по вашему коду.</div>`;
