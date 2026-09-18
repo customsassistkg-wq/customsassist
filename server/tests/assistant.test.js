@@ -266,6 +266,26 @@ const a = require('../src/services/assistant');
   assert.match(t, /— Итого по декларации —/);
   assert.equal((t.match(/Сбор за таможенные операции/g) || []).length, 1, 'сбор должен быть один: ' + t.slice(0, 300));
   assert.match(t, /Позиций посчитано: 2 из 2/);
+  // суммы: 4300 USD × 87,45 = 376 035 сом; сбор 0,4% = 1 504,14; всего = пошлины + НДС + один сбор
+  const sum = (re) => parseFloat((t.match(re) || [])[1].replace(/\s/g, '').replace(',', '.'));
+  assert.match(t, /Таможенная стоимость: 376\s035,00 сом/);
+  assert.match(t, /Сбор за таможенные операции: 1\s504,14 сом/);
+  assert.equal(sum(/Всего к уплате: ([\d\s]+,\d\d)/).toFixed(2),
+    (sum(/Ввозная пошлина: ([\d\s]+,\d\d) сом\nНДС/) + sum(/\nНДС: ([\d\s]+,\d\d)/) + 1504.14).toFixed(2));
+  // фрахт на весь инвойс делится по стоимости: 430 USD → 330 и 100; предупреждения FOB нет
+  t = await a.calcPayments({ currency: 'USD', incoterm: 'FOB Shanghai', transport: 430, items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] });
+  assert.match(t, /3300 \+ перевозка 330 = 3630 USD/);
+  assert.match(t, /1000 \+ перевозка 100 = 1100 USD/);
+  assert.match(t, /Перевозка 430 USD распределена/);
+  assert.doesNotMatch(t, /занижен/);
+  // позиция с неизвестным кодом или из ЕАЭС не входит в итог и названа отдельно; валюта позиции не перекрывает общую
+  t = await a.calcPayments({ currency: 'USD', items: [{ code: '8517130000', value: 1000, currency: 'EUR' }, { code: '1', value: 1 }, { code: '8517130000', value: 1, country: 'Казахстан' }] });
+  assert.match(t, /Позиций посчитано: 1 из 3/);
+  assert.match(t, /Не посчитаны[^]*Позиция 2 \(1\): Код 1 не найден[^]*Позиция 3 \(8517130000\): Товар из государства — члена ЕАЭС/);
+  assert.match(t, /1000 USD ×/);
+  // внутренние флаги из входа модели не работают, без code и items — подсказка
+  assert.equal(typeof await a.calcPayments({ code: '8517130000', value: 1, currency: 'USD', __noFee: true }), 'string');
+  assert.match(await a.calcPayments({ currency: 'USD' }), /Передай code и value/);
   console.log('PASS: calc_payments — пошлина «не менее», НДС, сбор, ЕАЭС, ОАЭ');
 
   // ── sum_check: сумма строк инвойса в копейках и сверка с итогом ──

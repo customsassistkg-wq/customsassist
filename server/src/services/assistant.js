@@ -339,8 +339,19 @@ const som = (n) => n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximum
 // импортёров пишут условие прямо в таблице («CIP Бишкек», «Delivery Terms: DAP Kant»), и без него расчёт по
 // китайскому инвойсу FOB занижает и пошлину, и НДС, ничем этого не выдавая.
 const INCOTERM_ADD = /\b(EXW|FCA|FAS|FOB)\b/i;
-async function calcPayments({ code, value, currency, quantity, country: countryName, date, transport, incoterm, items, __noFee } = {}) {
-  if (Array.isArray(items) && items.length) return calcBatch(items, { currency, country: countryName, date, incoterm });
+// Вход модели. Внутренние флаги сюда не попадают: одна позиция — calcOne, инвойс — calcBatch.
+async function calcPayments(input) {
+  const { items, code, value } = input || {};
+  if (Array.isArray(items) && items.length) return calcBatch(items, input);
+  if (code == null && value == null) return 'Передай code и value (одна позиция) или items (весь инвойс).';
+  const r = await calcOne(input, false);
+  return typeof r === 'string' ? r : r.text;
+}
+
+// Одна позиция. Ошибка — строкой; успех — { text, code, duty, vat, valueSom, tail }.
+// batch: сбор и итог не печатаются (в декларации сбор один — calcBatch), а предупреждения,
+// сноски и акциз идут в tail, чтобы 21 строка одного кода не повторяла их 21 раз.
+async function calcOne({ code, value, currency, quantity, country: countryName, date, transport, incoterm }, batch) {
   const c = checker();
   const digits = String(code || '').replace(/\D/g, '');
   const row = c.ETT_DB.find((r) => r[0] === digits);
@@ -409,21 +420,22 @@ async function calcPayments({ code, value, currency, quantity, country: countryN
   lines.push(`НДС ${vatRate}%: ${som(vat)} (база — стоимость + пошлина)`
     + (vf.firm.length ? ' — освобождение по перечню ПКМ КР № 596' : '')
     + (!vf.firm.length && vf.cond.length ? '; условное освобождение: ' + vf.cond.map((x) => x.why).join('; ') : ''));
-  if (!__noFee) {
+  if (!batch) {
     const fee = c.customsFeeGoods(valueSom);
     lines.push(`Сбор за таможенные операции: ${som(fee)} (0,4% от таможенной стоимости, вилка 500–250 000 сом)`);
     lines.push(`Итого: ${som(duty.duty + vat + fee)}`);
   }
-  if (c.findExcise(digits).length) lines.push('Товар подакцизный: акциз в расчёт не включён — ставка зависит от вида и объёма (ст. 336 НК КР), и он увеличивает базу НДС.');
+  const tail = [];
+  if (c.findExcise(digits).length) tail.push('Товар подакцизный: акциз в расчёт не включён — ставка зависит от вида и объёма (ст. 336 НК КР), и он увеличивает базу НДС.');
   const warns = c.calcWarnings(digits).map((w) => cardsToText(w.text).slice(0, 500)).filter(Boolean);
-  if (warns.length) lines.push('Предупреждения калькулятора:\n' + warns.join('\n'));
+  if (warns.length) tail.push('Предупреждения калькулятора:\n' + warns.join('\n'));
   // Расчёт выше — по ставке ЕТТ. Действующая сноска может снижать её (часто до 0%
   // на срок), а начало срока привязано к вступлению решения в силу, которое по
   // тексту сноски не вычислить, — поэтому сноска приводится, а не применяется молча.
   const fns = footnotesFor(digits, date);
-  if (fns.length) lines.push('ВНИМАНИЕ — к коду есть сноски ЕЭК, они могут менять ставку; расчёт выше их не учитывает:\n' + fns.join('\n'));
-  const text = lines.join('\n');
-  return __noFee ? { text, duty: duty.duty, vat, valueSom } : text;
+  if (fns.length) tail.push('ВНИМАНИЕ — к коду есть сноски ЕЭК, они могут менять ставку; расчёт выше их не учитывает:\n' + fns.join('\n'));
+  if (!batch) lines.push(...tail);
+  return { text: lines.join('\n'), code: digits, duty: duty.duty, vat, valueSom, tail: tail.join('\n') };
 }
 
 // Таможенный сбор берётся один раз за декларацию, а не за строку (п.38 Инструкции к ПКМ КР № 79 — он привязан к
@@ -431,26 +443,40 @@ async function calcPayments({ code, value, currency, quantity, country: countryN
 // прогоне инвойса на пять строк модель вызывала расчёт по каждой и складывала сборы: 8 755,28 сом вместо 8 605,08,
 // потому что в мелкой строке срабатывал минимум в 500 сом. На инвойсе из 21 строки так набежало бы 10 500 сом
 // минимумов вместо одного сбора. Поэтому весь инвойс считается одним вызовом, и сбор в нём один.
-async function calcBatch(items, common) {
+// Фрахт на весь инвойс (transport верхнего уровня) распределяется по позициям пропорционально стоимости — как
+// computeBatch калькулятора в режиме «по стоимости»; позиция со своим transport его сохраняет. Из позиции берутся
+// только её поля: валюта, дата и условие поставки — общие, иначе итог сложил бы сомы по разным курсам.
+const ITEM_KEYS = ['code', 'value', 'quantity', 'country', 'transport'];
+async function calcBatch(items, { currency, country, date, incoterm, transport }) {
   const c = checker();
-  const out = [];
-  let duty = 0, vat = 0, valueSom = 0, counted = 0;
-  for (const [i, it] of items.entries()) {
-    const r = await calcPayments({ ...common, ...it, items: undefined, __noFee: true });
-    if (typeof r === 'string') { out.push(`Позиция ${i + 1} (${it.code}): ${r}`); continue; }
+  const totalValue = items.reduce((s, it) => s + num(it && it.value), 0);
+  const freight = num(transport);
+  const out = [], skipped = [], tails = new Map();
+  let duty = 0, vat = 0, valueSom = 0;
+  for (const [i, raw] of items.entries()) {
+    const it = { currency, country, date, incoterm };
+    for (const k of ITEM_KEYS) if (raw && raw[k] != null) it[k] = raw[k];
+    if (freight && !num(it.transport) && totalValue > 0) it.transport = Math.round(freight * num(it.value) / totalValue * 100) / 100;
+    const r = await calcOne(it, true);
+    if (typeof r === 'string') { skipped.push(`Позиция ${i + 1} (${raw && raw.code}): ${r}`); continue; }
     out.push(`Позиция ${i + 1}. ${r.text}`);
-    duty += r.duty; vat += r.vat; valueSom += r.valueSom; counted++;
+    duty += r.duty; vat += r.vat; valueSom += r.valueSom;
+    if (r.tail) tails.set(r.code, r.tail);
   }
-  if (!counted) return out.join('\n\n');
+  const counted = out.length;
+  if (!counted) return skipped.join('\n');
   const fee = c.customsFeeGoods(valueSom);
   out.push(['— Итого по декларации —',
     `Позиций посчитано: ${counted} из ${items.length}`,
+    freight ? `Перевозка ${freight} ${String(currency || 'USD').toUpperCase()} распределена по позициям пропорционально стоимости` : '',
     `Таможенная стоимость: ${som(valueSom)}`,
     `Ввозная пошлина: ${som(duty)}`,
     `НДС: ${som(vat)}`,
     `Сбор за таможенные операции: ${som(fee)} — один на всю декларацию (0,4% от общей стоимости, вилка 500–250 000 сом); сборы по строкам не складывай`,
-    `Всего к уплате: ${som(duty + vat + fee)}`].join('\n'));
-  return out.join('\n\n');
+    `Всего к уплате: ${som(duty + vat + fee)}`].filter(Boolean).join('\n'));
+  if (skipped.length) out.push('Не посчитаны — в стоимость декларации и в сбор не вошли, скажи об этом пользователю:\n' + skipped.join('\n'));
+  for (const [code, tail] of tails) out.push(`По коду ${c.fmtCode(code)}:\n${tail}`);
+  return clip(out.join('\n\n'));
 }
 
 let footnotes;
@@ -547,7 +573,7 @@ function tools() {
         quantity: { type: 'number', description: 'Количество в единице специфической ставки (кг, шт, л, см³) — если ставка специфическая или комбинированная' },
         country: { type: 'string', description: 'Страна происхождения — название по-русски (Китай, Казахстан, ОАЭ)' },
         date: { type: 'string', description: 'Дата оформления YYYY-MM-DD' },
-        transport: { type: 'number', description: 'Стоимость перевозки (и страховки) до границы ЕАЭС в той же валюте — если она не включена в цену товара' },
+        transport: { type: 'number', description: 'Стоимость перевозки (и страховки) до границы ЕАЭС в той же валюте — если она не включена в цену товара. С items — фрахт на весь инвойс, распределяется по позициям пропорционально стоимости' },
         items: { type: 'array', description: 'Весь инвойс одним вызовом: по позиции {code, value, quantity, country, transport}. Обязательно для инвойса с несколькими позициями — сбор берётся один раз на декларацию.',
           items: { type: 'object', properties: { code: { type: 'string' }, value: { type: 'number' }, quantity: { type: 'number' }, country: { type: 'string' }, transport: { type: 'number' } }, required: ['code', 'value'] } },
         incoterm: { type: 'string', description: 'Условие поставки из документа: EXW, FCA, FOB, CIP, CIF, DAP, DDP и т. п.' },
@@ -1086,7 +1112,7 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
     for (const u of uses) {
       onStep({ tool: u.name, input: u.input || {} });
       let result;
-      try { result = await runTool(u, hint); } catch (e) { console.error('assistant tool', u.name, e); result = 'Ошибка инструмента.'; }
+      try { result = String(await runTool(u, hint)); } catch (e) { console.error('assistant tool', u.name, e); result = 'Ошибка инструмента.'; }
       if (u.name === 'search_base') searched.push(String(u.input?.query || ''));
       // «Проверен» только тот код, который вернул инструмент: запрос несуществующего
       // кода сам по себе его не подтверждает.
