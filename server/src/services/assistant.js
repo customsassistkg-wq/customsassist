@@ -18,6 +18,7 @@ const MAX_TOOL_ROUNDS = 8;
 // Разговор о документах: пакет на 12 кодов со сверками (sum_check, итог документа, поиск кодов ЕС) в восемь раундов
 // не укладывался — живой прогон 18.09.2026 кончился раундом без инструментов посреди работы.
 const MAX_TOOL_ROUNDS_DOCS = 12;
+const CALC_ASK_RE = /посчита|рассчита|расч[её]т\s+(?:таможенных\s+)?платеж|платеж|сколько\s+(?:платить|заплатить|к\s+уплате)/i;
 // DeepSeek в раунде без инструментов (а иногда и в обычном) пишет вызовы текстом своей разметкой:
 // «<｜｜DSML｜｜ invoke name="sum_check">…». Пользователю такой «ответ» уходил как есть.
 const DSML_RE = /<[｜|]{1,2}\s*DSML/;
@@ -394,10 +395,16 @@ function totalLine(values, total, cur) {
   const diff = cents - Math.round(t * 100);
   return diff === 0 ? `Сумма стоимостей позиций совпадает с итогом документа: ${fmt(t)} ${cur}.`
     : `⚠ Сумма стоимостей позиций ${fmt(cents / 100)} ${cur} не равна итогу документа ${fmt(t)} ${cur} (разница ${fmt(Math.abs(diff) / 100)}): `
-      + 'позиция посчитана дважды, пропущена или взята не та стоимость. Проверь items по документу и повтори расчёт. '
-      + 'Если разница объяснима (бесплатные позиции со стоимостью для таможни, скидка, фрахт) — назови её пользователю; '
-      + 'иначе платежи ниже пользователю не приводи.';
+      + 'позиция посчитана дважды, пропущена или взята не та стоимость.';
 }
+// Позиции не сходятся с итогом — платежей нет. Первая версия считала и просила «платежи ниже не приводи»; в живом
+// прогоне 18.09.2026 модель просьбу пропустила и выдала 257 868 сом по позициям на 23 780,26 USD при итоге 22 083,30.
+const sumsMismatch = (values, total) => total != null && num(total) > 0
+  && values.reduce((s, v) => s + Math.round(num(v) * 100), 0) !== Math.round(num(total) * 100);
+const TOTAL_FIX = '\nРасчёт не выполнен: платежи по несходящимся позициям неверны. Передай в items все строки документа как есть, '
+  + 'каждую со своей суммой, — одинаковые коды сервер сложит сам; если строки до скидки, а итог после неё, бери стоимости после скидки '
+  + '(например, таблицу итогов по кодам). Если разница объяснима (бесплатные позиции со стоимостью для таможни, строки другого '
+  + 'инвойса пакета) — назови её пользователю и передай total, равный сумме позиций.';
 const curOf = (currency) => String(currency || 'USD').toUpperCase().replace('KGS', 'СОМ').replace('SOM', 'СОМ');
 
 // Вход модели. Внутренние флаги сюда не попадают: одна позиция — calcOne, инвойс — calcBatch.
@@ -405,6 +412,7 @@ async function calcPayments(input) {
   const { items, code, value, total } = input || {};
   if (Array.isArray(items) && items.length) return calcBatch(items, input);
   if (code == null && value == null) return 'Передай code и value (одна позиция) или items (весь инвойс).';
+  if (sumsMismatch([value], total)) return totalLine([value], total, curOf(input.currency)) + TOTAL_FIX;
   const r = await calcOne(input, false);
   if (typeof r === 'string') return r;
   const check = total != null ? totalLine([value], total, curOf(input.currency)) : '';
@@ -541,6 +549,7 @@ async function calcBatch(items, { currency, country, date, incoterm, transport, 
       + 'и не посчиталась дважды. Повтори вызов с total.';
   }
   const check = totalLine(items.map((it) => it && it.value), total, curOf(currency));
+  if (sumsMismatch(items.map((it) => it && it.value), total)) return check + TOTAL_FIX;
   const totalValue = items.reduce((s, it) => s + num(it && it.value), 0);
   const freight = num(transport);
   const out = [], skipped = [], tails = new Map(), byCode = new Map();
@@ -1247,6 +1256,15 @@ function unknownNumbers(answer, known) {
 // Строки с количеством и ценой проверяются и поштучно: итог говорит, что где-то ошибка, а
 // «количество × цена ≠ сумма» — в какой строке. Цена в документе округлена, поэтому допуск — полкопейки
 // цены на всё количество плюс копейка.
+// Итог меньше суммы строк на ровный процент (с точностью до полупроцента) — так выглядит скидка: в инвойсах Hansgrohe
+// строки напечатаны до скидки 3%, а итог и таблица итогов по кодам — после. Живой прогон 18.09.2026: модель назвала
+// 280,80 против 272,36 и 80,59 против 78,17 «расхождениями» и отказалась считать платежи.
+function discountNote(sum, t, fmt) {
+  const p = (1 - t / sum) * 100, half = Math.round(p * 2) / 2;
+  if (!(t > 0 && t < sum && half >= 0.5 && half <= 20 && Math.abs(p - half) <= 0.05)) return '';
+  return ` Итог документа ${fmt(t)} меньше суммы строк ${fmt(sum)} на ${String(half).replace('.', ',')}% — так выглядит скидка. `
+    + 'Если в документе есть скидка на этот процент (Discount, скидка), расхождения нет: это итог после скидки, и считать надо по нему.';
+}
 function sumCheck({ amounts, total, rows } = {}) {
   const num = (v) => (typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(/\s/g, '').replace(',', '.')));
   const lines = (Array.isArray(rows) ? rows : []).slice(0, 1000);
@@ -1291,9 +1309,9 @@ function sumCheck({ amounts, total, rows } = {}) {
     // В живом прогоне 17.09.2026 модель в таком случае отказалась считать платежи и попросила «уточнить строку 19».
     out += diff === 0 ? ' Совпадает с итогом документа.' + (bad.length ? ' Стоимость для расчёта надёжна — считай платежи по итогу'
       + (hinted < bad.length ? ', а строки с расхождением назови пользователю.' : '.') : '')
-      : ` Итог документа ${fmt(t)} расходится с суммой строк на ${fmt(Math.abs(diff) / 100)}: одно из чисел прочитано со скана неверно. `
+      : discountNote(cents / 100, t, fmt) || (` Итог документа ${fmt(t)} расходится с суммой строк на ${fmt(Math.abs(diff) / 100)}: одно из чисел прочитано со скана неверно. `
         + 'Проверь, все ли строки учтены и нет ли строк на других страницах; если расхождение останется — считай по сумме строк '
-        + '(строки таблицы читаются со скана надёжнее итога) и назови пользователю обе суммы, чтобы он сверил их по оригиналу.';
+        + '(строки таблицы читаются со скана надёжнее итога) и назови пользователю обе суммы, чтобы он сверил их по оригиналу.');
   }
   return out;
 }
@@ -1382,6 +1400,7 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
       try { result = String(await runTool(u, hint)); } catch (e) { console.error('assistant tool', u.name, e); result = 'Ошибка инструмента.'; }
       if (u.name === 'search_base') searched.push(String(u.input?.query || ''));
       // Коды посчитанных позиций последнего расчёта: ответ, где они перечислены, должен перечислить все (см. ниже).
+      if (u.name === 'calc_payments' && /\nВсего к уплате: |\nИтого: /.test(result)) calcDone = true;
       if (u.name === 'calc_payments') {
         const counted = [...new Set([...result.matchAll(/(?:^|\n)(?:Позиция \d+\. )?Код (\d{4} \d{2} \d{3} \d) —/g)].map((m) => m[1].replace(/\s/g, '')))];
         if (counted.length) calcCodes = counted;
@@ -1396,6 +1415,10 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   };
   let verified = false;
   let calcCodes = [];
+  // Просили посчитать платежи по документам, а расчёта нет. Живой прогон 18.09.2026 (Keramin): модель сочла скидку
+  // «расхождением» и ответила «укажите, по какому коду и стоимости считать», хотя всё для расчёта было в документах.
+  let calcDone = false;
+  const wantCalc = docTexts.length > 0 && CALC_ASK_RE.test(String(question));
   let firstRound = 0, preAt = -1;
   const pre = images.length || docs.length ? [] : preTools(question);
   if (pre.length) {
@@ -1469,7 +1492,8 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
       const inAnswer = codesIn(answer);
       const missing = calcCodes.filter((code) => !inAnswer.has(code));
       const incomplete = missing.length && calcCodes.length - missing.length >= 2 ? missing : [];
-      if ((unverified.length || numbers.length || incomplete.length) && !verified && round < maxRounds) {
+      const needCalc = wantCalc && !calcDone;
+      if ((unverified.length || numbers.length || incomplete.length || needCalc) && !verified && round < maxRounds) {
         verified = true;
         onStep({ tool: 'verify', input: { codes: unverified, numbers } });
         messages.push({ role: 'assistant', content: answer });
@@ -1479,6 +1503,8 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
             + 'сверь каждое с документом (суммы и разности — через sum_check), неподтверждённое исправь или убери, выдуманное расхождение убери целиком' : '',
           incomplete.length ? `в расчёте есть позиции с кодами ${incomplete.map((code) => checker().fmtCode(code)).join(', ')}, а в ответе их нет — `
             + 'таблицу платежей по кодам бери из расчёта целиком, со всеми строками' : '',
+          needCalc ? 'в вопросе просили посчитать платежи, а расчёта нет — вызови calc_payments по стоимостям документов (строки как есть '
+            + 'и total); сомнительные места назови отдельно, но расчёт не откладывай и не проси пользователя указать, что считать' : '',
         ].filter(Boolean).join('; ') + '. Затем верни исправленный ответ целиком, без упоминания этой проверки.' });
         continue;
       }

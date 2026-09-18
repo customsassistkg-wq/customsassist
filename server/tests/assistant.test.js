@@ -313,14 +313,17 @@ const a = require('../src/services/assistant');
   t = await a.calcPayments({ currency: 'USD', total: 4300, items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] });
   assert.match(t, /^Сумма стоимостей позиций совпадает с итогом документа: 4\s300,00 USD\.\n/);
   t = await a.calcPayments({ currency: 'USD', total: 22083.3, items: [{ code: '3307900008', value: 22083.3 }, { code: '8212101000', value: 1209.6 }, { code: '9619007101', value: 2460 }] });
-  assert.match(t, /^⚠ Сумма стоимостей позиций 25\s752,90 USD не равна итогу документа 22\s083,30 USD \(разница 3\s669,60\)/);
+  assert.match(t, /^⚠ Сумма стоимостей позиций 25\s752,90 USD не равна итогу документа 22\s083,30 USD \(разница 3\s669,60\)[^]*\nРасчёт не выполнен/);
+  assert.doesNotMatch(t, /Всего к уплате|Итого по декларации/);                                // несходящиеся позиции не считаются
   // без итога документа пакет не считается: пакет из трёх инвойсов посчитан по одному и выдан за весь (живой прогон)
   assert.match(await a.calcPayments({ currency: 'USD', items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] }), /^Передай total — итог документа/);
   // итоги по кодам: 18 строк инвойса на 3 кода — суммы по коду даёт сервер, а не модель
   t = await a.calcPayments({ currency: 'USD', total: 2830.27, items: [{ code: '3307900008', value: 801.79 }, { code: '3307900008', value: 1428.48 }, { code: '9619007101', value: 600 }] });
   assert.match(t, /Итого по кодам — одинаковый код идёт в декларации одной позицией[^\n]*\n3307 90 000 8 — строк 2: стоимость 2\s230,27 USD, таможенная стоимость [\d\s]+,\d\d сом, пошлина [\d\s]+,\d\d сом, НДС [\d\s]+,\d\d сом\n9619 00 710 1 — строк 1: стоимость 600,00 USD/);
   assert.doesNotMatch(await a.calcPayments({ currency: 'USD', total: 4300, items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] }), /Итого по кодам/);
-  assert.match(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', total: 1200 }), /^⚠ Сумма стоимостей позиций 1\s000,00 USD не равна итогу документа 1\s200,00 USD/);
+  t = await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', total: 1200 });
+  assert.match(t, /^⚠ Сумма стоимостей позиций 1\s000,00 USD не равна итогу документа 1\s200,00 USD[^]*Расчёт не выполнен/);
+  assert.doesNotMatch(t, /Итого:/);
   assert.doesNotMatch(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD' }), /Сумма стоимостей/);
   console.log('PASS: calc_payments — действующие коды вместо «не найден», сверка с итогом документа');
 
@@ -361,7 +364,10 @@ const a = require('../src/services/assistant');
   assert.match(a.sumCheck({ rows: [{ quantity: 2016, price: 213.36, per: 100, amount: 4301.34 }, { quantity: 3360, price: 3.4, amount: 11424 }], total: 15725.34 }),
     /^Сумма 2 чисел: 15\s725,34\. Количество × цена равно сумме во всех 2 строках\. Совпадает с итогом документа\.$/);
   assert.match(a.sumCheck({ rows: [{ quantity: 96, price: 0.058, amount: 801.79 }] }), /строка 1: 96 × 0,058 = 5,57, а в документе 801,79 — сумме и цене соответствует количество 13\s824/);
-  console.log('PASS: sum_check — сумма строк без ошибки дробей, расхождение с итогом, количество × цена по строкам');
+  // итог меньше суммы строк на ровный процент — скидка, а не ошибка чтения (Hansgrohe: строки до скидки 3%, итоги после)
+  assert.match(a.sumCheck({ amounts: [32.24, 32.24, 16.11], total: 78.17 }), /Итог документа 78,17 меньше суммы строк 80,59 на 3% — так выглядит скидка/);
+  assert.match(a.sumCheck({ rows: [{ quantity: 2, price: 35.1, amount: 70.2 }, { quantity: 2, price: 35.1, amount: 70.2 }, { quantity: 2, price: 35.1, amount: 70.2 }, { quantity: 2, price: 35.1, amount: 70.2 }], total: 272.36 }), /на 3% — так выглядит скидка/);
+  console.log('PASS: sum_check — сумма строк без ошибки дробей, расхождение с итогом, количество × цена по строкам, скидка');
 
   // ── слова в строках таблиц (замер на 19 страницах трёх пакетов, 18.09.2026): решает Vision ──
   const wrow = (w) => `| 13 | Влажные салфетки SUNLIGHT XL ${w} 17 шт | 40 | 200 | 957,20 |`;
@@ -636,7 +642,17 @@ const a = require('../src/services/assistant');
   script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: calc3 }] : [{ type: 'text', text: 'Всего к уплате — по расчёту выше.' }]);
   r = await a.ask([{ role: 'user', content: 'Посчитай инвойс' }]);
   assert.equal(calls.length, 2);
-  console.log('PASS: полнота ответа — коды расчёта, пропавшие из таблицы, возвращаются');
+  // просили посчитать платежи по документам, а расчёта нет — повторный раунд (живой прогон: «укажите, что считать»)
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: '8517130000' } }]
+    : n === 2 ? [{ type: 'text', text: 'Укажите, по какому коду считать.' }]
+    : n === 3 ? [{ type: 'tool_use', id: 't3', name: 'calc_payments', input: { code: '8517130000', value: 100, currency: 'USD', total: 100 } }]
+    : [{ type: 'text', text: 'Посчитано.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери инвойс и посчитай таможенные платежи' }], { docs: [{ name: 'inv.pdf', pages: 1, text: 'Smartphone 100 USD' }] });
+  assert.equal(calls.length, 4);
+  assert.match(calls[2].messages[calls[2].messages.length - 1].content, /в вопросе просили посчитать платежи, а расчёта нет/);
+  assert.equal(r.answer, 'Посчитано.');
+  console.log('PASS: полнота ответа — коды расчёта, пропавшие из таблицы, возвращаются; расчёт, о котором просили, обязателен');
 
   // ── чтение страницы: положение, предел ответа, второе распознавание ──
   {
