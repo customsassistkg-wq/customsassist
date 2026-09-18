@@ -260,6 +260,13 @@
   .acc-menu .acc-email{font-size:var(--fs-md);color:var(--muted);padding:4px 6px 8px;word-break:break-all}
   .acc-menu .acc-status{display:block;margin:0 0 8px;font-size:var(--fs-md);padding:6px 10px;border-radius:var(--radius-sm)}
   .acc-menu .btn{display:flex;width:100%;justify-content:flex-start;margin-top:4px}
+  .terms-gate{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.55)}
+  .terms-box{max-width:520px;width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);padding:22px 24px}
+  .terms-box h2{font-family:var(--head);font-size:var(--fs-4xl);margin:0 0 10px;color:var(--text)}
+  .terms-box p{font-size:var(--fs-lg);line-height:1.6;color:var(--text);margin:0 0 14px}
+  .terms-box a{color:var(--ink-link)}
+  .terms-box .terms-err{color:var(--red)}
+  .terms-actions{display:flex;gap:10px;flex-wrap:wrap}
   .tab-bar{display:none}
   @media (max-width:640px){
     .tab-bar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--surface);border-top:1px solid var(--border);padding:6px 8px calc(6px + env(safe-area-inset-bottom));box-shadow:var(--shadow-up)}
@@ -739,6 +746,8 @@
   .auth-card-logo{display:none;margin-bottom:22px}
   .auth-card-logo .auth-logo-img{max-width:100%;margin:0 auto}
   .auth-card h1{font-family:var(--head);font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0 0 7px;color:var(--ac-ink)}
+  .auth-legal{font-size:var(--fs-md);line-height:1.5;color:var(--ac-dim);text-align:center;margin:12px 0 0}
+  .auth-legal a{color:inherit;text-decoration:underline;text-underline-offset:2px}
   .auth-card .sub{font-size:var(--fs-base);line-height:1.55;color:var(--ac-dim);margin:0 0 26px}
 
   .auth-field{margin-bottom:16px}
@@ -1078,6 +1087,7 @@
       <div id="turnstileRegister" class="cf-box"></div>
       <div id="authRegisterError" class="calc-warn w-red" style="display:none"></div>
       <button id="authRegisterSubmit" class="auth-btn" type="button"><span class="ab-label">Создать аккаунт</span></button>
+      <p class="auth-legal">Нажимая «Создать аккаунт», вы принимаете <a href="/terms.html" target="_blank" rel="noopener">правила использования</a> и подтверждаете, что ознакомились с <a href="/privacy.html" target="_blank" rel="noopener">политикой конфиденциальности</a>, в том числе со сведениями о трансграничной передаче данных.</p>
       <a href="#" id="authRegisterBackLink" class="auth-back">← Назад ко входу</a>
     </div>
 
@@ -1223,13 +1233,13 @@
       <div class="af-links">
         <a href="#" onclick="openFooterDocModal('Политика конфиденциальности');return false">Политика конфиденциальности</a>
         <a href="#" onclick="openFooterDocModal('Правила использования сервиса');return false">Правила использования сервиса</a>
-        <a href="#" onclick="openFooterDocModal('Согласие на обработку и трансграничную передачу персональных данных');return false">Согласие на обработку и трансграничную передачу персональных данных</a>
+        <a href="#" onclick="openFooterDocModal('Трансграничная передача персональных данных');return false">Трансграничная передача персональных данных</a>
       </div>
     </div>
     <div class="af-right">
       <div>Customs Assist KG</div>
       <div>Юридический и фактический адрес:<br>Кыргызская Республика, г. Бишкек</div>
-      <div><a href="mailto:info@customsassist.org">info@customsassist.org</a></div>
+      <div><a href="mailto:tshalabaev@gmail.com">tshalabaev@gmail.com</a></div>
     </div>
   </footer>
   <nav id="tabBar" class="tab-bar" aria-label="Разделы">
@@ -1239,6 +1249,14 @@
     <button type="button" data-nav="navTreeBtn" onclick="tabGo('navTreeBtn')"><span class="tb-i"><svg class="ic" aria-hidden="true"><use href="#i-tree"/></svg></span>Коды</button>
     <button type="button" id="tabMoreBtn" onclick="tabMore()"><span class="tb-i"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></span>Ещё</button>
   </nav>
+  <div id="termsGate" class="terms-gate" role="dialog" aria-modal="true" aria-labelledby="termsGateTitle" style="display:none">
+    <div class="terms-box">
+      <h2 id="termsGateTitle">Правила использования сервиса</h2>
+      <p>С 18.09.2026 сервис работает по пользовательскому соглашению, как требует Цифровой кодекс Кыргызской Республики. Прочитайте <a href="/terms.html" target="_blank" rel="noopener">правила использования</a> и <a href="/privacy.html" target="_blank" rel="noopener">политику конфиденциальности</a> со сведениями об обработке и трансграничной передаче персональных данных.</p>
+      <p class="terms-err" id="termsGateError" style="display:none"></p>
+      <div class="terms-actions"><button type="button" class="btn btn-primary btn-lg" id="termsAcceptBtn">Принимаю</button><button type="button" class="btn btn-lg" id="termsLogoutBtn">Выйти</button></div>
+    </div>
+  </div>
 </div>
 
 <div id="calcPrintArea"></div>
@@ -1656,6 +1674,32 @@ async function showApp(){
   const st=document.getElementById('accMenuStatus');if(st)st.innerHTML=document.getElementById('accountPanel').innerHTML;
   renderVerifyBar();
   initApp();
+  showTermsGate();
+}
+
+// Окно «Принимаю»: сервер отдаёт termsAccepted в ответе на вход и в /api/auth/me. Отказ — это выход:
+// пользоваться сервисом без соглашения нельзя (ст. 114 Цифрового кодекса).
+function showTermsGate(){
+  const gate=document.getElementById('termsGate');
+  if(!gate||!currentUser)return;
+  if(currentUser.termsAccepted!==false){gate.style.display='none';return;}
+  const btn=document.getElementById('termsAcceptBtn'),err=document.getElementById('termsGateError');
+  err.style.display='none';btn.disabled=false;
+  gate.style.display='flex';
+  btn.focus();
+  document.getElementById('termsLogoutBtn').onclick=()=>doLogout();
+  btn.onclick=async()=>{
+    btn.disabled=true;
+    try{
+      const res=await fetch('/api/auth/accept-terms',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:'{}'});
+      if(res.status===401){showAuthScreen('Сессия завершена. Войдите заново.');return;}
+      if(!res.ok)throw new Error('HTTP '+res.status);
+      currentUser.termsAccepted=true;
+      gate.style.display='none';
+    }catch(e){
+      err.textContent='Не удалось сохранить — проверьте подключение и нажмите ещё раз.';err.style.display='block';btn.disabled=false;
+    }
+  };
 }
 
 // Виджет статуса доступа в левой боковой панели — админам доступ бессрочный
@@ -1779,6 +1823,7 @@ function resetAppView(){
   const inp=document.getElementById('inp'); if(inp) inp.value='';
   const sp=document.getElementById('speciesResult'); if(sp) sp.innerHTML='';
   const vb=document.getElementById('verifyBar'); if(vb) vb.style.display='none';
+  const tg=document.getElementById('termsGate'); if(tg) tg.style.display='none';
   if(typeof searchMode!=='undefined')searchMode='code';
   if(typeof currentPage!=='undefined')currentPage='search';
 }

@@ -27,6 +27,9 @@ const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const RESET_RESEND_COOLDOWN_MS = 2 * 60 * 1000; // don't mint a 2nd token within 2 min of a still-valid one
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TRIAL_DAYS = 3;
+// Редакция правил использования (terms.html). Новая редакция — новая дата здесь:
+// у всех, кто принимал прежнюю, страница снова покажет окно «Принимаю».
+const TERMS_VERSION = '2026-09-18';
 const REGISTER_RATE_LIMIT = 5; // attempts
 const REGISTER_RATE_WINDOW_MS = 60 * 60 * 1000; // per IP, per hour
 const LOGIN_RATE_LIMIT = 10; // attempts
@@ -114,7 +117,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     const { rows } = await pool.query(
-      'select id, email, password_hash, role, active, subscription_expires_at, email_verified_at from users where email = $1',
+      'select id, email, password_hash, role, active, subscription_expires_at, email_verified_at, terms_version from users where email = $1',
       [key]
     );
     const user = rows[0];
@@ -159,6 +162,7 @@ router.post('/login', async (req, res, next) => {
         email: user.email,
         role: user.role,
         subscriptionExpiresAt: user.subscription_expires_at,
+        termsAccepted: user.terms_version === TERMS_VERSION,
       });
     });
   } catch (err) {
@@ -216,10 +220,10 @@ router.post('/register', async (req, res, next) => {
     let rows;
     try {
       ({ rows } = await pool.query(
-        `insert into users (email, password_hash, role, subscription_expires_at, last_login_at, last_seen_at)
-         values ($1,$2,'user', now() + make_interval(days=>$3), now(), now())
+        `insert into users (email, password_hash, role, subscription_expires_at, last_login_at, last_seen_at, terms_version, terms_accepted_at)
+         values ($1,$2,'user', now() + make_interval(days=>$3), now(), now(), $4, now())
          returning id, email, role, active, subscription_expires_at`,
-        [String(email).toLowerCase(), hash, TRIAL_DAYS]
+        [String(email).toLowerCase(), hash, TRIAL_DAYS, TERMS_VERSION]
       ));
     } catch (e) {
       if (e.code === '23505') return res.status(409).json({ error: 'email already exists' });
@@ -233,6 +237,9 @@ router.post('/register', async (req, res, next) => {
       'insert into admin_audit_log (actor_id, action, target_user_id, detail) values ($1,$2,$3,$4)',
       [user.id, 'self_register', user.id, JSON.stringify({ email: user.email, trial_days: TRIAL_DAYS })]
     );
+    // Регистрация и есть заключение соглашения: кнопка «Создать аккаунт» стоит
+    // под ссылками на правила. Запись в журнале переживёт удаление аккаунта.
+    await logTermsAccepted(user);
 
     // Письмо уходит в фоне и его результат не влияет на ответ: учётная запись
     // уже создана, а ждать почтовый сервис значит держать человека перед
@@ -444,7 +451,28 @@ router.get('/me', (req, res) => {
     role: req.user.role,
     subscriptionExpiresAt: req.user.subscription_expires_at,
     emailVerified: !!req.user.email_verified_at,
+    termsAccepted: req.user.terms_version === TERMS_VERSION,
   });
+});
+
+async function logTermsAccepted(user) {
+  await pool.query(
+    'insert into admin_audit_log (actor_id, action, target_user_id, detail) values ($1,$2,$3,$4)',
+    [user.id, 'terms_accepted', user.id, JSON.stringify({ email: user.email, version: TERMS_VERSION })]
+  );
+}
+
+// Кнопка «Принимаю» в окне после входа: для учётных записей, заведённых до
+// публикации правил, и для всех — после выхода новой редакции.
+router.post('/accept-terms', async (req, res, next) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'not authenticated' });
+    await pool.query('update users set terms_version=$1, terms_accepted_at=now() where id=$2', [TERMS_VERSION, req.user.id]);
+    await logTermsAccepted(req.user);
+    res.json({ ok: true, termsAccepted: true });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;

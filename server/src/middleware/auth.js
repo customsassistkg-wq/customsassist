@@ -27,7 +27,7 @@ async function auth(req, res, next) {
 
   try {
     const { rows } = await pool.query(
-      'select id, email, role, active, subscription_expires_at, last_seen_at, email_verified_at, ai_plan from users where id = $1',
+      'select id, email, role, active, subscription_expires_at, last_seen_at, email_verified_at, ai_plan, terms_version from users where id = $1',
       [userId]
     );
     const user = rows[0];

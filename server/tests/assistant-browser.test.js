@@ -109,8 +109,8 @@ app.use(session({ secret: 'x', resave: false, saveUninitialized: false }));
 app.use(require('../src/middleware/auth'));
 app.get('/api/auth/config', (q, r) => r.json({}));
 // как настоящий /api/auth/me — без id: переписка должна восстанавливаться по email
-app.get('/api/auth/me', (q, r) => (q.user ? r.json({ email: q.user.email, role: q.user.role, emailVerified: true }) : r.status(401).json({})));
-app.post('/api/auth/login', (q, r) => { q.session.userId = 'valid'; r.json({ ...user, emailVerified: true }); });
+app.get('/api/auth/me', (q, r) => (q.user ? r.json({ email: q.user.email, role: q.user.role, emailVerified: true, termsAccepted: true }) : r.status(401).json({})));
+app.post('/api/auth/login', (q, r) => { q.session.userId = 'valid'; r.json({ ...user, emailVerified: true, termsAccepted: true }); });
 app.post('/api/auth/logout', (q, r) => q.session.destroy(() => r.json({})));
 app.get('/api/nbkr-rates', (q, r) => r.status(503).json({}));
 app.get('/api/class-decisions', (q, r) => r.json({ items: [] }));

@@ -23,6 +23,7 @@ assert(Buffer.byteLength(code) < 1024 * 1024, 'checker.js carries no data: ' + B
 const users = {
   valid: {id:'valid', email:'test@example.test', role:'user', active:true, email_verified_at:new Date(), last_seen_at:new Date()},
   unverified: {id:'unverified', active:true},
+  terms: {id:'terms', email:'terms@example.test', role:'user', active:true, email_verified_at:new Date(), last_seen_at:new Date(), needsTerms:true},
   disabled: {id:'disabled', active:false},
   expired: {id:'expired', active:true, subscription_expires_at:'2000-01-01'},
 };
@@ -33,8 +34,10 @@ app.use(express.json());
 app.use(session({secret:'local-check-only', resave:false, saveUninitialized:false}));
 app.use(require('../src/middleware/auth'));
 app.get('/api/auth/config', (req,res)=>res.json({}));
-app.get('/api/auth/me', (req,res)=>req.user?res.json({...req.user,emailVerified:true}):res.status(401).json({}));
-app.post('/api/auth/login', (req,res)=>{req.session.userId=req.body.password;res.json({...users[req.body.password], emailVerified:true});});
+app.get('/api/auth/me', (req,res)=>req.user?res.json({...req.user,emailVerified:true,termsAccepted:!req.user.needsTerms}):res.status(401).json({}));
+app.post('/api/auth/login', (req,res)=>{req.session.userId=req.body.password;const u=users[req.body.password]||{};res.json({...u, emailVerified:true, termsAccepted:!u.needsTerms});});
+const termsPosts=[];
+app.post('/api/auth/accept-terms', (req,res)=>{if(!req.user)return res.status(401).json({});termsPosts.push(req.user.id);users[req.user.id].needsTerms=false;res.json({ok:true,termsAccepted:true});});
 app.post('/api/auth/logout', (req,res)=>req.session.destroy(()=>res.json({ok:true})));
 app.get('/api/nbkr-rates', (req,res)=>res.status(503).json({}));
 const guestPosts=[];
@@ -103,6 +106,8 @@ app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send
       guest.on('pageerror',e=>guestErrors.push(e.message));
       await guest.goto(origin);
       await guest.locator('#authRegisterLink').click();
+      await guest.locator('#authViewRegister .auth-legal a[href="/terms.html"]').waitFor({state:'visible',timeout:5000});
+      await guest.locator('#authViewRegister .auth-legal a[href="/privacy.html"]').waitFor({state:'visible',timeout:5000});
       await guest.locator('#authRegisterEmail').fill('new@example.test');
       await guest.locator('#authRegisterPassword').fill('long-enough-1');
       await guest.locator('#authRegisterSubmit').click();
@@ -152,6 +157,13 @@ app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send
       await page.evaluate(()=>openFooterDocModal('Политика конфиденциальности'));
       await page.locator('#activeModal a[href="/privacy.html"]').waitFor({timeout:5000});
       await page.evaluate(()=>closeModal());
+      await page.evaluate(()=>openFooterDocModal('Правила использования сервиса'));
+      await page.locator('#activeModal a[href="/terms.html"]').waitFor({timeout:5000});
+      await page.evaluate(()=>closeModal());
+      await page.evaluate(()=>openFooterDocModal('Трансграничная передача персональных данных'));
+      await page.locator('#activeModal a[href="/privacy.html#transfer"]').waitFor({timeout:5000});
+      await page.evaluate(()=>closeModal());
+      assert.equal(await page.locator('#termsGate').isVisible(),false,'accepted user sees no terms window');
       await page.reload();
       await page.locator('#appWrap').waitFor({state:'visible'});
       assert.equal(requests,3); // failed request, retry, fresh page with a session
@@ -168,6 +180,23 @@ app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send
       await page.locator('#result .card').first().waitFor();
       assert.deepEqual(errors,[]);
       assert.deepEqual(cspViolations,[],'Content-Security-Policy');
+      const gated=await browser.newPage();
+      const gatedErrors=[];gated.on('pageerror',e=>gatedErrors.push(e.message));
+      await gated.goto(origin);
+      await gated.locator('#authEmail').fill('terms@example.test');
+      await gated.locator('#authPassword').fill('terms');
+      await gated.locator('#authSubmit').click();
+      await gated.locator('#termsGate').waitFor({state:'visible',timeout:10000});
+      assert.equal(await gated.locator('#appWrap').isVisible(),true);
+      await gated.locator('#termsGate a[href="/terms.html"]').waitFor();
+      await gated.locator('#termsAcceptBtn').click();
+      await gated.locator('#termsGate').waitFor({state:'hidden',timeout:5000});
+      assert.deepEqual(termsPosts,['terms']);
+      await gated.reload();
+      await gated.locator('#appWrap').waitFor({state:'visible'});
+      assert.equal(await gated.locator('#termsGate').isVisible(),false,'accepted terms stay accepted after reload');
+      assert.deepEqual(gatedErrors,[]);
+      await gated.close();
       const delayed=await browser.newPage();
       let pendingRoute, started;
       const downloading=new Promise(resolve=>started=resolve);
@@ -181,7 +210,7 @@ app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send
       await pendingRoute.abort().catch(()=>{});
       assert.equal(await delayed.locator('#appWrap').isVisible(),false);
       await delayed.close();
-      console.log('PASS: browser login, failed load/retry, search, session reload, logout and mobile re-login');
+      console.log('PASS: browser login, failed load/retry, search, session reload, logout and mobile re-login; terms links, terms window and acceptance');
     }
     console.log('PASS: access checks precede 304; unchanged file has no body; changed ETag gets 200; errors no-store; syntax');
   }finally{

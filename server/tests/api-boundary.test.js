@@ -11,7 +11,10 @@ delete process.env.NODE_ENV;
 
 const user = { id: 'u1', email: 'user@test.local', password_hash: bcrypt.hashSync('right-password', 4), role: 'user',
   active: true, email_verified_at: new Date(), subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base' };
+const writes = [];
 require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async (sql, args) => {
+  if (/^update users set terms_version/.test(sql)) { writes.push(['terms', args[0]]); user.terms_version = args[0]; return { rows: [] }; }
+  if (/insert into admin_audit_log/.test(sql)) { writes.push([args[1], JSON.parse(args[3]).version]); return { rows: [] }; }
   if (/from users where (id|email) = \$1/.test(sql)) return { rows: args[0] === user.id || args[0] === user.email ? [user] : [] };
   return { rows: [] };
 } } } };
@@ -45,9 +48,21 @@ const app = require('../src/index');
     assert.deepEqual([r.status, (await r.json()).error], [413, 'entity.too.large']);
 
     // после входа большое тело принимается и доходит до маршрута
+    // правила: без сессии принять нельзя
+    r = await post('/api/auth/accept-terms', '{}');
+    assert.equal(r.status, 401);
     r = await post('/api/auth/login', JSON.stringify({ email: user.email, password: 'right-password' }));
     assert.equal(r.status, 200);
+    // учётная запись без принятой редакции правил: окно «Принимаю» получает termsAccepted:false
+    assert.equal((await r.json()).termsAccepted, false);
     const cookie = r.headers.get('set-cookie').split(';')[0];
+    r = await post('/api/auth/accept-terms', '{}', { cookie });
+    assert.equal(r.status, 200);
+    const version = writes[0] && writes[0][1];
+    assert.match(String(version), /^\d{4}-\d{2}-\d{2}$/);
+    assert.deepEqual(writes, [['terms', version], ['terms_accepted', version]], 'версия в users и запись в журнале');
+    r = await fetch(base + '/api/auth/me', { headers: { cookie } });
+    assert.equal((await r.json()).termsAccepted, true);
     r = await post('/api/assistant', JSON.stringify({ messages: [], pad: big }), { cookie });
     assert.deepEqual([r.status, (await r.json()).error], [400, 'bad_request']);
     r = await post('/api/assistant', '{"messages":[' + big, { cookie });
@@ -55,7 +70,7 @@ const app = require('../src/index');
     // страница документа — больше общих 100 КБ и тоже доходит до маршрута
     r = await post('/api/assistant/read', JSON.stringify({ image: { media_type: 'image/gif', data: big } }), { cookie });
     assert.deepEqual([r.status, (await r.json()).error], [400, 'bad_image']);
-    console.log('PASS: Origin обязателен; тело помощника и страницы документа разбирается только после входа; типы полей; 413 и 400 вместо 500');
+    console.log('PASS: принятие правил — 401 без сессии, версия и журнал, termsAccepted во входе и /me; Origin обязателен; тело помощника и страницы документа разбирается только после входа; типы полей; 413 и 400 вместо 500');
   } finally {
     server.close();
   }
