@@ -540,6 +540,13 @@ function focusResultCard(id){
 // узнаёт карточку ЕТТ). Чего нет в карте — флаги, ☣️, 🐄 — остаётся эмодзи.
 const ICON_MAP={"🌍":"globe","🌐":"globe","🛡️":"shield","💰":"coins","🍶":"bottle","🧾":"receipt","📊":"chart","⚠️":"warn","📦":"box","⏸️":"pause","📋":"clipboard","❓":"help","💊":"pill","🏥":"cross","🧪":"flask","⚡":"bolt","✈️":"plane","🏭":"factory","🌾":"wheat","🌬️":"wind","🏅":"medal","💍":"ring","🔐":"lock","📉":"down","🚧":"barrier","🌱":"sprout","📝":"pencil","✓":"check","🐾":"paw","🗂️":"folder"};
 function iconizeCards(container){
+  // Тег карточки начинается с эмодзи шаблона («🔐 Требует лицензии») — рядом с контурными
+  // иконками он выбивается; снимаем ведущий знак, как resShortLabel делает для вердикта.
+  container.querySelectorAll('.card .tags .tag').forEach(t=>{
+    const n=t.firstChild;if(!n||n.nodeType!==3)return;
+    const s=n.nodeValue.replace(/^[^\wА-Яа-яЁё0-9«(]+/u,'');
+    if(s&&s!==n.nodeValue)n.nodeValue=s;
+  });
   container.querySelectorAll('.card .rh .ico').forEach(ico=>{
     if(ico.dataset.em!==undefined)return;
     const em=ico.textContent.trim(),k=ICON_MAP[em];
