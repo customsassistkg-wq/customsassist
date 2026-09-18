@@ -339,7 +339,8 @@ const som = (n) => n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximum
 // импортёров пишут условие прямо в таблице («CIP Бишкек», «Delivery Terms: DAP Kant»), и без него расчёт по
 // китайскому инвойсу FOB занижает и пошлину, и НДС, ничем этого не выдавая.
 const INCOTERM_ADD = /\b(EXW|FCA|FAS|FOB)\b/i;
-async function calcPayments({ code, value, currency, quantity, country: countryName, date, transport, incoterm } = {}) {
+async function calcPayments({ code, value, currency, quantity, country: countryName, date, transport, incoterm, items, __noFee } = {}) {
+  if (Array.isArray(items) && items.length) return calcBatch(items, { currency, country: countryName, date, incoterm });
   const c = checker();
   const digits = String(code || '').replace(/\D/g, '');
   const row = c.ETT_DB.find((r) => r[0] === digits);
@@ -408,9 +409,11 @@ async function calcPayments({ code, value, currency, quantity, country: countryN
   lines.push(`НДС ${vatRate}%: ${som(vat)} (база — стоимость + пошлина)`
     + (vf.firm.length ? ' — освобождение по перечню ПКМ КР № 596' : '')
     + (!vf.firm.length && vf.cond.length ? '; условное освобождение: ' + vf.cond.map((x) => x.why).join('; ') : ''));
-  const fee = c.customsFeeGoods(valueSom);
-  lines.push(`Сбор за таможенные операции: ${som(fee)} (0,4% от таможенной стоимости, вилка 500–250 000 сом)`);
-  lines.push(`Итого: ${som(duty.duty + vat + fee)}`);
+  if (!__noFee) {
+    const fee = c.customsFeeGoods(valueSom);
+    lines.push(`Сбор за таможенные операции: ${som(fee)} (0,4% от таможенной стоимости, вилка 500–250 000 сом)`);
+    lines.push(`Итого: ${som(duty.duty + vat + fee)}`);
+  }
   if (c.findExcise(digits).length) lines.push('Товар подакцизный: акциз в расчёт не включён — ставка зависит от вида и объёма (ст. 336 НК КР), и он увеличивает базу НДС.');
   const warns = c.calcWarnings(digits).map((w) => cardsToText(w.text).slice(0, 500)).filter(Boolean);
   if (warns.length) lines.push('Предупреждения калькулятора:\n' + warns.join('\n'));
@@ -419,7 +422,35 @@ async function calcPayments({ code, value, currency, quantity, country: countryN
   // тексту сноски не вычислить, — поэтому сноска приводится, а не применяется молча.
   const fns = footnotesFor(digits, date);
   if (fns.length) lines.push('ВНИМАНИЕ — к коду есть сноски ЕЭК, они могут менять ставку; расчёт выше их не учитывает:\n' + fns.join('\n'));
-  return lines.join('\n');
+  const text = lines.join('\n');
+  return __noFee ? { text, duty: duty.duty, vat, valueSom } : text;
+}
+
+// Таможенный сбор берётся один раз за декларацию, а не за строку (п.38 Инструкции к ПКМ КР № 79 — он привязан к
+// помещению товаров под процедуру, то есть к декларации, и вилка 500–250 000 сом применяется там же). На живом
+// прогоне инвойса на пять строк модель вызывала расчёт по каждой и складывала сборы: 8 755,28 сом вместо 8 605,08,
+// потому что в мелкой строке срабатывал минимум в 500 сом. На инвойсе из 21 строки так набежало бы 10 500 сом
+// минимумов вместо одного сбора. Поэтому весь инвойс считается одним вызовом, и сбор в нём один.
+async function calcBatch(items, common) {
+  const c = checker();
+  const out = [];
+  let duty = 0, vat = 0, valueSom = 0, counted = 0;
+  for (const [i, it] of items.entries()) {
+    const r = await calcPayments({ ...common, ...it, items: undefined, __noFee: true });
+    if (typeof r === 'string') { out.push(`Позиция ${i + 1} (${it.code}): ${r}`); continue; }
+    out.push(`Позиция ${i + 1}. ${r.text}`);
+    duty += r.duty; vat += r.vat; valueSom += r.valueSom; counted++;
+  }
+  if (!counted) return out.join('\n\n');
+  const fee = c.customsFeeGoods(valueSom);
+  out.push(['— Итого по декларации —',
+    `Позиций посчитано: ${counted} из ${items.length}`,
+    `Таможенная стоимость: ${som(valueSom)}`,
+    `Ввозная пошлина: ${som(duty)}`,
+    `НДС: ${som(vat)}`,
+    `Сбор за таможенные операции: ${som(fee)} — один на всю декларацию (0,4% от общей стоимости, вилка 500–250 000 сом); сборы по строкам не складывай`,
+    `Всего к уплате: ${som(duty + vat + fee)}`].join('\n'));
+  return out.join('\n\n');
 }
 
 let footnotes;
@@ -505,7 +536,8 @@ function tools() {
     name: 'calc_payments',
     description: 'Расчёт ввозных платежей (пошлина, НДС, сбор) по 10-значному коду — тем же расчётом, что калькулятор сайта, по курсу НБКР. '
       + 'Вызывай, когда пользователь назвал стоимость. Сам не считай. Если в документе есть условие поставки (CIP, DAP, FOB, EXW…), '
-      + 'передай его в incoterm, а стоимость перевозки до границы — в transport.',
+      + 'передай его в incoterm, а стоимость перевозки до границы — в transport. '
+      + 'Если позиций в документе несколько — один вызов с items, а не вызов на каждую строку: сбор берётся один раз на декларацию.',
     input_schema: {
       type: 'object',
       properties: {
@@ -516,9 +548,11 @@ function tools() {
         country: { type: 'string', description: 'Страна происхождения — название по-русски (Китай, Казахстан, ОАЭ)' },
         date: { type: 'string', description: 'Дата оформления YYYY-MM-DD' },
         transport: { type: 'number', description: 'Стоимость перевозки (и страховки) до границы ЕАЭС в той же валюте — если она не включена в цену товара' },
+        items: { type: 'array', description: 'Весь инвойс одним вызовом: по позиции {code, value, quantity, country, transport}. Обязательно для инвойса с несколькими позициями — сбор берётся один раз на декларацию.',
+          items: { type: 'object', properties: { code: { type: 'string' }, value: { type: 'number' }, quantity: { type: 'number' }, country: { type: 'string' }, transport: { type: 'number' } }, required: ['code', 'value'] } },
         incoterm: { type: 'string', description: 'Условие поставки из документа: EXW, FCA, FOB, CIP, CIF, DAP, DDP и т. п.' },
       },
-      required: ['code', 'value', 'currency'],
+      required: ['currency'],
     },
   }, {
     name: 'sum_check',

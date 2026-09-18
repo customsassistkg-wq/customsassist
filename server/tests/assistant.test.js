@@ -259,6 +259,13 @@ const a = require('../src/services/assistant');
   assert.match(t, /Таможенная стоимость: 1000 \+ перевозка 200 = 1200 USD/);
   assert.doesNotMatch(t, /расчёт занижен/);
   assert.doesNotMatch(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'CIP Бишкек' }), /занижен/);
+  // инвойс целиком: сбор один на декларацию, а не по строке (0,4% от общей стоимости, минимум 500 сом один раз)
+  t = await a.calcPayments({ currency: 'USD', country: 'Турция', items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] });
+  assert.match(t, /Позиция 1./);
+  assert.match(t, /Позиция 2./);
+  assert.match(t, /— Итого по декларации —/);
+  assert.equal((t.match(/Сбор за таможенные операции/g) || []).length, 1, 'сбор должен быть один: ' + t.slice(0, 300));
+  assert.match(t, /Позиций посчитано: 2 из 2/);
   console.log('PASS: calc_payments — пошлина «не менее», НДС, сбор, ЕАЭС, ОАЭ');
 
   // ── sum_check: сумма строк инвойса в копейках и сверка с итогом ──
