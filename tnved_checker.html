@@ -450,7 +450,8 @@
   .group-cell .group-btn{flex:1}
   .gb-pdf{font-size:var(--fs-sm);color:var(--ink-link);padding:2px 4px;text-decoration:none}
   .gb-pdf:hover{text-decoration:underline}
-  .group-cell.notes-hl{margin:0;padding:6px!important}
+  .group-cell.notes-hl{margin:0;padding:0!important;background:none!important}
+  .group-cell.notes-hl .group-btn{border-color:var(--indigo);box-shadow:var(--ring)}
   #toTopBtn{position:fixed;right:24px;bottom:24px;width:46px;height:46px;border-radius:50%;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);box-shadow:var(--shadow-lg);color:var(--indigo);font-size:var(--fs-3xl);cursor:pointer;z-index:50;opacity:0;pointer-events:none;transform:translateY(8px);transition:opacity .2s,transform .2s}
   #toTopBtn.show{opacity:1;pointer-events:auto;transform:translateY(0)}
   #toTopBtn:hover{border-color:var(--indigo)}
