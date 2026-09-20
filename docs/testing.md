@@ -1,0 +1,48 @@
+# Testing and verification: syntax checks, Node tests, browser tests, vm smoke tests, standalone UI pages
+
+Moved out of `CLAUDE.md` on 20.09.2026 without changing the text of the paragraphs (headings added). **Read before running or writing tests, before a runtime smoke test of a `findX()`/card/`ENGINE_API` change, before any browser check of the UI, and whenever a test prints SKIP or fails on a precondition.** The short mandatory list is also in `CLAUDE.md`; this file has the how and the traps. Measurement harnesses for contrast, tap targets, dead `@media` declarations and overflow are described with the rules they enforce in [ui-architecture.md](ui-architecture.md); the assistant's paid evaluation set is in [ai-assistant.md](ai-assistant.md).
+
+## Commands
+
+There is no build/lint/test tooling. The workflows that stand in for them, established over prior sessions:
+
+**Syntax-check after every edit.** The app code is its own files now, so there is nothing to extract from the page — run the checks directly. `server/private/base.js` is ~12 MB, far too large for an editor to "open and check", which is why this is the gate:
+```bash
+node --check server/private/base.js
+node --check server/private/checker.js
+node --check server/src/index.js
+node server/tests/checker-access.test.js     # браузерный: вход, загрузка, поиск; базы нет в checker.js
+node server/tests/engine.test.js              # /api/engine: доступ, белый список функций, лимиты перебора
+node server/tests/engine-browser.test.js      # браузерный: калькулятор, партия, спецификация, дерево, виды, авто
+node server/tests/auth-loader.test.js
+node server/tests/admin-view.test.js
+node server/tests/admin-invitation.test.js
+node server/tests/assistant.test.js           # AI-помощник без сети
+node server/tests/lookup-filter.test.js       # справка: направление, страна, фильтр
+node server/tests/login-enumeration.test.js   # вход не выдаёт, есть ли адрес
+node server/tests/api-boundary.test.js        # Origin, тело помощника после входа, 400/413 вместо 500
+node server/tests/direction-regime.test.js   # режим по направлению: запреты несут направление, «из», исключения, дата
+node server/tests/static-assets.test.js      # ссылки страницы и манифеста на свои файлы: картинки на месте
+```
+The browser test needs `PLAYWRIGHT_MODULE` pointing at an installed `playwright-core`; it drives the system Edge, touches no live database and sends no mail. Prior sessions left an install at `%TEMP%/pw_check/node_modules/playwright-core`; without the variable the browser tests print SKIP or pass only their offline part, which is how the broken registration button of 14–17.09.2026 went unnoticed. One more test is not in the list because it needs a database: `TEST_DATABASE_URL=<disposable db> node server/tests/reset-password.test.js` (concurrent resets have one winner, sessions end, replay is rejected); without the variable it fails on its first line, which is a precondition, not a regression. The full list and the deployment order live in [server/CHECKER.md](../server/CHECKER.md).
+
+Note: `python3` here resolves to the Windows Store alias, which does **not** see git-bash POSIX paths like `/tmp/...` — write scratch files to a Windows-style path (or the session scratchpad dir) instead, and read them back with the `Read` tool, not by printing to the bash console (the console mangles Cyrillic output; files round-trip correctly).
+
+## Runtime smoke test without a browser
+
+**Runtime smoke-test** a function or DB after editing it. The shortest way is the server's own loader: `require('./server/src/services/base').load()` returns `ENGINE_API`, `renderHtml`, `ETT_DB`, `calcWarnings` and a few more, and `ENGINE_API` reaches everything the browser can ask. For anything else, read `server/private/checker.js` **and then** `server/private/base.js` (in that order: the base's top level calls the interface's helpers at load) and run both inside one Node `vm` context with minimal DOM stubs (`document.getElementById`, `classList`, `innerHTML`/`value`/`textContent` getters/setters, etc. — the top-level script calls a few `render*Panel` functions immediately on load, so it throws without stubs). Expose the globals you need via `this.__x = x;` appended to the script source before `runInContext`, since top-level `const`/`let` in a vm context aren't reliably visible as properties of the sandbox object otherwise. This is how new/changed lookup functions and DB entries get verified end-to-end without a browser.
+
+## Browser check of UI and rendering changes
+
+**Browser check** (for UI/rendering changes): the three post-processing passes cannot be checked with the `vm` stubs — `querySelectorAll` returns `[]` there, so `buildResultSummary` builds nothing. Nor do you need the backend: assemble a **standalone page** from the app's real `<style>`, the real result markup obtained by calling `renderHtml(q).html` inside the `vm`, and the post-processing functions cut out of the file by name (`compactifyCards`, `enhanceResultCards`, `buildResultSummary` plus `esc`, `trunc`, `focusResultCard`, `SUM_TAG_COLOR`, `SUM_FLAG_ORDER`, `ALERT_TAG_SEL`) — every one of them is declared at top level and closes with a brace at the start of a line, so `function <name>(` … first `
+}` cuts them cleanly. Open that page in the system Edge and check it at 1280 and 420 px. **When you find horizontal overflow, name the element that causes it** before blaming your change: list everything whose `getBoundingClientRect().right` exceeds `clientWidth`. **That list names every victim, not the cause — rank it by width.** On 10.09.2026 it was read as «`span.notes-ico` in the ЕТТ list rows»; the icon is 15 px wide and was merely pushed out by its neighbour `.ett-row .er`, which at 783 px was the real cause (11.09.2026). Note also that the overflow needs the right data to appear at all: a five-row list of short rates showed none, and only a list containing a long rate string reproduced it. No browser is preinstalled for automation. Prior sessions installed `playwright-core` into a temp folder and drove the system Microsoft Edge via `channel:'msedge'` (no browser download needed). Since `tnved_checker.html` now requires a backend to get past its login screen, point this at a running instance of `server/` (local or the real VPS deploy) rather than a bare `file://` path — opening the file directly still renders the login screen (confirms the UI didn't break), but every `fetch('/api/...')` call fails immediately with a CORS/network error under `file://`, so nothing past the login screen is reachable that way.
+
+## Guest paths, captcha and other things a harness cannot do
+
+- **Check a guest flow in a fresh browser context, never after logging out.** `checker-access.test.js` walks the guest path (register, resend, forgot) in a fresh page and requires zero page errors with `typeof findETT === 'undefined'`; a window where someone has logged in and out keeps `checker.js` loaded and hides a `ReferenceError` that every new visitor gets (see [ui-architecture.md](ui-architecture.md), «Code that a guest can reach»).
+- **A captcha cannot be solved by the harness, and that is the point.** Verify the negative paths (absent, forged, replayed token) automatically, exercise `hostname`/`action` with Cloudflare's test keys, and leave one real registration to a human ([security-auth.md](security-auth.md)).
+- **The tests never touch the live database and send no mail.** `reset-password.test.js` needs a disposable database (`TEST_DATABASE_URL`); `assistant-eval.js` costs money and runs on the server where the key is.
+- **A test that clicks a nav item hidden on phones waits 30 s and fails.** `assistant-browser.test.js` opens AI through whichever button is visible (`#navAiBtn` on the desktop, `#tabBar` at 420 px); `engine-browser.test.js` finds calculator buttons as `#calcResult button` by their text.
+- **Stubs of `/api/auth/me` must match the server**: it does not return `id` and does return `termsAccepted`; a stub that differs makes a test pass while the site fails.
+- **A missing image is not a page error.** The browser tests pass with a blank background and a broken logo, because a 404 on an image throws nothing. `static-assets.test.js` is what covers that: every `/…` reference of the page, the manifest, `privacy.html` and `terms.html` must resolve to a file on disk, every image must live under `assets/`, and the two compatibility routes (`/icons/`, `/email-logo.jpg`) must stay in both Nginx and the dev Express.
+- **Line endings after every edit of the three big files**: `git diff --numstat` must match the size of the change, the count of LF-only lines must equal `HEAD`'s, and a grep for `\u0000`-style escapes in the new code must find them intact (`CLAUDE.md`, «Editing safety»).

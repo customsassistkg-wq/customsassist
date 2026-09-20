@@ -10,8 +10,8 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#171A21" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#E8EBF1" media="(prefers-color-scheme: light)">
-<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <!-- black, а не black-translucent: прозрачная строка состояния кладёт
@@ -32,7 +32,7 @@
     --bg:#171A21;--surface:#20242D;--border:rgba(255,255,255,.11);--indigo:#9AA4F5;--indigo-surface:#4350C0;
     --red:#F08A82;--green:#6FCB92;--yellow:#DDB268;--blue:#A5A6F0;
     --purple:#C79AE0;--teal:#63C3CC;--orange:#E5A76A;--cyan:#79BEDC;--pink:#F0879F;
-    --text:#D7DBE3;--muted:#979EAC;--app-bg:url(/app-bg-dark.webp);--app-scrim:rgba(14,18,28,.38);--login-bg:url(/login-bg-dark.webp);--login-scrim:rgba(8,14,30,.30);
+    --text:#D7DBE3;--muted:#979EAC;--app-bg:url(/assets/app-bg-dark.webp);--app-scrim:rgba(14,18,28,.38);--login-bg:url(/assets/login-bg-dark.webp);--login-scrim:rgba(8,14,30,.30);
     /* Цвета, зависящие от темы. Держим их токенами, а не значениями в правилах:
        иначе смена палитры оставляет их от прежней темы и молча ломает контраст —
        ровно это и случилось при первой примерке светлых вариантов.
@@ -649,7 +649,7 @@
     --bg:#E8EBF1;--surface:#F7F8FB;--border:rgba(20,28,48,.16);--indigo:#3B48CC;--indigo-surface:#3A46C8;
     --red:#B3241C;--green:#146A38;--yellow:#7A4E00;--blue:#3C39A8;
     --purple:#732C93;--teal:#0A6570;--orange:#8A4F00;--cyan:#0B6B8C;--pink:#A81745;
-    --text:#232A38;--muted:#545C6C;--app-bg:url(/app-bg-light.webp);--app-scrim:rgba(248,250,254,.28);--login-bg:url(/login-bg-light.webp);--login-scrim:rgba(248,250,254,.22);
+    --text:#232A38;--muted:#545C6C;--app-bg:url(/assets/app-bg-light.webp);--app-scrim:rgba(248,250,254,.28);--login-bg:url(/assets/login-bg-light.webp);--login-scrim:rgba(248,250,254,.22);
     --ink-cyan:#0A5E74;--ink-blue:#0B5E96;--ink-link:#0A4FA8;--hint:#545C6C;--placeholder:#8A93A6;
     --glass:#FFFFFF;--glass-border:rgba(20,28,48,.14);--glass-blur:none;
     --shadow-sm:0 1px 2px rgba(24,32,56,.08);--shadow-md:0 1px 2px rgba(24,32,56,.08);--shadow-lg:0 12px 32px rgba(24,32,56,.14);
@@ -962,7 +962,7 @@
          дублируется внутри карточки, чтобы на телефоне он всё равно был сверху. -->
     <section class="auth-hero">
       <div class="auth-hero-inner">
-        <img class="auth-logo-img auth-logo-dark" src="/login-logo-dark.webp" width="490" height="120" alt="Customs Assist KG" loading="lazy" decoding="async"><img class="auth-logo-img auth-logo-light" src="/login-logo-light.webp" width="456" height="107" alt="Customs Assist KG" loading="lazy" decoding="async">
+        <img class="auth-logo-img auth-logo-dark" src="/assets/login-logo-dark.webp" width="490" height="120" alt="Customs Assist KG" loading="lazy" decoding="async"><img class="auth-logo-img auth-logo-light" src="/assets/login-logo-light.webp" width="456" height="107" alt="Customs Assist KG" loading="lazy" decoding="async">
         <h2 class="auth-hero-title">Проверяйте.<br>Анализируйте.<br>Оформляйте.</h2>
         <p class="auth-hero-sub">Быстрый доступ к информации по ТН ВЭД, ограничениям, ставкам и таможенным данным Кыргызской Республики.</p>
         <ul class="auth-feats">
@@ -977,7 +977,7 @@
          showAuthView() — идентификаторы менять нельзя, на них завязан весь JS. -->
     <section class="auth-pane">
       <div class="auth-card">
-        <div class="auth-card-logo"><img class="auth-logo-img auth-logo-dark" src="/login-logo-dark.webp" width="490" height="120" alt="Customs Assist KG" loading="lazy" decoding="async"><img class="auth-logo-img auth-logo-light" src="/login-logo-light.webp" width="456" height="107" alt="Customs Assist KG" loading="lazy" decoding="async"></div>
+        <div class="auth-card-logo"><img class="auth-logo-img auth-logo-dark" src="/assets/login-logo-dark.webp" width="490" height="120" alt="Customs Assist KG" loading="lazy" decoding="async"><img class="auth-logo-img auth-logo-light" src="/assets/login-logo-light.webp" width="456" height="107" alt="Customs Assist KG" loading="lazy" decoding="async"></div>
 
     <div id="authViewLoading" role="status" aria-live="polite">
       <h1>Открываем приложение</h1>
@@ -1098,7 +1098,7 @@
 
 <div class="wrap" id="appWrap" style="display:none">
   <header>
-    <div class="hdr-brand"><img class="hdr-logo hdr-logo-dark" src="/app-logo-dark.webp" width="371" height="85" alt="Customs Assist KG" loading="lazy" decoding="async"><img class="hdr-logo hdr-logo-light" src="/app-logo-light.webp" width="335" height="77" alt="Customs Assist KG" loading="lazy" decoding="async"></div>
+    <div class="hdr-brand"><img class="hdr-logo hdr-logo-dark" src="/assets/app-logo-dark.webp" width="371" height="85" alt="Customs Assist KG" loading="lazy" decoding="async"><img class="hdr-logo hdr-logo-light" src="/assets/app-logo-light.webp" width="335" height="77" alt="Customs Assist KG" loading="lazy" decoding="async"></div>
     <!-- Переключатель темы стоит в шапке справа, а не в списке разделов:
          в меню он читался как ещё один раздел и не находился с первого раза. -->
     <div class="hdr-tools">

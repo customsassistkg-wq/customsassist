@@ -1,6 +1,6 @@
 # Ежедневная копия дампов базы с VPS на машину владельца.
 # Запускается задачей Windows «tnved-db-backup-pull» (12:00, StartWhenAvailable):
-#   powershell -NoProfile -ExecutionPolicy Bypass -File C:\claude_code\server\pull-db-backups.ps1
+#   powershell -NoProfile -ExecutionPolicy Bypass -File C:\CustomsAssistKG\server\pull-db-backups.ps1
 # Локально дампы хранятся 30 дней — этот срок назван в privacy.html. Старые
 # копии удаляются, только если есть свежая (не старше 2 дней): при недоступном
 # сервере или сломанном таймере дампа локальные копии — последнее, что есть.

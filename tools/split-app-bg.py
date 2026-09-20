@@ -1,6 +1,6 @@
 # python tools/split-app-bg.py — пересобирает фоны и логотипы из картинок владельца:
-#   logo_dark.png / logo_white.png   → app-bg-*.webp и app-logo-*.webp   (фон приложения, логотип в шапке)
-#   logo_dark1.png / logo_white1.png → login-bg-*.webp и login-logo-*.webp (фон и логотип экрана входа)
+#   assets/source/logo_dark.png / logo_white.png   → assets/app-bg-*.webp и app-logo-*.webp   (фон приложения, логотип в шапке)
+#   assets/source/logo_dark1.png / logo_white1.png → assets/login-bg-*.webp и login-logo-*.webp (фон и логотип экрана входа)
 # Разделяет картинку владельца на фон без логотипа и логотип с прозрачностью.
 # Фон под логотипом восстанавливается патчем Кунса по четырём краям рамки (режим 'coons'), а где рядом
 # с логотипом есть яркие детали фона — закраской по маске пикселей логотипа (режим 'inpaint', OpenCV Telea):
@@ -10,6 +10,8 @@
 from PIL import Image
 import numpy as np, json, os  # pip install numpy pillow opencv-python-headless
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..') + '/'
+# Исходники владельца и готовые картинки сайта — в assets/ (см. CLAUDE.md).
+SRC, OUT = ROOT + 'assets/source/', ROOT + 'assets/'
 # (исходник, рамка логотипа x0,y0,x1,y1 с запасом на свечение «KG», префикс файлов, левый край — плавный переход между углами,
 #  режим восстановления фона)
 # Рамки сняты по картинкам; у logo_white.png слева от логотипа сетка точек, поэтому край берётся не с неё.
@@ -38,7 +40,7 @@ def robust_line(E):
 report = {}
 for key, (src, (x0, y0, x1, y1), prefix, smooth_left, mode) in JOBS.items():
     name = key.split('-')[1]
-    P = np.asarray(Image.open(ROOT + src).convert('RGB')).astype(np.float64)
+    P = np.asarray(Image.open(SRC + src).convert('RGB')).astype(np.float64)
     h, w, _ = P.shape
     T = P[y0 - 4:y0 - 1, x0:x1 + 1].mean(axis=0)      # верхний край, среднее трёх строк
     Bm = P[y1 + 1:y1 + 4, x0:x1 + 1].mean(axis=0)     # нижний
@@ -80,8 +82,8 @@ for key, (src, (x0, y0, x1, y1), prefix, smooth_left, mode) in JOBS.items():
     report[key] = {'logo_size': logo.size, 'crop_in_image': [int(x0 + cx0), int(y0 + cy0), int(x0 + cx1), int(y0 + cy1)],
                     'visible_h': int(vy.max() - vy.min() + 1), 'visible_w': int(vx.max() - vx.min() + 1),
                     'visible_offset_in_logo': [int(vx.min() - cx0 + 3), int(vy.min() - cy0 + 3)]}
-    logo.save(ROOT + f'{prefix}-logo-{name}.webp', 'WEBP', lossless=True)
-    Image.fromarray(Bg.astype(np.uint8)).save(ROOT + f'{prefix}-bg-{name}.webp', 'WEBP', quality=82, method=6)
-    report[key]['bg_kb'] = os.path.getsize(ROOT + f'{prefix}-bg-{name}.webp') // 1024
-    report[key]['logo_kb'] = os.path.getsize(ROOT + f'{prefix}-logo-{name}.webp') / 1024
+    logo.save(OUT + f'{prefix}-logo-{name}.webp', 'WEBP', lossless=True)
+    Image.fromarray(Bg.astype(np.uint8)).save(OUT + f'{prefix}-bg-{name}.webp', 'WEBP', quality=82, method=6)
+    report[key]['bg_kb'] = os.path.getsize(OUT + f'{prefix}-bg-{name}.webp') // 1024
+    report[key]['logo_kb'] = os.path.getsize(OUT + f'{prefix}-logo-{name}.webp') / 1024
 print(json.dumps(report, indent=1))

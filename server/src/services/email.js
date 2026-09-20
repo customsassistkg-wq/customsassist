@@ -50,7 +50,7 @@ function renderEmail({ title, intro, actionUrl, actionText, outro, footNote }) {
   const origin = (process.env.PUBLIC_ORIGIN
     || (process.env.APP_ORIGIN || '').split(',')[0]
     || '').trim().replace(/\/+$/, '');
-  const logo = origin ? `${origin}/email-logo.jpg` : '';
+  const logo = origin ? `${origin}/assets/email-logo.jpg` : '';
   const esc = (s) => String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 

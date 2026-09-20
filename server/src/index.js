@@ -115,10 +115,17 @@ app.use('/api/assistant', require('./routes/assistant'));
 // if the Node process is ever reached directly.
 if (process.env.NODE_ENV !== 'production') {
   const root = path.join(__dirname, '..', '..');
-  app.get(['/', '/tnved_checker.html', '/privacy.html', '/terms.html', '/ai-risk.json', '/manifest.webmanifest', '/email-logo.jpg', '/app-bg-dark.webp', '/app-bg-light.webp', '/app-logo-dark.webp', '/app-logo-light.webp', '/login-bg-dark.webp', '/login-bg-light.webp', '/login-logo-dark.webp', '/login-logo-light.webp'], (req, res) => {
+  app.get(['/', '/tnved_checker.html', '/privacy.html', '/terms.html', '/ai-risk.json', '/manifest.webmanifest'], (req, res) => {
     res.sendFile(path.join(root, req.path === '/' ? 'tnved_checker.html' : req.path.slice(1)));
   });
-  app.use('/icons', express.static(path.join(root, 'icons')));
+  // Картинки сайта — одной папкой assets/. Исходники логотипа (assets/source/) —
+  // вход генераторов в tools/: на сервер они не выкладываются, здесь закрыты явно.
+  app.use('/assets/source', (req, res) => res.status(404).end());
+  app.use('/assets', express.static(path.join(root, 'assets')));
+  // Старые адреса остаются рабочими: /icons/* помнят установленные на телефон копии
+  // и iOS, /email-logo.jpg — уже отправленные письма. Nginx делает то же (server/nginx.conf).
+  app.get('/email-logo.jpg', (req, res) => res.sendFile(path.join(root, 'assets', 'email-logo.jpg')));
+  app.use('/icons', express.static(path.join(root, 'assets', 'icons')));
   app.use('/vendor', express.static(path.join(root, 'vendor'), {
     setHeaders: (res, file) => { if (file.endsWith('.mjs')) res.type('application/javascript'); },
   }));
