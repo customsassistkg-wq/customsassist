@@ -2424,16 +2424,20 @@ function aiTextBroken(t){
 async function aiPageImages(page,OPS){
   const ops=await page.getOperatorList(),vp=page.getViewport({scale:1}),stack=[];
   const mul=(m,n)=>[m[0]*n[0]+m[2]*n[1],m[1]*n[0]+m[3]*n[1],m[0]*n[2]+m[2]*n[3],m[1]*n[2]+m[3]*n[3],m[0]*n[4]+m[2]*n[5]+m[4],m[1]*n[4]+m[3]*n[5]+m[5]];
-  let ctm=[1,0,0,1,0,0],area=0,invisible=false;
+  let ctm=[1,0,0,1,0,0],area=0,invisible=false,big=0,dpi=0;
   for(let i=0;i<ops.fnArray.length;i++){
     const f=ops.fnArray[i],a=ops.argsArray[i];
     if(f===OPS.save||f===OPS.paintFormXObjectBegin){stack.push(ctm);if(f===OPS.paintFormXObjectBegin&&a&&a[0])ctm=mul(ctm,a[0])}
     else if(f===OPS.restore||f===OPS.paintFormXObjectEnd)ctm=stack.pop()||ctm;
     else if(f===OPS.transform)ctm=mul(ctm,a);
     else if(f===OPS.setTextRenderingMode&&(a[0]&3)===3)invisible=true;
-    else if(f===OPS.paintImageXObject||f===OPS.paintInlineImageXObject||f===OPS.paintImageMaskXObject)area+=Math.abs(ctm[0]*ctm[3]-ctm[1]*ctm[2]);
+    else if(f===OPS.paintImageXObject||f===OPS.paintInlineImageXObject||f===OPS.paintImageMaskXObject){
+      const ar=Math.abs(ctm[0]*ctm[3]-ctm[1]*ctm[2]),px=typeof a[1]==='number'?a[1]:(a[0]&&a[0].width)||0,pt=Math.hypot(ctm[0],ctm[1]);
+      area+=ar;
+      if(ar>big&&px&&pt){big=ar;dpi=px/(pt/72)}
+    }
   }
-  return {cover:Math.min(1,area/(vp.width*vp.height)),invisible:invisible};
+  return {cover:Math.min(1,area/(vp.width*vp.height)),invisible:invisible,dpi:dpi};
 }
 // Страницы-изображения читает сервер — не больше трёх разом (сервер пускает четыре на пользователя).
 function aiLimiter(n){
@@ -2462,9 +2466,13 @@ function aiShots(cv){
   const shot={image:jpeg(full,0.95),parts:[]};
   if(Math.max(W,H)<2000)return shot;
   const y0=Math.round(H*0.4),y1=Math.round(H*0.6),d=cv.getContext('2d').getImageData(0,y0,W,y1-y0).data,ink=new Float32Array(y1-y0);
+  // «Тёмное» — темнее фона полосы на 40 (медиана красного канала): на цветной или серой копии весь фон темнее 150, и разрез
+  // выбирался наугад — на фиолетовой копии CMR (21.09.2026) он прошёл по строке товара, и код ТН ВЭД и место погрузки
+  // в основном чтении вышли неверными. На белом листе медиана около 250, и порог остаётся 150.
+  const hist=new Uint32Array(256);for(let i=0;i<d.length;i+=4)hist[d[i]]++;let med=0;for(let acc=0;acc+hist[med]<d.length/8;med++)acc+=hist[med];const thr=Math.min(150,med-40);
   for(let y=0;y<y1-y0;y++){
     let run=0,n=0;
-    for(let x=0;x<=W;x++){const on=x<W&&d[4*(y*W+x)]<150;if(on)run++;else{if(run&&run<W*0.03)n+=run;run=0}}
+    for(let x=0;x<=W;x++){const on=x<W&&d[4*(y*W+x)]<thr;if(on)run++;else{if(run&&run<W*0.03)n+=run;run=0}}
     ink[y]=n;
   }
   let cut=Math.round(H/2),best=Infinity;
@@ -2506,6 +2514,10 @@ function aiQueuePage(doc,jobs,shoot,label,head){
     doc.parts[slot]=head()+'\n[не прочитана'+(doc.stopped?': '+doc.stopped:'')+']';
   }).finally(()=>{doc.done++;aiRenderThumbs()}));
 }
+// Скан беднее 130 точек на дюйм: на ДТ в 100 dpi (десять досье, 21.09.2026) и три чтения модели, и Google Vision читали
+// «0,26%» вместо 0,25% и 387621.06 вместо 387521.06 — сверка чтений такое не ловит, потому что ошибаются все сразу.
+// На 150 dpi этого уже не было. Строка идёт в текст страницы: помощник назовёт её пользователю.
+const AI_LOWRES='[Скан низкого разрешения: похожие цифры (5 и 6, 3 и 8, 0 и 6) на нём читаются неуверенно. Числа этой страницы, от которых зависит расчёт, попроси сверить с оригиналом или прислать скан от 200 точек на дюйм.]';
 async function aiReadPdf(file,doc){
   // Адрес абсолютный: checker.js исполняется из blob:-адреса, и import('/vendor/…') разрешался бы
   // относительно него, а не сайта. И вычисляется здесь, а не на верхнем уровне: этот же файл
@@ -2551,7 +2563,7 @@ async function aiReadPdf(file,doc){
         return aiShots(cv);
       };
       aiQueuePage(doc,jobs,shoot,file.name+', стр. '+i,
-        ()=>'— страница '+i+(scan?' (скан, ':': изображение на странице (')+'расшифровка'+(side?'; лежала боком, повёрнута':'')+') —');
+        ()=>'— страница '+i+(scan?' (скан, ':': изображение на странице (')+'расшифровка'+(side?'; лежала боком, повёрнута':'')+') —'+(im.dpi&&im.dpi<130?'\n'+AI_LOWRES:''));
       aiRenderThumbs();
     }
     await Promise.all(jobs);
@@ -2570,7 +2582,7 @@ async function aiReadPhoto(file,doc){
     for(let i=(turn||0)/90;i>0;i--)cv=aiRotateCanvas(cv);
     return aiShots(cv);
   };
-  aiQueuePage(doc,jobs,shoot,file.name,()=>'— изображение (расшифровка) —');
+  aiQueuePage(doc,jobs,shoot,file.name,()=>'— изображение (расшифровка) —'+(Math.max(bmp.width,bmp.height)<1100?'\n'+AI_LOWRES:''));
   aiRenderThumbs();
   try{await Promise.all(jobs)}finally{bmp.close()}
 }

@@ -28,6 +28,7 @@ No task is in progress at the last commit. The last stream of work (18–19.09.2
 
 ## Recently completed
 
+- 21.09.2026 — document scanner on ten real customs dossiers (205 scanned pages, filed ДТ as ground truth): seals transcribed as one word, Document AI only for table-row/sum doubts, mixed-script and ID/VIN reconciliation, missed-number note, strip cut by page background, `calc_payments` refuses import payments on export; silent reading disputes are flagged with both numbers, scans under 130 dpi carry a low-resolution note, `sum_check` hints at a missed identical row. Same 196 pages: $1.70 → $0.71, doubtful numbers 99 → 58, Vision-confirmed 92.7% → 94.8% (`session.md`, `docs/ai-assistant.md`).
 - 20.09.2026 — every site image moved into `assets/` (`assets/icons/`, `assets/source/`); page, manifest, mail template, Nginx, dev Express and both generators point there; deployed and verified live in both themes; new `static-assets.test.js`.
 - 19.09.2026 — assistant: unreliable pages fall back to Vision text; EAEU goods get the indirect-tax wording; no calculation without a value; ДТ columns explained in the prompt; price in `sum_check` checked as a sum (`5ba66b0`, `5397775`).
 - 19.09.2026 — the seven ТР lists published only as PDF (005, 006, 009, 011, 013, 016, 019) and 045 checked per position; 019 had four wrong forms (`8602d13`).
@@ -49,7 +50,7 @@ No task is in progress at the last commit. The last stream of work (18–19.09.2
 - Play Console / TestFlight state is unknown from public endpoints; establish whether an upload key is registered before planning a release (`mobile/RELEASE.md`).
 - `tools/build-logo.py` is stale in its page-patching half: it still looks for the data-URI logo (`<img class="auth-logo-img" src="data:image/webp…">`, gone since the page switched to `login-logo-*.webp`), so its `assert` fails after it has already rewritten the icons. Its paths were updated on 20.09.2026; the page part was not.
 - `server/CHECKER.md` lists the tests without `direction-regime.test.js`; the canonical list is in `CLAUDE.md`/`docs/testing.md`.
-- Production may be behind HEAD on `base.js`/`checker.js` (see «Current production state»): verify and deploy per the `deploy` skill if the hashes differ.
+- Document scanner limits found on the ten dossiers (21.09.2026): on 100-dpi scans a digit misread by every reader at once (5/6) still passes — the page only carries a low-resolution note; a table row half-covered by a stamp loses its tail in the main reading; collage pages with parts in different orientations are not rotated; per-code sums the model adds up itself and passes in `items` are not caught (an invoice with a discount needs computed lines, so printed values cannot be required); pickup F-150 treated as passenger 8703 (ДТ: 8704 21), car code picked against the assumed engine volume; the export customs fee (0.25% in a 2023 ДТ) is not in the site and was not checked against the act.
 
 ## Known risks
 

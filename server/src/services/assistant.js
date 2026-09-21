@@ -426,7 +426,15 @@ function totalUnknown(total, cur, hint) {
 const curOf = (currency) => String(currency || 'USD').toUpperCase().replace('KGS', 'СОМ').replace('SOM', 'СОМ');
 
 // Вход модели. Внутренние флаги сюда не попадают: одна позиция — calcOne, инвойс — calcBatch.
+// Расчёт — ввозной. Прогон досье на вывоз скота в Узбекистан (21.09.2026): модель передала direction «ex», инструмент
+// его не знал и посчитал ввозные пошлину 5% и НДС 12% — «итого 68 472,96 сом», которых на вывозе нет (в поданной ДТ —
+// только сбор). Ставки сбора при вывозе на сайте нет, поэтому сервер его не называет, а не выдумывает.
+const EXPORT_CALC = 'Это расчёт ввозных платежей: при вывозе ввозные пошлина и НДС не взимаются, и считать их для вывоза нельзя — '
+  + 'в ответе ввозные ставки не приводи. Вывозные пошлины этот инструмент не проверяет — не утверждай, что их нет. Меры при вывозе '
+  + '(запреты, разрешения, контроль) бери из search_base с direction «ex»; сбор за таможенные операции при вывозе этот инструмент не '
+  + 'считает — назови его без суммы.';
 async function calcPayments(input, hint = {}) {
+  if (/^(ex|exp|export|вывоз|экспорт)/i.test(String(input?.direction || '').trim())) return EXPORT_CALC;
   const { items, code, value, total } = input || {};
   if (Array.isArray(items) && items.length) return calcBatch(items, input, hint);
   if (code == null && value == null) return 'Передай code и value (одна позиция) или items (весь инвойс).';
@@ -715,6 +723,7 @@ function tools() {
         quantity: { type: 'number', description: 'Количество в единице специфической ставки (кг, шт, л, см³) — если ставка специфическая или комбинированная' },
         country: { type: 'string', description: 'Страна происхождения — название по-русски (Китай, Казахстан, ОАЭ)' },
         date: { type: 'string', description: 'Дата оформления YYYY-MM-DD' },
+        direction: { type: 'string', enum: ['im', 'ex'], description: 'im — ввоз (по умолчанию); ex — вывоз: ввозные платежи на вывозе не считаются, инструмент так и ответит' },
         transport: { type: 'number', description: 'Стоимость перевозки (и страховки) до границы ЕАЭС в той же валюте — если она не включена в цену товара. С items — фрахт на весь инвойс, распределяется по позициям пропорционально стоимости' },
         items: { type: 'array', description: 'Весь инвойс одним вызовом: по позиции {code, value, quantity, country, transport}. Обязательно для инвойса с несколькими позициями — сбор берётся один раз на декларацию.',
           items: { type: 'object', properties: { code: { type: 'string' }, value: { type: 'number' }, quantity: { type: 'number' }, country: { type: 'string' }, transport: { type: 'number' } }, required: ['code', 'value'] } },
@@ -819,8 +828,14 @@ async function postModel(payload) {
 // четырёх и неверные суммы строк; отдельное чтение каждой страницы давало 21 сумму из 21 во всех
 // прогонах (реальный инвойс, 17.09.2026). Страницы читаются параллельно. Если чтение не удалось,
 // изображение уходит в разговор как раньше.
+// Печати — одним словом, без их текста: текст печатей модель сочиняет («САНКТ-ПЕТЕРБУРГСКАЯ ТАМОЖНЯ» на кыргызском штампе
+// «ВЫПУСК РАЗРЕШЕН», «ГОСУДАРСТВЕННЫЙ ТАМОЖЕННЫЙ КОМИТЕТ РЕСПУБЛИКИ БЕЛАРУСЬ», ИНН, которых нет), а сверка чисел раз
+// вписала итог инвойса в «текст» туркменской печати. Замер на 16 страницах десяти досье (21.09.2026, по 2–6 прогонов):
+// строк с текстом печатей 2,7 на страницу → 0,25, выход на 15–40% короче, а чисел, подтверждённых Google Vision, столько
+// же на каждой странице. Без второй половины фразы («рядом и под ними») итог 16 270 рядом с печатью терялся в 3 чтениях из 18.
 const TRANSCRIBE_PROMPT = 'Перепиши документ на изображении дословно, ничего не толкуя и не пропуская: реквизиты, даты, номера, '
-  + 'условия поставки, страну происхождения, итоги; печати и подписи отметь словами. Таблицы — построчно в Markdown со всеми '
+  + 'условия поставки, страну происхождения, итоги. Печати, штампы и подписи обозначь одним словом в скобках — [печать], [штамп], '
+  + '[подпись] — их собственный текст не переписывай; текст и числа документа рядом с ними и под ними переписывай полностью. Таблицы — построчно в Markdown со всеми '
   + 'колонками, числа — как напечатаны. Что не читается уверенно — пометь [неразборчиво]. Если на изображении не документ, а товар '
   + 'или этикетка — опиши, что это, и перепиши все надписи и маркировку. Только содержимое изображения, без выводов.';
 // Страницу вверх ногами модель читает неверно и не замечает этого: с реального инвойса, перевёрнутого на
@@ -1007,14 +1022,33 @@ function numberGroups(text) {
 // четырёх цифр — но не номера с ведущими нулями («PRJ 000506»), а вне таблиц — только коды от восьми цифр: в живом прогоне
 // 17.09.2026 список из артикулов и цифр телефона в шапке заслонил настоящие расхождения.
 const worthFlag = (group, k) => k.endsWith('c') || (!k.startsWith('0') && k.length >= (group === 'вне таблицы' ? 8 : 4));
+// weighty — сколько сомнений в строках таблиц и в суммах: только их может подтвердить разбор полей Document AI (строки
+// инвойса, итог). Номер ОГРН, ИНН, счёт и дата в шапке сертификата разбором не подтверждаются: в прогоне 196 страниц
+// (21.09.2026) Document AI звали 39 раз из-за таких чисел — 69% стоимости, — и он не снял ни одного сомнения из 64.
 function reconcileReadings(base, others, vision) {
   const g0 = numberGroups(base), go = others.map(numberGroups);
   // Распознавание Google идёт сплошным текстом, без строк таблицы: оно подтверждает число где угодно на странице.
   const vis = vision ? flatNumbers(vision) : null;
   const lines = String(base).split('\n');
   const edits = [], doubtful = [];
+  let weighty = 0;
   for (const [key, mine] of g0) {
     const o = go.map((g) => g.get(key) || []);
+    // Спор чтений: число основного чтения видел только Google, а оба чтения целиком сошлись на другом, в один знак. Прав
+    // бывает любой: на ДТ в 100 dpi основное дало верную стоимость 387521.06 против 387621.06, а на квитанции — неверный
+    // казначейский счёт 6400… против 4400… (десять досье, 21.09.2026: 9 таких мест на 196 страниц, все уходили молча).
+    // Поэтому не замена, а пометка с обоими числами.
+    if (vis && o.length === 2) {
+      for (const t of mine) {
+        if (!worthFlag(key, t.k) || !vis.includes(t.k) || o.some((list) => list.some((x) => x.k === t.k))) continue;
+        const rival = o[0].find((x) => x.k.length === t.k.length && o[1].some((y) => y.k === x.k) && !mine.some((m) => m.k === x.k) && lev(x.k, t.k, 1) === 1);
+        if (!rival) continue;
+        const note = `${key} — ${t.k.endsWith('c') ? fmtNum(t.k) : t.raw} (повторные чтения: ${rival.k.endsWith('c') ? fmtNum(rival.k) : rival.raw})`;
+        if (doubtful.includes(note)) continue; // стоимость стоит в ДТ в трёх графах — пометка одна
+        doubtful.push(note);
+        if (key !== 'вне таблицы' || t.k.endsWith('c')) weighty++;
+      }
+    }
     const unsupported = mine.filter((t) => !o.some((list) => list.some((x) => x.k === t.k)) && !(vis && vis.includes(t.k)));
     if (!unsupported.length) continue;
     const left = mine.map((t) => t.k);
@@ -1029,14 +1063,51 @@ function reconcileReadings(base, others, vision) {
     if (agreed.length === unsupported.length) unsupported.forEach((t, i) => edits.push({ t, raw: agreed[i].raw }));
     // Число показывается так, как его прочла модель, и только сумма приводится к единому виду: «13082028» в списке
     // сомнений нечитаемо, а «13.08.2028» сразу видно — это дата счёта, по которой берётся курс НБКР.
-    else unsupported.filter((t) => worthFlag(key, t.k)).forEach((t) => doubtful.push(`${key} — ${t.k.endsWith('c') ? fmtNum(t.k) : t.raw}`));
+    else unsupported.filter((t) => worthFlag(key, t.k)).forEach((t) => {
+      doubtful.push(`${key} — ${t.k.endsWith('c') ? fmtNum(t.k) : t.raw}`);
+      if (key !== 'вне таблицы' || t.k.endsWith('c')) weighty++;
+    });
   }
   for (const e of edits.sort((a, b) => b.t.line - a.t.line || b.t.at - a.t.at)) {
     const l = lines[e.t.line];
     lines[e.t.line] = l.slice(0, e.t.at) + e.raw + l.slice(e.t.at + e.t.raw.length);
   }
-  return { text: lines.join('\n'), fixed: edits.length, doubtful };
+  return { text: lines.join('\n'), fixed: edits.length, doubtful, weighty };
 }
+
+// Числа, которые оба чтения целиком и Google Vision видят, а основное чтение (полосами) пропустило. Сверка выше их не
+// замечает — она проверяет только прочитанное. Прогон 196 страниц десяти досье (21.09.2026): суммы банковских квитанций
+// «3'318.00» и «3'143.00», номер гарантии, характеристики с таблички полуприцепа; в одном из прогонов — итог инвойса 16 270
+// рядом с печатью. Число, отличающееся от прочитанного на один знак, — не пропуск, а спор о числе, и его решает сверка: на ДТ,
+// снятой в 100 dpi, основное чтение дало верное 387521.06, а оба чтения целиком и Vision в одной графе из трёх — 387621.06.
+// Место числа на странице неизвестно, поэтому это пометка, а не вставка; даты (DATE_RE ниже) не называются — их по нескольку в
+// каждой шапке.
+function missedNumbers(text, others, vision) {
+  if (others.length < 2 || !vision) return [];
+  const have = new Set(flatNumbers(text)), second = new Set(flatNumbers(others[1])), vis = new Set(flatNumbers(vision));
+  const near = (k) => [...have].some((h) => h.length === k.length && lev(h, k, 1) === 1);
+  const out = [], seen = new Set();
+  for (const m of String(others[0]).matchAll(NUM_RE)) {
+    const k = numKey(m[0]);
+    if (seen.has(k) || DATE_RE.test(m[0])) continue;
+    seen.add(k);
+    if ((k.endsWith('c') || (k.length >= 4 && !k.startsWith('0'))) && !have.has(k) && second.has(k) && vis.has(k) && !near(k)) out.push(m[0]);
+  }
+  return out;
+}
+
+// VIN (ISO 3779) — 17 знаков без букв I, O и Q, последние три — цифры. Модель и Vision путают в нём 1 с I и 0 с O: в
+// транзитной декларации на Ford F-150 (21.09.2026) — «1FTEX1CP5LFB6203I» и «IFTEXICP5LFB62031» вместо 1FTEX1CP5LFB62031,
+// у Vision — «3GKALVEVOML310403», и помощник видел бы расхождение VIN между документами там, где его нет.
+const VIN_RE = /(?<![A-Za-z0-9])[A-Za-z0-9]{17}(?![A-Za-z0-9])/g;
+// Правится только строка, похожая на VIN и без поправки: пять цифр и больше (у настоящих VIN корпуса — 6–12) и не больше
+// двух спутанных букв — иначе «KOSHOKBAIUULU1234» стал бы «K0SH0KBA1UULU1234».
+const fixVins = (text) => String(text).replace(VIN_RE, (v) => {
+  const bad = (v.match(/[IOQioq]/g) || []).length;
+  if (!bad || bad > 2 || !/[A-Za-z]/.test(v) || v.replace(/\D/g, '').length < 5) return v;
+  const w = v.toUpperCase().replace(/I/g, '1').replace(/[OQ]/g, '0');
+  return /\d{3}$/.test(w) ? w : v;
+});
 
 // Слова в строках таблиц — наименования товаров — сверяются так же, как числа, но решает Google Vision. Замер на 19
 // страницах трёх настоящих пакетов (18.09.2026): в инвойсе строка 13 «SUNLIGHT XL Коровка» прочитана моделью как
@@ -1094,12 +1165,15 @@ function visionLine(line, src) {
   }
   return best && !tie && bs >= 0.4 ? best : null;
 }
-// Как слово w прочитано в строке другого чтения: то же слово, ближайшее похожее или никак.
+// Как слово w прочитано в строке другого чтения: то же слово, ближайшее похожее или никак. Слово, где латиница смешана с
+// кириллицей, — не написание, а сбой распознавания: в инвойсе Shanghai Longrong (21.09.2026) Vision прочёл «Bалик» и
+// «nластиковая», и они заменили верные «валик» и «пластиковая», прочитанные моделью трижды.
+const MIXED_RE = /[A-Za-z][А-Яа-яЁё]|[А-Яа-яЁё][A-Za-z]/;
 function wordIn(w, l) {
   if (!l) return null;
   if (l.words.some((x) => x.k === w.k)) return w.raw;
   let best = null, bd = 9;
-  for (const x of l.words) if (closeWord(w.k, x.k)) { const d = lev(w.k, x.k, 2); if (d < bd) { bd = d; best = x; } }
+  for (const x of l.words) if (!MIXED_RE.test(x.raw) && closeWord(w.k, x.k)) { const d = lev(w.k, x.k, 2); if (d < bd) { bd = d; best = x; } }
   return best ? best.raw : null;
 }
 function reconcileWords(base, others, vision) {
@@ -1146,6 +1220,28 @@ function reconcileWords(base, others, vision) {
 // страницах 0,63–1,00 (обычно 0,9–1,0), на двух выдуманных — 0,00 и 0,21. И наоборот: выдумкой бывает и пустая таблица
 // (второй прогон той же ЭСФ), тогда чисел в чтении мало, а из чисел Vision в нём нет почти ни одного — на нормальных
 // страницах от 0,71, на выдуманных 0,00 и 0,32. Возвращает описание для пометки или null.
+// Номера из букв и цифр — контейнер, госномер, номер сертификата, VIN — сверкой чисел и слов не проверяются, а по ним помощник
+// сравнивает документы пакета: в прогоне десяти досье (21.09.2026) основное чтение CMR дало контейнер «ZHFC8810583» при
+// «ZHFU8810583» в инвойсе, и ответ назвал это расхождением. Номер меняется, только если Vision и оба чтения целиком прочли одно
+// и то же, на один знак другое: сам Vision путает в номерах I с 1 и O с 0 («IGKKNRLA9KZ298473»), и одного его мало. На 196
+// страницах такое правило меняет 5 номеров (ZHFC → ZHFU, UL1253257 → UZ1253257, 02KG536AFY → 02KG536AFV…) и ни одного верного.
+const ID_RE = /(?<![A-Za-z0-9])(?=[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*[A-Za-z])(?=(?:[A-Za-z]*\d){3})[A-Za-z0-9]{8,20}(?![A-Za-z0-9])/g;
+function reconcileIds(base, others, vision) {
+  if (others.length < 2 || !vision) return { text: base, fixed: 0 };
+  const ids = (t) => new Set([...String(t).matchAll(ID_RE)].map((m) => m[0].toUpperCase()));
+  const V = ids(vision), O = others.map(ids);
+  let fixed = 0;
+  const text = String(base).replace(ID_RE, (t) => {
+    const u = t.toUpperCase();
+    if (V.has(u) || O.some((o) => o.has(u))) return t;
+    const c = [...V].filter((v) => v.length === u.length && lev(v, u, 1) === 1);
+    if (c.length !== 1 || !O.every((o) => o.has(c[0]))) return t;
+    fixed++;
+    return c[0];
+  });
+  return { text, fixed };
+}
+
 function pageUnreliable(main, vision) {
   const imp = (t) => [...new Set(flatNumbers(t).filter(numMatters))];
   const mine = imp(main), theirs = imp(vision);
@@ -1195,8 +1291,9 @@ async function readPage(img, { checkOrientation = true, parts = [], raw = false 
         + (docai ? '\n[Разбор полей документа (Google Document AI, машинное чтение полей):\n' + docai + ']' : '');
     } else if (others.length === 2) {
       let r = reconcileReadings(text, others, seen);
-      // Разбор полей нужен там, где чтения разошлись: на согласной странице он ничего не добавит, а стоит дорого.
-      docai = r.doubtful.length && docaiUrl()
+      // Разбор полей нужен там, где чтения разошлись в строке таблицы или в сумме: на согласной странице и на реквизитах
+      // шапки он ничего не добавит, а стоит дорого (см. weighty).
+      docai = r.weighty && docaiUrl()
         ? await docaiRead(img).catch((e) => { console.error('assistant: Document AI failed:', e.message); return null; })
         : null;
       if (docai) {
@@ -1204,6 +1301,8 @@ async function readPage(img, { checkOrientation = true, parts = [], raw = false 
         r = reconcileReadings(text, others, (seen || '') + '\n' + docai);
       }
       const w = reconcileWords(r.text, others, seen);
+      w.text = reconcileIds(w.text, others, seen).text;
+      const missed = missedNumbers(w.text, others, seen);
       text = w.text + (r.doubtful.length
         ? `\n[Не подтверждено повторным чтением: ${r.doubtful.slice(0, 12).join('; ')}${r.doubtful.length > 12 ? `; и ещё ${r.doubtful.length - 12}` : ''}. `
           + 'Эти числа могут быть прочитаны неверно — назови их пользователю, чтобы он сверил с оригиналом.]'
@@ -1212,8 +1311,13 @@ async function readPage(img, { checkOrientation = true, parts = [], raw = false 
           ? `\n[Слова, прочитанные неуверенно (чтения разошлись): ${w.doubtful.slice(0, 8).join('; ')}${w.doubtful.length > 8 ? `; и ещё ${w.doubtful.length - 8}` : ''}. `
             + 'Это вопрос чтения, а не расхождение документов: попроси пользователя сверить написание с оригиналом.]'
           : '')
+        + (missed.length
+          ? `\n[Повторные чтения и распознавание Google видят на странице и числа, которых нет в расшифровке выше: ${missed.slice(0, 8).join('; ')}. `
+            + 'Их место на странице неизвестно — если число нужно для ответа, попроси пользователя сверить его с оригиналом.]'
+          : '')
         + (docai ? '\n[Разбор полей документа (Google Document AI, машинное чтение полей; при расхождении с таблицей выше верь ему):\n' + docai + ']' : '');
     }
+    text = fixVins(text);
     return raw ? { text, usage, raw: { main: mainText, others, vision: seen, docai } } : { text, usage };
   } catch (e) {
     e.usage = usage;
@@ -1319,6 +1423,16 @@ function strayNote(list, diff, t, fmt) {
     + 'документа пакета (у каждого инвойса свой итог) или учтено дважды. Проверь, к какому документу относится эта строка; если к '
     + 'другому — расхождения нет, и пользователю его не называй.';
 }
+// Обратный случай: итог больше суммы ровно на одно из слагаемых — строка с таким же значением не попала во вход. CMR на восемь
+// машин (21.09.2026): семь строк по 1 600 кг и одна 1 100, итог 12 300; модель передала семь весов, и пользователю ушло
+// выдуманное «расхождение 1 600 кг». Одинаковые строки легко недосчитать — сначала пересчёт, потом разговор о расхождении.
+function missedRowNote(list, diff, t, fmt) {
+  const n = diff < 0 ? list.filter((v) => Math.round(v * 100) === -diff).length : 0;
+  if (!n) return '';
+  return ` Итог документа ${fmt(t)} больше суммы строк ровно на ${fmt(-diff / 100)} — столько стоит в ${n} из переданных строк: скорее всего, `
+    + `одна строка с таким же значением пропущена. Пересчитай строки документа: если строк с ${fmt(-diff / 100)} там ${n + 1}, ошибка была во `
+    + 'входе — повтори sum_check со всеми строками и пользователю о расхождении не сообщай.';
+}
 function discountNote(sum, t, fmt) {
   const p = (1 - t / sum) * 100, half = Math.round(p * 2) / 2;
   if (!(t > 0 && t < sum && half >= 0.5 && half <= 20 && Math.abs(p - half) <= 0.05)) return '';
@@ -1393,7 +1507,7 @@ function sumCheck({ amounts, total, rows } = {}, hint = {}) {
     // В живом прогоне 17.09.2026 модель в таком случае отказалась считать платежи и попросила «уточнить строку 19».
     out += diff === 0 ? ' Совпадает с итогом документа.' + (bad.length ? ' Стоимость для расчёта надёжна — считай платежи по итогу'
       + (hinted < bad.length ? ', а строки с расхождением назови пользователю.' : '.') : '')
-      : strayNote(list, diff, t, fmt) || discountNote(cents / 100, t, fmt) || (` Итог документа ${fmt(t)} расходится с суммой строк на ${fmt(Math.abs(diff) / 100)}: одно из чисел прочитано со скана неверно. `
+      : strayNote(list, diff, t, fmt) || missedRowNote(list, diff, t, fmt) || discountNote(cents / 100, t, fmt) || (` Итог документа ${fmt(t)} расходится с суммой строк на ${fmt(Math.abs(diff) / 100)}: одно из чисел прочитано со скана неверно. `
         + 'Проверь, все ли строки учтены и нет ли строк на других страницах; если расхождение останется — считай по сумме строк '
         + '(строки таблицы читаются со скана надёжнее итога) и назови пользователю обе суммы, чтобы он сверил их по оригиналу.');
   }
@@ -1510,6 +1624,8 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
         calcItems = vals.map((v) => Math.round(v * 100));
         calcSkipped = /\nНе посчитаны — /.test(result);
       }
+      // На вывоз ввозной расчёт не делается — это ответ, а не пропущенный расчёт (иначе needCalc требовал бы его снова).
+      if (u.name === 'calc_payments' && result === EXPORT_CALC) calcDone = true;
       if (u.name === 'calc_payments') {
         const counted = [...new Set([...result.matchAll(/(?:^|\n)(?:Позиция \d+\. )?Код (\d{4} \d{2} \d{3} \d) —/g)].map((m) => m[1].replace(/\s/g, '')))];
         if (counted.length) calcCodes = counted;
@@ -1663,4 +1779,4 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   throw Object.assign(new Error('no answer after tool rounds'), { usage });
 }
 
-module.exports = { ask, readPage, pageUnreliable, reconcileReadings, reconcileWords, flatNumbers, searchBase, calcPayments, groupNotes, sumCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, unknownNumbers, checker, roundCost };
+module.exports = { ask, readPage, pageUnreliable, reconcileReadings, reconcileWords, reconcileIds, missedNumbers, fixVins, flatNumbers, searchBase, calcPayments, groupNotes, sumCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, unknownNumbers, checker, roundCost };

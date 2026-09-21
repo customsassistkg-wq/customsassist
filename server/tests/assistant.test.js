@@ -252,6 +252,13 @@ const a = require('../src/services/assistant');
   assert.match(t, /Сбор за таможенные операции: 699,60 сом/);      // 0,4%
   assert.match(t, /Итого: 70\s659,60 сом/);
   assert.match(await a.calcPayments({ code: '0207146001', value: 2000, currency: 'USD' }), /нужно количество/);
+  // вывоз скота (досье 21.09.2026): ввозные пошлина и НДС на вывозе не считаются — ни одной позицией, ни пакетом
+  for (const input of [{ code: '0102299900', value: 4350, currency: 'USD', direction: 'ex' },
+    { direction: 'export', currency: 'USD', total: 4350, items: [{ code: '0102299900', value: 4350 }] }]) {
+    t = await a.calcPayments(input);
+    assert.match(t, /^Это расчёт ввозных платежей: при вывозе ввозные пошлина и НДС не взимаются/);
+    assert.doesNotMatch(t, /Ввозная пошлина:|сом/);
+  }
   assert.match(await a.calcPayments({ code: '8517130000', value: 100, currency: 'USD', country: 'Казахстан' }), /ЕАЭС/);
   assert.match(await a.calcPayments({ code: '0201100001', value: 5000, currency: 'USD', quantity: 1000, country: 'ОАЭ', date: '2026-10-10' }), /ОАЭ: 13,1%/);
   assert.match(await a.calcPayments({ code: '1', value: 1, currency: 'USD' }), /не найден в ЕТТ/);
@@ -350,6 +357,9 @@ const a = require('../src/services/assistant');
   // итог, прочитанный со скана неверно: расхождение, просьба перечитать, а не выбор одного из чисел
   assert.match(a.sumCheck({ amounts: rows21, total: 563478.4 }), /расходится с суммой строк на 20\s000,00.*считай по сумме строк.*назови пользователю обе суммы/);
   assert.equal(a.sumCheck({ amounts: [0.1, 0.2] }), 'Сумма 2 чисел: 0,30.');
+  // CMR на восемь машин: передано семь весов, итог больше ровно на одну строку 1 600 — подсказка пересчитать, а не «расхождение»
+  assert.match(a.sumCheck({ amounts: [1600, 1600, 1600, 1100, 1600, 1600, 1600], total: 12300 }), /больше суммы строк ровно на 1\s600,00 — столько стоит в 6 из переданных строк.*пропущена.*пользователю о расхождении не сообщай/);
+  assert.doesNotMatch(a.sumCheck({ amounts: [1600, 1100], total: 3000 }), /пропущена/);
   assert.equal(a.sumCheck({ amounts: [] }), 'Нет чисел для сложения.');
   assert.match(a.sumCheck({ amounts: ['1 000,50', 2] }), /1\s002,50/);
   // строки с количеством и ценой: сумма берётся из rows, неверно прочитанная строка названа
@@ -392,6 +402,30 @@ const a = require('../src/services/assistant');
   assert.deepEqual([wr.text, wr.doubtful], [wrow('Мишко'), ['строка 13 — «Мишко»']]);
   wr = a.reconcileWords('18 Carrier reservation', ['18 Carrier reservations', '18 Carrier reservations'], null);
   assert.equal(wr.fixed, 0);                                                                   // шапки и печатные поля не трогаются
+  // инвойс Shanghai Longrong: Vision прочёл «Bалик» (латинская B) — такое слово не замена и не повод для пометки
+  const lrow = (w) => `| 5 | 6" paint rolls / ${w} 6" | 1600 | 0,63 | 1008,00 | 9603409000 |`;
+  wr = a.reconcileWords(lrow('валик'), [lrow('валик'), lrow('валик')], '5 | 6" paint rolls / Bалик 6" 1600 0,63 1008,00 9603409000');
+  assert.deepEqual([wr.text, wr.fixed, wr.doubtful], [lrow('валик'), 0, []]);
+  // спор чтений (ДТ в 100 dpi): основное число видел только Vision, оба чтения целиком сошлись на другом — пометка с обоими, одна
+  let sp = a.reconcileReadings('12 | 387521.06\n45 | 387521.06', ['12 | 387621.06\n45 | 387621.06', '387621.06 387621.06'], '387521.06 387621.06');
+  assert.deepEqual([sp.text, sp.doubtful.length, sp.weighty], ['12 | 387521.06\n45 | 387521.06', 1, 1]);
+  assert.match(sp.doubtful[0], /^вне таблицы — 387\s521,06 \(повторные чтения: 387\s621,06\)$/);
+  sp = a.reconcileReadings('Итого 387521.06', ['Итого 387521.06', 'Итого 387621.06'], '387521.06');   // одно повторное согласно с основным — спора нет
+  assert.deepEqual(sp.doubtful, []);
+  // квитанция: основное чтение пропустило сумму, оба чтения целиком и Vision её видят; дата не называется
+  const rcpt = 'Сумма 3\'318.00 сом от 12.05.2025';
+  assert.deepEqual(a.missedNumbers('Квитанция № 384400112', [rcpt, rcpt], '3\'318.00 12.05.2025'), ['3\'318.00']);
+  assert.deepEqual(a.missedNumbers(rcpt, [rcpt, rcpt], '3\'318.00'), []);                           // есть в расшифровке
+  assert.deepEqual(a.missedNumbers('x', [rcpt, rcpt], '12.05.2025'), []);                           // Vision его не видел
+  // ДТ в 100 dpi: основное чтение верно (387521.06), остальные — 387621.06; это спор о числе, не пропуск
+  assert.deepEqual(a.missedNumbers('| 12 | 387521.06 |', ['| 12 | 387621.06 |', '387621.06'], '387521.06 387621.06'), []);
+  // номер контейнера: Vision и оба чтения целиком — ZHFU, основное — ZHFC; путаница Vision с I/1 одна заменой не становится
+  assert.equal(a.reconcileIds('Контейнер № ZHFC8810583', ['контейнер ZHFU8810583', 'ZHFU8810583'], 'ZHFU8810583').text, 'Контейнер № ZHFU8810583');
+  assert.equal(a.reconcileIds('VIN 1GKKNRLA9KZ298473', ['1GKKNRLA9KZ298473', '1GKKNRLA9KZ298473'], 'IGKKNRLA9KZ298473').text, 'VIN 1GKKNRLA9KZ298473');
+  assert.equal(a.reconcileIds('№ ZHFC8810583', ['ZHFU8810583', 'ZHFC8810583'], 'ZHFU8810583').fixed, 0);   // чтения разошлись — не трогаем
+  // VIN без I, O и Q: путаница 1/I и 0/O исправляется, прочие 17-значные строки не трогаются
+  assert.equal(a.fixVins('VIN 1FTEX1CP5LFB6203I, IFTEXICP5LFB62031; 3GKALVEVOML310403'), 'VIN 1FTEX1CP5LFB62031, 1FTEX1CP5LFB62031; 3GKALVEV0ML310403');
+  assert.equal(a.fixVins('KLYDC487DLC012481 · ABCDEFGHIJKLMNOPQ · KOSHOKBAIUULU1234 · 12345678901234567'), 'KLYDC487DLC012481 · ABCDEFGHIJKLMNOPQ · KOSHOKBAIUULU1234 · 12345678901234567');
   console.log('PASS: слова в строках таблиц — решает Vision, без него два согласных чтения, разнобой — пометка');
 
   // ── стоимость раунда по ценам DeepSeek ──
@@ -864,6 +898,19 @@ const a = require('../src/services/assistant');
     assert.match(r.text, /\[Не подтверждено повторным чтением: строка 20 — 15,00/);
     assert.doesNotMatch(r.text, /Разбор полей документа/);
     assert.ok(r.usage.costUsd < 0.03, 'плата за несостоявшийся разбор не берётся: ' + r.usage.costUsd);
+    // сомнение только в реквизитах шапки (ОГРН сертификата) разбор не вызывает: подтвердить его разбору нечем
+    docaiCalls = [];
+    const heads = ['ОГРН 1227700234082\n| 1 | ST-192 | 1 | $7.129,00 |', 'ОГРН 1227700234092\n| 1 | ST-192 | 1 | $7.129,00 |', 'ОГРН 1227700234062\n| 1 | ST-192 | 1 | $7.129,00 |'];
+    let headRead = 0;
+    global.fetch = async (url, opts) => {
+      if (/documentai\.googleapis\.com/.test(url)) { docaiCalls.push(url); return { ok: true, json: async () => ({ document: { entities: [] } }) }; }
+      if (/vision\.googleapis\.com/.test(url)) return { ok: true, json: async () => ({ responses: [{ fullTextAnnotation: { text: 'ОГРН 1227700234032\n1 ST-192 1 7.129,00' } }] }) };
+      if (/googleapis\.com/.test(url)) return modelFetch(url, opts);
+      return { ok: true, json: async () => ({ content: [{ type: 'text', text: heads[headRead++ % 3] }], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }) };
+    };
+    r = await a.readPage(page, { checkOrientation: false });
+    assert.match(r.text, /\[Не подтверждено повторным чтением: вне таблицы — 1227700234082/);
+    assert.equal(docaiCalls.length, 0);
     // на согласной странице разбор не вызывается — он стоит 3 цента и полминуты
     docaiCalls = [];
     global.fetch = async (url, opts) => {
