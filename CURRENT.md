@@ -28,6 +28,7 @@ No task is in progress at the last commit. The last stream of work (18–19.09.2
 
 ## Recently completed
 
+- 21.09.2026 (after `eaadaed`) — `calc_payments` flags DAT as an Incoterms 2010 term replaced by DPU (closes the open issue); new batch fields measured at 360/390 px in both themes, no overflow. **Not committed, not deployed.**
 - 21.09.2026 — Incoterms 2020 end to end: batch calculator got a delivery-term select, a documented-deductions field and ст. 40 ТК ЕАЭС notes; assistant `calc_payments` got `deduct`, DDP/D-term/insurance notes, one note per batch; a call without `incoterm` takes the single term found in the documents (`docIncoterm`). Calculator state (batch, delivery term, spec rows, billing report, calculator panels) is now wiped in `resetAppView()` via `resetCalcState()` — it used to survive logout in the same tab.
 - 21.09.2026 — document scanner on ten real customs dossiers (205 scanned pages, filed ДТ as ground truth): seals transcribed as one word, Document AI only for table-row/sum doubts, mixed-script and ID/VIN reconciliation, missed-number note, strip cut by page background, `calc_payments` refuses import payments on export; silent reading disputes are flagged with both numbers, scans under 130 dpi carry a low-resolution note, `sum_check` hints at a missed identical row. Same 196 pages: $1.70 → $0.71, doubtful numbers 99 → 58, Vision-confirmed 92.7% → 94.8% (`session.md`, `docs/ai-assistant.md`).
 - 20.09.2026 — every site image moved into `assets/` (`assets/icons/`, `assets/source/`); page, manifest, mail template, Nginx, dev Express and both generators point there; deployed and verified live in both themes; new `static-assets.test.js`.
@@ -41,7 +42,7 @@ No task is in progress at the last commit. The last stream of work (18–19.09.2
 
 ## Open issues
 
-- Assistant answer variance: contested classifications (e.g. Würth rust remover 3402 90 900 0 vs 2710 19 980 0) differ between runs; excise on lubricants needs litres the model must ask for; gross weight vs CMR named as a discrepancy where the difference is packaging; the 94.05 / 9505.10 discrepancy on a certificate is named in one run of three; an answer's text can contradict its own calculation («Аренда склада» included in the calculation, denied in the text); the obsolete Incoterm DAT is not flagged.
+- Assistant answer variance: contested classifications (e.g. Würth rust remover 3402 90 900 0 vs 2710 19 980 0) differ between runs; excise on lubricants needs litres the model must ask for; gross weight vs CMR named as a discrepancy where the difference is packaging; the 94.05 / 9505.10 discrepancy on a certificate is named in one run of three; an answer's text can contradict its own calculation («Аренда склада» included in the calculation, denied in the text).
 - ПКМ КР № 607 от 10.09.2026 (livestock export ban, 11.09.2026–11.03.2027) is still not indexed in cbd.minjust.gov.kg; the card cites the ЕЭК register. Re-check the registry.
 - No extension found for the fertilizer (№ 115, lapsed 15.09.2026) and sapling (№ 103, lapsed 01.09.2026) bans; cards say «продление в базе не найдено».
 - `SOURCE_AUDIT` records still ◐: `tr` (five regulations publish no code list), `species`, `trois`, `ban`, `usir` — each states why on its card; they cannot be closed from the file side.

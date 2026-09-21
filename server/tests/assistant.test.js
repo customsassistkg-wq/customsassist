@@ -295,6 +295,9 @@ const a = require('../src/services/assistant');
   assert.match(t, /Таможенная стоимость: 1000 − вычет 150 = 850 USD/);
   assert.doesNotMatch(t, /завышен/);
   assert.match(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'DAP Кант' }), /DAP: если место поставки — внутри ЕАЭС/);
+  // DAT — Инкотермс 2010, в редакции 2020 его заменил DPU: помощник говорит об этом; у DPU и у «DATE» в тексте пометки нет
+  assert.match(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'DAT Бишкек' }), /DAT — термин Инкотермс 2010; в редакции 2020 его заменил DPU/);
+  assert.doesNotMatch(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'DPU Бишкек, DATE 01.09.2026' }), /Инкотермс 2010/);
   assert.match(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'CPT Бишкек' }), /CPT: страховка в цену не входит/);
   assert.match(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', deduct: 1000 }), /Вычет 1000 не может быть/);
   // в партии о FOB сказано один раз, а не в каждой строке; вычет на инвойс делится по стоимости: 43 → 33 и 10
