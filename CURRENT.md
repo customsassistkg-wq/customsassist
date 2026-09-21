@@ -15,7 +15,7 @@ Short, current, replaceable. Long-term rules go to `CLAUDE.md`/`docs/`, history 
 ## Current production state
 
 - Site live at `https://customsassist.trade` (VPS 65.109.170.170, Hetzner Helsinki; `ts.customsassist.trade` is a different project on another server).
-- Last deploy recorded in `session.md`: 18.09.2026, `/root/deploy_backups/20260918_191311/` — `services/assistant.js` of commit `5397775`. **No deploy is recorded for the `base.js`/`checker.js` changes of the direction-regime audit (`583b168`, `5a2dc82`) or the ТР-list fixes of `8602d13`** — compare SHA256 on the server with HEAD before assuming production has them. Commit `96b3a08` (docs only) needs no deploy.
+- Last deploy: 21.09.2026 12:25 UTC, `/root/deploy_backups/20260921_122518/` — `services/assistant.js` of `59156ca`; before it 12:22 UTC, `…_122146/` — `assistant.js` and `private/checker.js` of `dc71f63` (document scanner). Before this work, on 21.09.2026, the server's `base.js`, `checker.js`, `assistant.js` and the prompt matched `d4a49d3` by SHA256 — the direction-regime and ТР-list commits are in production.
 - Images live in `/opt/tnved/assets` (moved there 20.09.2026); the root holds only the page, the two legal pages, `ai-risk.json`, the manifest, `server/`, `vendor/`, `backups/`. Nginx keeps `/icons/*` and `/email-logo.jpg` alive by `alias` for installed app copies and for letters already delivered.
 - Database migrations `0001`–`0012` applied; daily `pg_dump` with restore check (`tnved-db-backup.timer`), pulled to the owner's machine by a scheduled task; failed units mail the admins.
 - Registration requires email verification (hard gate) and Turnstile with the real key (Managed mode); the terms gate (`TERMS_VERSION` 2026-09-18) shows once to every pre-existing account.
