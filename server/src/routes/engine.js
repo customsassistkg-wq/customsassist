@@ -27,15 +27,19 @@ const bishkekDay = (now) => new Date(now + 6 * 3600e3).toISOString().slice(0, 10
 // «Разная позиция»: товарная позиция (4 цифры) для запросов по коду, группа — для дерева,
 // сам текст — для поиска по названию. «8517», «8517 13», «8517130000» — одна позиция, и
 // набор кода по цифрам счётчик не раздувает; набор слова по буквам — тоже (см. account).
+// Позиция берётся по цифрам запроса, где бы они ни стояли: база сама вынимает код из
+// «8517.13», «85.17» и из «……8517» (findX и calcCodeList отбрасывают нецифры). До 21.09.2026
+// ключом такого запроса были только первые 60 знаков текста, а у calcCodeList — ничего:
+// 60 точек перед кодом открывали все 1 228 позиций ЕТТ одним ключом и без письма.
 function keysOf(fn, args) {
   const heading = (v) => {
-    const d = String(v == null ? '' : v).replace(/\s+/g, '');
-    return /^\d{4,}$/.test(d) ? ['h' + d.slice(0, 4)] : [];
+    const d = String(v == null ? '' : v).replace(/\D/g, '');
+    return d.length >= 4 ? ['h' + d.slice(0, 4)] : [];
   };
   const text = (v, p) => {
     const q = String(v == null ? '' : v).trim().toLowerCase().replace(/\s+/g, ' ');
     if (!q) return [];
-    return /^[\d ]+$/.test(q) ? heading(q) : [p + q.slice(0, 60)];
+    return /^[\d ]+$/.test(q) ? heading(q) : [p + q.slice(0, 60), ...heading(q)];
   };
   switch (fn) {
     case 'renderHtml': return text(args[0], 't');
@@ -65,7 +69,7 @@ function account(user, fn, args, now = Date.now()) {
   // предыдущий, заменяет его, а не добавляется. Только продолжение, не укорочение:
   // иначе чередование «ab», «a», «ac», «a»… считалось бы одной позицией, а продолжение
   // сужает выдачу и нового не открывает.
-  const t = keys.length === 1 && /^[ts]/.test(keys[0]) ? keys[0] : null;
+  const t = keys.find((k) => /^[ts]/.test(k)) || null;
   let replaced = null;
   if (t && u.lastText && t !== u.lastText && t.startsWith(u.lastText)) replaced = u.lastText;
   const fresh = keys.filter((k) => !u.keys.has(k));

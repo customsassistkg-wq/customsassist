@@ -1,6 +1,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { ask, readPage } = require('../services/assistant');
+const { sendEmail, renderEmail, BRAND } = require('../services/email');
 
 const router = express.Router();
 
@@ -30,6 +31,31 @@ if (process.env.AI_PLAN_LIMITS) {
 // у Базового 60 страниц в день и 2 000 в месяц. Текст PDF, таблицы и Word моделью не читаются и не считаются.
 const PAGES_PER_QUESTION = 20;
 
+// Суточный потолок расхода на модель и распознавание по всем пользователям, $ за сутки Бишкека.
+// Тарифы ограничивают одного пользователя, а не сумму: пробные учётные записи и сбойные вопросы
+// (с квоты не списываются, но денег стоят) общего предела не имели. Выше потолка помощник отвечает
+// 503 всем, кроме администраторов, до полуночи; администраторам уходит одно письмо. 0 — без потолка.
+const DAILY_BUDGET_USD = Number(process.env.AI_DAILY_BUDGET_USD ?? 10);
+let budgetAlertDay = null;
+function budgetAlert(spent) {
+  const day = ymd(new Date());
+  if (budgetAlertDay === day) return;
+  budgetAlertDay = day;
+  console.error(`assistant: daily budget reached: $${spent.toFixed(2)} of $${DAILY_BUDGET_USD}`);
+  if (!process.env.RESEND_API_KEY) return;
+  (async () => {
+    const { rows } = await pool.query("select email from users where role = 'admin' and active = true order by created_at");
+    const html = renderEmail({
+      title: 'AI-ассистент остановлен до конца суток',
+      intro: `Расход на модель и распознавание за сегодня (по Бишкеку) — $${spent.toFixed(2)} при суточном потолке $${DAILY_BUDGET_USD}.`
+        + ' Пользователи получают отказ до полуночи; администраторы работают без ограничения.',
+      outro: 'Кто потратил — в админ-панели, «AI-ассистент». Потолок меняется переменной AI_DAILY_BUDGET_USD в .env (0 — без потолка).',
+      footNote: 'Письмо отправлено автоматически: /api/assistant.',
+    });
+    for (const r of rows) await sendEmail({ to: r.email, subject: `Суточный потолок расхода AI — ${BRAND}`, html });
+  })().catch((err) => console.error('assistant budget alert failed:', err.message));
+}
+
 const TZ = 6 * 3600e3;
 function bishkekMonth(now = new Date()) {
   const b = new Date(now.getTime() + TZ);
@@ -49,7 +75,8 @@ async function quotaFor(user) {
     `select count(*) filter (where kind = 'question')::int as used,
             count(*) filter (where kind = 'question' and created_at >= $3)::int as used_today,
             count(*) filter (where kind = 'read')::int as pages,
-            count(*) filter (where kind = 'read' and created_at >= $3)::int as pages_today
+            count(*) filter (where kind = 'read' and created_at >= $3)::int as pages_today,
+            (select coalesce(sum(cost_usd), 0) from assistant_log where created_at >= $3)::float as spent_all
        from assistant_log where user_id = $1 and created_at >= $2 and error is null`,
     [user.id, month.start, day.start]
   );
@@ -57,6 +84,12 @@ async function quotaFor(user) {
   const pages = rows[0]?.pages || 0, pagesToday = rows[0]?.pages_today || 0;
   const plans = Object.fromEntries(Object.entries(PLANS).map(([k, v]) => [k, { name: v.name, day: v.day, month: v.month }]));
   const base = { used, usedToday, pages, pagesToday, resets: ymd(month.next), tomorrow: ymd(day.next), plans };
+  // Сама сумма пользователю не уходит — только признак.
+  const spentAll = rows[0]?.spent_all || 0;
+  if (DAILY_BUDGET_USD > 0 && spentAll >= DAILY_BUDGET_USD) {
+    budgetAlert(spentAll);
+    if (user.role !== 'admin') base.overBudget = true;
+  }
   if (user.role === 'admin') return { plan: 'admin', name: 'Администратор', limit: null, day: null, remaining: null, pagesRemaining: null, ...base };
   const plan = PLANS[user.ai_plan] ? user.ai_plan : 'base';
   const p = PLANS[plan];
@@ -153,6 +186,7 @@ router.post('/', async (req, res) => {
   try {
     let quota;
     try { quota = await quotaFor(req.user); } catch (err) { console.error('assistant quota:', err.message); return res.status(500).json({ error: 'internal error' }); }
+    if (quota.overBudget) return res.status(503).json({ error: 'assistant_budget' });
     if (quota.remaining === 0) return res.status(429).json({ error: 'quota_exceeded', quota });
 
     res.status(200).type('application/x-ndjson');
@@ -198,6 +232,7 @@ router.post('/read', async (req, res) => {
   try {
     let quota;
     try { quota = await quotaFor(req.user); } catch (err) { console.error('assistant quota:', err.message); return res.status(500).json({ error: 'internal error' }); }
+    if (quota.overBudget) return res.status(503).json({ error: 'assistant_budget' });
     if (quota.pagesRemaining === 0) return res.status(429).json({ error: 'page_quota_exceeded', quota });
     const started = Date.now();
     const question = `[страница документа: ${name}]`;
@@ -224,7 +259,7 @@ router.get('/quota', async (req, res, next) => {
   try { res.json(await quotaFor(req.user)); } catch (err) { next(err); }
 });
 
-// Оценка ответа: только своего и только один раз меняемым значением.
+// Оценка ответа: только своего; передумать можно — новая оценка заменяет прежнюю.
 router.post('/rate', async (req, res, next) => {
   if (!guard(req, res)) return;
   const id = Number(req.body?.id);

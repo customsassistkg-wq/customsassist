@@ -10,11 +10,11 @@ const a = require('../src/services/assistant');
 (async () => {
   // ── тарифы: лимит вопросов в день и в месяц ──
   {
-    let used = 0, today = 0, pages = 0, pagesToday = 0;
+    let used = 0, today = 0, pages = 0, pagesToday = 0, spentAll = 0;
     const inserts = [];
     const user = { id: 'u1', email: 'u@x.kg', role: 'user', active: true, email_verified_at: new Date(), ai_plan: 'base' };
     require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async (sql, args) => {
-      if (/as used_today/.test(sql)) return { rows: [{ used, used_today: today, pages, pages_today: pagesToday }] };
+      if (/as used_today/.test(sql)) return { rows: [{ used, used_today: today, pages, pages_today: pagesToday, spent_all: spentAll }] };
       if (/insert into assistant_log/.test(sql)) { inserts.push(args); return { rows: [{ id: inserts.length }] }; }
       if (/update users set ai_plan/.test(sql)) return { rows: [{ id: 'u1', ai_plan: 'pro' }] };
       return { rows: [user] };
@@ -69,6 +69,20 @@ const a = require('../src/services/assistant');
       user.role = 'user'; user.ai_plan = 'непонятный';
       j = await (await fetch(base + '/quota')).json();
       assert.equal(j.plan, 'base');                 // неизвестный тариф — как базовый, а не без лимита
+      // суточный потолок расхода по всем пользователям: отказ 503 вопросу и странице, сумма наружу не уходит, администратор работает
+      used = 0; today = 0; spentAll = 10;
+      r = await post();
+      assert.deepEqual([r.status, await r.json()], [503, { error: 'assistant_budget' }]);
+      r = await fetch(base + '/read', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ image: { media_type: 'image/jpeg', data: 'AAAA' } }) });
+      assert.deepEqual([r.status, await r.json()], [503, { error: 'assistant_budget' }]);
+      j = await (await fetch(base + '/quota')).json();
+      assert.equal(j.overBudget, true);
+      assert.doesNotMatch(JSON.stringify(j), /spent/i);
+      user.role = 'admin';
+      assert.equal((await post()).status, 200);
+      user.role = 'user'; spentAll = 9.99;
+      assert.equal((await post()).status, 200);
+      spentAll = 0;
       // второй вопрос того же пользователя, пока первый в работе, — отказ «busy»:
       // лимит считается по журналу, а запись появляется только после ответа
       used = 0; today = 0;
@@ -156,7 +170,7 @@ const a = require('../src/services/assistant');
       gates.forEach((g) => g());
       assert.deepEqual((await Promise.all(four)).map((x) => x.status), [200, 200, 200, 200]);
     } finally { server.close(); }
-    console.log('PASS: тарифы — день и месяц по Бишкеку, отказ по дню и по месяцу, остаток по меньшему, админ, неизвестный тариф; страницы документов — журнал, поворот, сбой, лимит, занятость');
+    console.log('PASS: тарифы — день и месяц по Бишкеку, отказ по дню и по месяцу, остаток по меньшему, админ, неизвестный тариф; страницы документов — журнал, поворот, сбой, лимит, занятость; суточный потолок расхода');
   }
 
   // ── search_base ──

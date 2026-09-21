@@ -23,7 +23,10 @@ find "$BACKUP_DIR" -maxdepth 1 -name 'tnved_*.dump' -mtime +"$RETENTION_DAYS" -d
 # not a backup. Every night the fresh dump is restored into a throwaway
 # database and the row counts of the tables that matter are compared with the
 # live ones. Any failure fails the unit, which shows in `systemctl --failed`.
-# The live database may have grown between dump and count, never shrunk.
+# Between dump and count the live database may have grown by a few rows or shrunk
+# (deleting a user cascades to their assistant_log), so "more rows in the copy" is
+# not a failure - until 21.09.2026 it was, a false alarm waiting for the first
+# deletion at backup time. A failure is an empty users table or a visible loss of rows.
 CHECK_DB=tnved_restore_check
 dropdb --if-exists "$CHECK_DB"
 createdb "$CHECK_DB"
@@ -34,7 +37,7 @@ summary=""
 for t in users admin_audit_log assistant_log; do
   restored=$(psql -At -d "$CHECK_DB" -c "select count(*) from $t")
   live=$(psql -At -d tnved -c "select count(*) from $t")
-  if [ "$restored" -gt "$live" ] || { [ "$t" = users ] && [ "$restored" -eq 0 ]; }; then
+  if { [ "$t" = users ] && [ "$restored" -eq 0 ]; } || [ $((restored + 100)) -lt "$live" ]; then
     echo "restore check FAILED: $t restored=$restored live=$live" >&2
     exit 1
   fi

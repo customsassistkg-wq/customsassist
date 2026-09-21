@@ -404,15 +404,19 @@ function mergeCardFamilies(container){
 }
 
 // ─── История и подсказки поиска ───
-// Последние запросы живут в localStorage; подсказки по цифрам — с сервера
+// Последние запросы живут в localStorage с пометкой владельца: до 21.09.2026 ключ был общим на
+// браузер, и следующий вошедший видел запросы предыдущего. Чужая или старая запись читается
+// как пустая и затирается первым же запросом; при явном выходе страница стирает ключ (doLogout).
+// Подсказки по цифрам — с сервера
 // (calcCodeList), по буквам — тот же поиск по наименованию. Выпадающий список
 // не заменяет результат: Enter в поле по-прежнему ищет то, что набрано.
 const SRCH_HIST_KEY='ca-hist',SRCH_HIST_MAX=6;
-function histLoad(){try{const v=JSON.parse(localStorage.getItem(SRCH_HIST_KEY)||'[]');return Array.isArray(v)?v.filter(x=>typeof x==='string'):[]}catch(e){return []}}
+function histOwner(){return currentUser&&currentUser.email?currentUser.email.toLowerCase():''}
+function histLoad(){try{const v=JSON.parse(localStorage.getItem(SRCH_HIST_KEY)||'null'),u=histOwner();return u&&v&&v.u===u&&Array.isArray(v.list)?v.list.filter(x=>typeof x==='string'):[]}catch(e){return []}}
 function histPush(q){
-  q=(q||'').trim();if(!q)return;
+  q=(q||'').trim();const u=histOwner();if(!q||!u)return;
   const list=[q].concat(histLoad().filter(x=>x!==q)).slice(0,SRCH_HIST_MAX);
-  try{localStorage.setItem(SRCH_HIST_KEY,JSON.stringify(list))}catch(e){}
+  try{localStorage.setItem(SRCH_HIST_KEY,JSON.stringify({u:u,list:list}))}catch(e){}
 }
 const SRCH_EXAMPLES=[['8517 13','Смартфоны'],['8703 23','Авто 1.5–3 л'],['7204','Лом металлов — запрет'],['2402 20','Сигареты — акциз'],['3004 90','Лекарства — НДС 0%'],['8802','Авиация — НКС'],['2710 12','Бензин — сертификация'],['лом металлов','поиск по названию']];
 let srchDropSeq=0,srchDropIdx=-1;
@@ -2532,6 +2536,7 @@ async function aiReadPage(doc,shoot,label){
     if(res.ok&&data.rotate&&!checked){shot=await shoot(data.rotate);checked=true;continue}
     if(res.ok&&typeof data.text==='string')return data.text;
     if(data.error==='page_quota_exceeded')doc.stopped=aiPageQuotaText(data.quota);
+    if(data.error==='assistant_budget')doc.stopped=AI_ERR.assistant_budget;
     throw new Error(doc.stopped||AI_ERR[data.error]||'ошибка '+res.status);
   }
 }
@@ -2825,6 +2830,7 @@ function aiLogClick(e){
 const AI_ERR={rate_limited:'Дневной лимит вопросов исчерпан. Попробуйте завтра.',
   ai_balance:'Ассистент временно недоступен: закончился баланс API.',
   assistant_disabled:'Ассистент не настроен на сервере.',
+  assistant_budget:'Ассистент временно недоступен: исчерпан суточный бюджет сервиса. Попробуйте завтра.',
   ai_unavailable:'Сервис модели не ответил. Попробуйте ещё раз.',
   bad_image:'Изображение не принято: нужен JPG, PNG или WebP.',
   too_many_images:'Не больше 8 изображений за один вопрос.',

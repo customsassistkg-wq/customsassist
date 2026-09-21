@@ -59,6 +59,19 @@ const engine = require('../src/routes/engine');
   const v = { id: 'alternating', email: 'v@example.test' };
   for (const q of ['ab', 'a', 'ac', 'a']) engine.account(v, 'renderHtml', [q]);
   assert.equal(engine.usage.get('alternating').keys.size, 3);
+  // позиция — по цифрам запроса, где бы они ни стояли: база вынимает код и из «……8517»
+  const pad = '.'.repeat(60);
+  assert.deepEqual(k('renderHtml', [pad + '8517130000']), ['t' + pad, 'h8517']);
+  assert.deepEqual(k('renderHtml', ['8517.13']), ['t8517.13', 'h8517']);
+  assert.deepEqual(k('calcCodeList', ['85.17']), ['h8517']);
+  assert.deepEqual(k('calcCodeList', ['z8517']), ['h8517']);
+  const p = { id: 'padded', email: 'p@example.test' };
+  for (const h of ['0101', '0201', '0301', '0401', '0501']) assert.equal(engine.account(p, 'renderHtml', [pad + h]), null);
+  assert.equal(engine.usage.get('padded').keys.size, 6, 'дополнение перед кодом позиций не прячет: текст и пять позиций');
+  // слово с цифрами по-прежнему набирается одной текстовой позицией
+  const n = { id: 'mixed', email: 'n@example.test' };
+  for (const q of ['болт м', 'болт м1', 'болт м12', 'болт м1234', 'болт м12345']) assert.equal(engine.account(n, 'renderHtml', [q]), null);
+  assert.deepEqual([...engine.usage.get('mixed').keys].sort(), ['h1234', 'tболт м12345']);
   console.log('PASS: позиции — код по товарной позиции, слово по продолжению набора');
 }
 

@@ -59,6 +59,18 @@ assert.match(nginx, /location = \/email-logo\.jpg \{\s*alias \/opt\/tnved\/asset
 assert.match(nginx, /location \^~ \/assets\/source\/ \{\s*return 404;/,
   'исходники логотипа не должны отдаваться наружу');
 assert.match(index, /app\.get\('\/email-logo\.jpg'/, 'старый адрес логотипа писем нужен и в dev');
+
+// 5. Запреты по регулярным выражениям (скрытые файлы, архивы, дампы, *.new) закрывают лишнее
+//    и не закрывают ни одной настоящей ссылки сайта: потерянный «\» в «/\.» закрыл бы всё.
+const deny = [...nginx.matchAll(/location (~\*?) (\S+) \{\s*return 404;/g)].map((m) => new RegExp(m[2], m[1] === '~*' ? 'i' : ''));
+assert.equal(deny.length, 2, 'ожидались два запрета по регулярному выражению');
+const denied = (p) => deny.some((re) => re.test(p));
+for (const p of ['/.git/config', '/.env', '/backup.SQL', '/tnved_checker.html.new', '/db.dump', '/site.tar.gz', '/session.md', '/deploy.sh']) {
+  assert.ok(denied(p), 'должен быть закрыт: ' + p);
+}
+const open = [...all.keys(), '/', '/tnved_checker.html', '/privacy.html', '/terms.html', '/ai-risk.json', '/manifest.webmanifest',
+  '/.well-known/acme-challenge/token', '/api/checker.js', '/api/engine', '/api/auth/login', '/icons/icon-192.png', '/email-logo.jpg'];
+assert.deepEqual(open.filter(denied), [], 'запрет закрыл настоящий адрес сайта');
 assert.match(index, /app\.use\('\/icons', express\.static\(path\.join\(root, 'assets', 'icons'\)\)\)/,
   'старый /icons нужен и в dev');
 

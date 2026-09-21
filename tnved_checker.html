@@ -1003,6 +1003,7 @@
         </div>
         <div class="auth-fe"></div>
       </div>
+      <div id="turnstileLogin" class="cf-box"></div>
       <div id="authError" class="calc-warn w-red" style="display:none"></div>
       <div id="authInfo" class="calc-warn auth-ok" style="display:none"></div>
       <button id="authSubmit" class="auth-btn" type="button"><span class="ab-label">Войти</span></button>
@@ -1382,14 +1383,15 @@ async function initTurnstile(){
 // виджет остаётся невидимым.
 function tsRender(name){
   if(!tsReady||!TURNSTILE_KEY||!window.turnstile)return;
-  const box=document.getElementById(name==="register"?"turnstileRegister":"turnstileForgot");
+  // login — только по требованию сервера: адрес закрыт неудачными попытками (captcha_required).
+  const box=document.getElementById({register:"turnstileRegister",forgot:"turnstileForgot",login:"turnstileLogin"}[name]);
   if(!box||tsWidgets[name]!==undefined)return;
   tsWidgets[name]=window.turnstile.render(box,{
     sitekey:TURNSTILE_KEY,
     language:"ru",
     // action попадает в ответ siteverify, и сервер его сверяет: без этого
     // токен, полученный на форме восстановления, подошёл бы к регистрации.
-    action:name==="register"?"register":"forgot-password",
+    action:{register:"register",forgot:"forgot-password",login:"login"}[name],
     // Тема берётся текущая, а не "auto": auto следует настройке системы,
     // а у приложения свой переключатель, и они расходятся.
     theme:currentTheme()==="light"?"light":"dark"
@@ -1778,14 +1780,19 @@ async function doLogin(){
   authBusy=true;
   authBtnBusy(btn,true);
   try{
-    const res=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+    const res=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,turnstileToken:tsToken('login')})});
     if(!res.ok){
       const data=await res.json().catch(()=>({}));
       // Неподтверждённый адрес — не ошибка входа, а незаконченная
       // регистрация: показываем экран с объяснением и кнопкой повтора,
       // а не красную надпись под формой.
       if(data.error==='email_not_verified'){showVerifyNotice(email);return;}
+      // Токен Turnstile одноразовый: после любой неудачи нужен новый. Виджет появляется,
+      // только когда сервер его потребовал, — обычный вход капчи не видит.
+      if(data.error==='captcha_required'&&tsWidgets.login===undefined)tsRender('login');else tsReset('login');
       const msg=data.error==='invalid credentials'?'Неверный email или пароль'
+        :data.error==='captcha_required'?'Слишком много неудачных попыток входа. Пройдите проверку и нажмите «Войти» ещё раз.'
+        :res.status===429?'Слишком много попыток. Попробуйте позже.'
         :data.error==='subscription_expired'?'Подписка истекла. Свяжитесь с администратором для продления.'
         :'Ошибка входа';
       showAuthScreen(msg);
@@ -1835,6 +1842,8 @@ async function doLogout(){
   // вызывается и при каждом входе (в том числе после перезагрузки вкладки),
   // а ключ хранилища привязан к id пользователя — чужую переписку не прочитать.
   if(typeof aiForget==='function')aiForget();
+  // История поиска — тоже: на общем компьютере выход должен убирать следы работы.
+  try{localStorage.removeItem('ca-hist')}catch(e){}
   currentUser=null;
   appViewVersion++;
   if(appLoadXhr)appLoadXhr.abort();

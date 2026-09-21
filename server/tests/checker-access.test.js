@@ -143,6 +143,14 @@ app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send
       assert.equal(await page.evaluate(()=>typeof findETT),'undefined');
       await page.locator('#authEmail').fill('test@example.test');
       await page.locator('#authPassword').fill('valid');
+      // Адрес закрыт неудачными попытками: сервер просит капчу — форма говорит об этом, шлёт поле токена и остаётся рабочей.
+      let loginBody=null;
+      await page.route('**/api/auth/login',route=>{loginBody=JSON.parse(route.request().postData());route.fulfill({status:429,contentType:'application/json',body:'{"error":"captcha_required"}'});});
+      await page.locator('#authSubmit').click();
+      await page.locator('#authError').filter({hasText:'Пройдите проверку'}).waitFor();
+      assert.ok('turnstileToken' in loginBody,'вход шлёт токен капчи');
+      assert.equal(await page.locator('#turnstileLogin').count(),1);
+      await page.unroute('**/api/auth/login');
       // Failed download must leave login usable and permit a retry.
       await page.route('**/api/checker.js',route=>route.abort());
       await page.locator('#authSubmit').click();
@@ -153,6 +161,9 @@ app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send
       await page.locator('#inp').fill('8517130000');
       await page.locator('#result .card').first().waitFor();
       assert.match(await page.locator('#result').innerText(),/8517|Смартфон/i);
+      // история поиска — в localStorage с пометкой владельца
+      await page.waitForFunction(()=>!!localStorage.getItem('ca-hist'));
+      assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('ca-hist'))),{u:'test@example.test',list:['8517130000']});
       // the in-app privacy link must lead to the published policy, not to a «в разработке» stub
       await page.evaluate(()=>openFooterDocModal('Политика конфиденциальности'));
       await page.locator('#activeModal a[href="/privacy.html"]').waitFor({timeout:5000});
@@ -170,12 +181,16 @@ app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send
       await page.locator('#accMenuBtn').click(); // «Выйти» живёт в меню аккаунта
       await page.locator('#logoutBtn').click();
       await page.locator('#authScreen').waitFor({state:'visible'});
+      assert.equal(await page.evaluate(()=>localStorage.getItem('ca-hist')),null,'выход стирает историю поиска');
+      // сессия кончилась без «Выйти», в браузере осталась чужая запись: следующему она не видна
+      await page.evaluate(()=>localStorage.setItem('ca-hist',JSON.stringify({u:'other@example.test',list:['чужой запрос']})));
       assert.equal((await page.request.get(origin+'/api/checker.js')).status(),401);
       await page.setViewportSize({width:420,height:844});
       await page.locator('#authEmail').fill('test@example.test');
       await page.locator('#authPassword').fill('valid');
       await page.locator('#authSubmit').click();
       await page.locator('#appWrap').waitFor({state:'visible'});
+      assert.deepEqual(await page.evaluate(()=>histLoad()),[],'чужая история поиска не читается');
       await page.locator('#inp').fill('8703231910');
       await page.locator('#result .card').first().waitFor();
       assert.deepEqual(errors,[]);

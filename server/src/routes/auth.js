@@ -40,6 +40,11 @@ const LOGIN_RATE_WINDOW_MS = 15 * 60 * 1000; // per IP, per 15 min
 // отказу не угадать — счётчик ведётся для любого введённого адреса.
 const LOGIN_FAIL_LIMIT = 20;
 const LOGIN_FAIL_WINDOW_MS = 60 * 60 * 1000;
+// После LOGIN_FAIL_LIMIT вход на адрес не закрывается наглухо, а требует капчу: глухой отказ
+// позволял любому, кто знает адрес, держать владельца (и администратора) снаружи двадцатью
+// запросами в час. Перебор с капчей ограничен вторым, жёстким порогом; без настроенной
+// капчи действует прежний отказ.
+const LOGIN_FAIL_HARD_LIMIT = 100;
 // RFC 5321: адрес длиннее 254 знаков не доставляется; длиннее — только мусор в таблице и в памяти счётчиков.
 const EMAIL_MAX = 254;
 const FORGOT_RATE_LIMIT = 5; // attempts
@@ -52,6 +57,24 @@ const DUMMY_HASH = bcrypt.hashSync('not-a-password', 12);
 function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
+
+// Один ящик — одна пробная учётная запись. «user+a@…», «user+b@…», а у Gmail ещё и
+// «u.ser@…» приходят в тот же ящик и проходят подтверждение адреса, то есть давали
+// сколько угодно пробных сроков, квот помощника и суточных лимитов /api/engine одному
+// человеку. Сам адрес хранится как введён; сравнивается каноническая форма — без
+// «+метки», у Gmail без точек. Только для саморегистрации: администратор заводит любой.
+function canonicalEmail(email) {
+  let [local, domain] = String(email).toLowerCase().split('@');
+  local = local.split('+')[0];
+  if (domain === 'googlemail.com') domain = 'gmail.com';
+  if (domain === 'gmail.com') local = local.replace(/\./g, '');
+  return `${local}@${domain}`;
+}
+// То же выражением SQL над users.email. ponytail: полный просмотр таблицы на каждую
+// регистрацию (их не больше пяти в час с адреса); при тысячах записей — индекс по выражению.
+const CANONICAL_EMAIL_SQL = `case when split_part(email,'@',2) in ('gmail.com','googlemail.com')
+  then replace(split_part(split_part(email,'@',1),'+',1),'.','') || '@gmail.com'
+  else split_part(split_part(email,'@',1),'+',1) || '@' || split_part(email,'@',2) end`;
 
 // Crude in-process anti-abuse, and the first line of defence rather than the
 // only one: Cloudflare Turnstile sits in front of registration and password
@@ -88,6 +111,7 @@ function makeRateLimiter(limit, windowMs) {
 const checkRegisterRateLimit = makeRateLimiter(REGISTER_RATE_LIMIT, REGISTER_RATE_WINDOW_MS);
 const checkLoginRateLimit = makeRateLimiter(LOGIN_RATE_LIMIT, LOGIN_RATE_WINDOW_MS);
 const loginFailures = makeRateLimiter(LOGIN_FAIL_LIMIT, LOGIN_FAIL_WINDOW_MS);
+const loginFailuresHard = makeRateLimiter(LOGIN_FAIL_HARD_LIMIT, LOGIN_FAIL_WINDOW_MS);
 const checkForgotRateLimit = makeRateLimiter(FORGOT_RATE_LIMIT, FORGOT_RATE_WINDOW_MS);
 // Повторная отправка письма подтверждения теперь нужна и без сессии: войти
 // до подтверждения нельзя, значит попросить письмо заново человек может
@@ -113,7 +137,11 @@ router.post('/login', async (req, res, next) => {
     }
     const key = email.toLowerCase();
     if (!loginFailures(key, false)) {
-      return res.status(429).json({ error: 'too many attempts, try again later' });
+      if (!turnstileEnabled() || !loginFailuresHard(key, false)) {
+        return res.status(429).json({ error: 'too many attempts, try again later' });
+      }
+      const captcha = await verifyTurnstile(req.body.turnstileToken, req.ip, 'login');
+      if (!captcha.ok) return res.status(429).json({ error: 'captcha_required' });
     }
 
     const { rows } = await pool.query(
@@ -131,6 +159,7 @@ router.post('/login', async (req, res, next) => {
     const ok = await bcrypt.compare(password, user && user.active ? user.password_hash : DUMMY_HASH);
     if (!user || !user.active || !ok) {
       loginFailures(key);
+      loginFailuresHard(key);
       return res.status(401).json({ error: 'invalid credentials' });
     }
 
@@ -215,6 +244,11 @@ router.post('/register', async (req, res, next) => {
     if (!captcha.ok) {
       return res.status(400).json({ error: 'captcha failed' });
     }
+
+    // После капчи, как и 409 ниже: ответ «уже зарегистрирован» не раздаётся без неё.
+    const { rows: twin } = await pool.query(
+      `select 1 from users where ${CANONICAL_EMAIL_SQL} = $1 limit 1`, [canonicalEmail(email)]);
+    if (twin[0]) return res.status(409).json({ error: 'email already exists' });
 
     const hash = await bcrypt.hash(password, 12);
     let rows;
@@ -476,3 +510,4 @@ router.post('/accept-terms', async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.canonicalEmail = canonicalEmail;
