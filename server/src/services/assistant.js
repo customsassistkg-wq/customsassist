@@ -1041,7 +1041,10 @@ function reconcileReadings(base, others, vision) {
     if (vis && o.length === 2) {
       for (const t of mine) {
         if (!worthFlag(key, t.k) || !vis.includes(t.k) || o.some((list) => list.some((x) => x.k === t.k))) continue;
-        const rival = o[0].find((x) => x.k.length === t.k.length && o[1].some((y) => y.k === x.k) && !mine.some((m) => m.k === x.k) && lev(x.k, t.k, 1) === 1);
+        // Соперник может стоять и в самом основном чтении: стоимость ДТ в трёх графах оно прочло дважды 387521.06 и раз
+        // 387621.06 (живая проверка после выкладки) — спор тот же. Первым берётся соперник, которого в основном чтении нет.
+        const rivals = o[0].filter((x) => x.k.length === t.k.length && o[1].some((y) => y.k === x.k) && lev(x.k, t.k, 1) === 1);
+        const rival = rivals.find((x) => !mine.some((m) => m.k === x.k)) || rivals[0];
         if (!rival) continue;
         const note = `${key} — ${t.k.endsWith('c') ? fmtNum(t.k) : t.raw} (повторные чтения: ${rival.k.endsWith('c') ? fmtNum(rival.k) : rival.raw})`;
         if (doubtful.includes(note)) continue; // стоимость стоит в ДТ в трёх графах — пометка одна
