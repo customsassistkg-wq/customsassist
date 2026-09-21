@@ -288,6 +288,30 @@ const a = require('../src/services/assistant');
   assert.match(t, /1000 \+ перевозка 100 = 1100 USD/);
   assert.match(t, /Перевозка 430 USD распределена/);
   assert.doesNotMatch(t, /занижен/);
+  // п. 2 ст. 40 ТК ЕАЭС: DDP без выделенной суммы — расчёт помечен завышенным; вычет — только число из документа
+  t = await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'DDP Бишкек' });
+  assert.match(t, /⚠ Условие поставки DDP: в цене уже сидят ввозные пошлина и налоги/);
+  t = await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'DDP Бишкек', deduct: 150 });
+  assert.match(t, /Таможенная стоимость: 1000 − вычет 150 = 850 USD/);
+  assert.doesNotMatch(t, /завышен/);
+  assert.match(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'DAP Кант' }), /DAP: если место поставки — внутри ЕАЭС/);
+  assert.match(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'CPT Бишкек' }), /CPT: страховка в цену не входит/);
+  assert.match(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', deduct: 1000 }), /Вычет 1000 не может быть/);
+  // в партии о FOB сказано один раз, а не в каждой строке; вычет на инвойс делится по стоимости: 43 → 33 и 10
+  t = await a.calcPayments({ currency: 'USD', incoterm: 'FOB Shanghai', total: 4300, items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] });
+  assert.equal((t.match(/Условие поставки FOB/g) || []).length, 1);
+  t = await a.calcPayments({ currency: 'USD', incoterm: 'DAP Бишкек', deduct: 43, total: 4300, items: [{ code: '4016930005', value: 3300 }, { code: '8708803509', value: 1000 }] });
+  assert.match(t, /3300 − вычет 33 = 3267 USD/);
+  assert.match(t, /Вычет 43 USD \(выделен в документе\) распределён/);
+  assert.doesNotMatch(t, /если место поставки/);
+  // условие поставки из документов, если модель его не передала: одно — подставляется, два разных или строчными — нет
+  assert.equal(a.calcPayments.docIncoterm(['CONSIGNEE: CIP OSH', 'CMR: CIP OSH, ARCHIE TRADE LLC']), 'CIP');
+  assert.equal(a.calcPayments.docIncoterm(['FOB Shanghai', 'Delivery Terms: DAP Kant']), '');
+  assert.equal(a.calcPayments.docIncoterm(['fob price, DATE 01.09.2026, DDPX']), '');
+  t = await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD' }, { incoterm: 'FOB' });
+  assert.match(t, /^Условие поставки в вызове не передано; в документах оно одно — FOB/);
+  assert.match(t, /⚠ Условие поставки FOB: перевозка до границы/);
+  assert.doesNotMatch(await a.calcPayments({ code: '8517130000', value: 1000, currency: 'USD', incoterm: 'CIP Бишкек' }, { incoterm: 'FOB' }), /FOB/);
   // позиция с неизвестным кодом или из ЕАЭС не входит в итог и названа отдельно; валюта позиции не перекрывает общую
   t = await a.calcPayments({ currency: 'USD', total: 1002, items: [{ code: '8517130000', value: 1000, currency: 'EUR' }, { code: '1', value: 1 }, { code: '8517130000', value: 1, country: 'Казахстан' }] });
   assert.match(t, /Позиций посчитано: 1 из 3/);

@@ -113,6 +113,18 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
     await page.fill('#calcFreightSum', '200');
     await page.waitForFunction(() => /включая расходы/.test(document.querySelector('#calcBatchPanel').innerText));
     assert.ok(await page.locator('#calcBatchPanel .perm-grid, #calcBatchPanel .batch-empty').count() > 0);
+    // условие поставки: DDP без вычетов — расчёт помечен завышенным; вычет уменьшает стоимость и снимает пометку; FOB без расходов — занижен
+    await page.selectOption('#calcIncoterm', 'DDP');
+    await page.waitForFunction(() => /DDP: в цене уже сидят/.test(document.querySelector('#calcBatchPanel').innerText));
+    await page.fill('#calcDeduct', '100');
+    await page.locator('#calcDeduct').blur();
+    await page.waitForFunction(() => { const t = document.querySelector('#calcBatchPanel').innerText; return /за вычетом 100,00 сом/.test(t) && !/завышен/.test(t); });
+    await page.fill('#calcDeduct', '');
+    await page.locator('#calcDeduct').blur();
+    await page.fill('#calcFreightSum', '');
+    await page.selectOption('#calcIncoterm', 'FOB');
+    await page.waitForFunction(() => /FOB: перевозка до границы ЕАЭС.*занижены/.test(document.querySelector('#calcBatchPanel').innerText));
+    await page.selectOption('#calcIncoterm', '');
 
     // спецификация: готовая строка, код вне ЕТТ с подсказкой, неоднозначный код
     const csv = 'Код;Наименование;Стоимость;Валюта\n8517130000;телефон;1000;USD\n9999999999;нет;10;USD\n8517;неточно;10;USD\n';
@@ -176,6 +188,13 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
     await page.fill('#inp', '0402');
     await page.locator('#result .nf', { hasText: 'Суточный лимит' }).waitFor();
     await page.unroute('**/api/engine');
+
+    // выход в той же вкладке: checker.js остаётся загруженным, поэтому партия, условие поставки, строки спецификации и
+    // панели калькулятора прошлого пользователя должны быть стёрты resetAppView() — иначе их увидит следующий вошедший
+    assert.ok(await page.evaluate(() => calcBatch.length) > 0, 'партия к этому месту не пуста');
+    await page.evaluate(() => { calcFreight.term = 'DDP'; specPending = [{ code: '1' }]; return doLogout(); });
+    assert.deepEqual(await page.evaluate(() => [calcBatch.length, calcFreight.term, specPending.length,
+      ...['calcBatchPanel', 'calcResult', 'autoCalcPanel', 'personalCalcPanel'].map((id) => document.getElementById(id).innerHTML)]), [0, '', 0, '', '', '', '']);
 
     assert.deepEqual(errors, []);
     assert.deepEqual(csps, []);

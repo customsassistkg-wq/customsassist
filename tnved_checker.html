@@ -1817,6 +1817,8 @@ function resetAppView(){
   clear('result'); clear('resultSummary'); clear('adminResult');
   clear('userBar'); clear('accountPanel'); clear('calcPrintArea');
   clear('pageLookup'); clear('pageAi');
+  clear('calcResult'); clear('calcBatchPanel'); clear('autoCalcPanel'); clear('personalCalcPanel');
+  if(typeof resetCalcState==='function')resetCalcState();
   const lc=document.getElementById('lookupCty'),ld=document.getElementById('lookupDir');
   if(lc)lc.value=''; if(ld)ld.value='im';
   if(typeof aiHistory!=='undefined')aiHistory=[];

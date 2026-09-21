@@ -1737,7 +1737,28 @@ let calcBatch=[];
 // Транспортные и сопутствующие расходы вводятся один раз на всю партию и
 // распределяются по позициям: они входят в таможенную стоимость, а значит
 // увеличивают и пошлину, и НДС по каждой позиции.
-let calcFreight={sum:0,cur:'СОМ',rate:0,mode:'value'};
+const calcFreight0=()=>({sum:0,cur:'СОМ',rate:0,mode:'value',term:'',deduct:0});
+let calcFreight=calcFreight0();
+// Состояние калькуляторов — данные пользователя: checker.js грузится один раз на вкладку, и без сброса партия (коды,
+// стоимости, условие поставки), строки спецификации и отчёт для счёта доставались следующему вошедшему в той же вкладке.
+// Зовётся из resetAppView() страницы — при выходе и в начале showApp().
+function resetCalcState(){
+  calcBatch=[];calcFreight=calcFreight0();specPending=[];calcSelectedCode=null;calcUseAuto=false;aiBillingData=null;
+}
+// Условие поставки Инкотермс 2020 решает, чего в цене инвойса не хватает и что в ней лишнее (ст. 40 ТК ЕАЭС): при EXW, FCA,
+// FAS и FOB перевозки до границы в цене нет (пп. 4–6 п. 1), при CPT, CIP, DAP, DPU и DDP в ней может сидеть перевозка по
+// территории Союза, а при DDP — ещё и пошлины с налогами; вычесть их можно, только если они выделены в документах (п. 2).
+// Сам калькулятор ничего не добавляет и не вычитает — он говорит, какое поле заполнить.
+const INCOTERMS=['EXW','FCA','FAS','FOB','CFR','CIF','CPT','CIP','DAP','DPU','DDP'];
+function incotermNotes(term,hasFreight,hasDeduct){
+  const out=[],tk=docLink('ст. 40 ТК ЕАЭС',DOC_SOURCES.tkEaes);
+  if(/^(EXW|FCA|FAS|FOB)$/.test(term)&&!hasFreight)out.push({c:'w-yellow',h:'⚠️ '+term+': перевозка до границы ЕАЭС, погрузка и страховка в цену товара не входят, а расходы на партию не указаны — таможенная стоимость, пошлина и НДС занижены (пп. 4–6 п. 1 '+tk+').'});
+  if(/^(CFR|CPT)$/.test(term))out.push({c:'w-blue',h:term+': страховка в цену не входит. Если груз страховали, добавьте её сумму в расходы на партию (пп. 6 п. 1 '+tk+').'});
+  if(/^(CFR|CIF|CPT|CIP|DAP|DPU|DDP)$/.test(term)&&hasFreight)out.push({c:'w-yellow',h:'⚠️ '+term+': перевозка до названного места уже в цене товара. Расходы на партию указывайте, только если они оплачены сверх цены инвойса, — иначе перевозка посчитана дважды.'});
+  if(term==='DDP'&&!hasDeduct)out.push({c:'w-yellow',h:'⚠️ DDP: в цене уже сидят ввозные пошлина и налоги. Они не входят в таможенную стоимость, только если выделены в документах отдельной суммой (пп. 3 п. 2 '+tk+') — тогда укажите её в поле «Вычеты». Вычетов нет — расчёт сделан от полной цены и завышен.'});
+  else if(/^(CPT|CIP|DAP|DPU)$/.test(term)&&!hasDeduct)out.push({c:'w-blue',h:term+': если место поставки внутри ЕАЭС (Бишкек, Кант), в цене есть перевозка по территории Союза. Она вычитается, только когда выделена в документах отдельной суммой (пп. 2 п. 2 '+tk+') — укажите её в поле «Вычеты»; иначе расчёт идёт от полной цены.'});
+  return out;
+}
 
 function calcAddToBatch(){
   const it=readCalcForm();
@@ -1767,6 +1788,8 @@ function onCalcFreightChange(){
   calcFreight.cur=(document.getElementById('calcFreightCur')||{}).value||'СОМ';
   calcFreight.rate=parseFloat((document.getElementById('calcFreightRate')||{}).value)||0;
   calcFreight.mode=(document.getElementById('calcFreightMode')||{}).value||'value';
+  calcFreight.term=(document.getElementById('calcIncoterm')||{}).value||'';
+  calcFreight.deduct=Math.max(0,parseFloat((document.getElementById('calcDeduct')||{}).value)||0);
   renderCalcBatch();
 }
 
@@ -1775,7 +1798,8 @@ function onCalcFreightChange(){
 // помещению товаров под процедуру (то есть к декларации), а не к строке
 // декларации, и вилка 5–2500 РП тоже применяется один раз.
 function computeBatch(){
-  const freightSom=calcFreight.sum*(calcFreight.cur==='СОМ'?1:calcFreight.rate);
+  const curK=calcFreight.cur==='СОМ'?1:calcFreight.rate;
+  const freightSom=calcFreight.sum*curK;
   const totalWeight=calcBatch.reduce((s,it)=>s+(it.weight||0),0);
   const totalValue=calcBatch.reduce((s,it)=>s+(it.valueSom||0),0);
   // Распределение по весу невозможно, если вес не введён — молча делить поровну
@@ -1783,15 +1807,18 @@ function computeBatch(){
   let mode=calcFreight.mode;
   let fallback='';
   if(mode==='weight'&&totalWeight<=0){mode='value';fallback='weight_no_data'}
+  // Вычет не может превысить цену с расходами: лишнее отбрасывается, и карточка об этом говорит.
+  const deductSom=Math.min(calcFreight.deduct*curK,totalValue+freightSom);
+  const netSom=freightSom-deductSom;
   if(mode==='value'&&totalValue<=0&&freightSom>0){mode='equal';fallback='value_no_data'}
   const rows=calcBatch.map((it,i)=>{
     let share=0;
-    if(freightSom>0&&calcBatch.length){
-      if(mode==='weight')share=freightSom*(it.weight||0)/totalWeight;
-      else if(mode==='value')share=freightSom*(it.valueSom||0)/totalValue;
-      else share=freightSom/calcBatch.length;
+    if(netSom!==0&&calcBatch.length){
+      if(mode==='weight')share=netSom*(it.weight||0)/totalWeight;
+      else if(mode==='value')share=netSom*(it.valueSom||0)/totalValue;
+      else share=netSom/calcBatch.length;
     }
-    const cv=(it.valueSom||0)+share;
+    const cv=Math.max(0,(it.valueSom||0)+share);
     const d=itemDuty(it,cv);
     const vf=(calcInfo[it.code]||{vf:{firm:[],cond:[]}}).vf;
     const vatFree=vf.firm.length>0||!!it.auto; // у авто физлица НДС уже внутри единой ставки
@@ -1809,7 +1836,7 @@ function computeBatch(){
   // одна такая позиция, общий сбор смешивать с товарным нельзя — говорим прямо.
   const hasPersonalAuto=calcBatch.some(it=>it.auto);
   const fee=customsFeeGoods(cvTotal);
-  return {rows:rows,freightSom:freightSom,mode:mode,fallback:fallback,totalWeight:totalWeight,
+  return {rows:rows,freightSom:freightSom,deductSom:deductSom,deductCut:calcFreight.deduct*curK>deductSom,mode:mode,fallback:fallback,totalWeight:totalWeight,
     cvTotal:cvTotal,dutyTotal:dutyTotal,vatTotal:vatTotal,excTotal:excTotal,fee:fee,hasPersonalAuto:hasPersonalAuto,
     total:dutyTotal+excTotal+vatTotal+fee};
 }
@@ -1846,6 +1873,12 @@ async function renderCalcBatch(){
     +'<option value="weight"'+(calcFreight.mode==='weight'?' selected':'')+'>пропорционально весу</option>'
     +'<option value="equal"'+(calcFreight.mode==='equal'?' selected':'')+'>поровну по позициям</option></select></div>';
   html+='</div>';
+  html+='<div class="calc-row">';
+  html+='<div class="calc-field"><label>Условие поставки (Инкотермс 2020)</label><select id="calcIncoterm" onchange="onCalcFreightChange()"><option value="">— не указано —</option>'+INCOTERMS.map(t=>'<option value="'+t+'"'+(calcFreight.term===t?' selected':'')+'>'+t+'</option>').join('')+'</select></div>';
+  html+='<div class="calc-field"><label>Вычеты, выделенные в документах'+(calcFreight.cur!=='СОМ'?', '+esc(calcFreight.cur):', сом')+'</label><input type="number" id="calcDeduct" min="0" step="0.01" placeholder="0.00" value="'+(calcFreight.deduct||'')+'" onchange="onCalcFreightChange()"/></div>';
+  html+='</div>';
+  incotermNotes(calcFreight.term,b.freightSom>0,b.deductSom>0).forEach(n=>{html+='<div class="calc-warn '+n.c+'">'+n.h+'</div>'});
+  if(b.deductCut)html+='<div class="calc-warn w-yellow">⚠️ Вычеты больше стоимости партии с расходами — учтены только в её пределах.</div>';
   if(b.fallback==='weight_no_data')html+='<div class="calc-warn w-yellow">⚠️ Ни у одной позиции не указан вес — расходы распределены пропорционально стоимости.</div>';
   if(b.fallback==='value_no_data')html+='<div class="calc-warn w-yellow">⚠️ Стоимость позиций нулевая — расходы распределены поровну.</div>';
   if(b.hasPersonalAuto)html+='<div class="calc-warn w-yellow">⚠️ В партии есть автомобиль в льготном режиме физлица. Такой ввоз оформляется отдельно и сбор по нему фиксированный (22 РП), поэтому итог по партии для него неприменим — считайте эту позицию отдельно.</div>';
@@ -1866,7 +1899,7 @@ async function renderCalcBatch(){
   });
   html+='</tbody></table></div>';
   html+='<div class="calc-result">';
-  html+='<div class="calc-line"><span>Таможенная стоимость партии'+(b.freightSom>0?' <span style="color:var(--muted);font-size:11px">(включая расходы '+MONEY(b.freightSom)+' сом)</span>':'')+'</span><b>'+MONEY(b.cvTotal)+' сом</b></div>';
+  html+='<div class="calc-line"><span>Таможенная стоимость партии'+(b.freightSom>0?' <span style="color:var(--muted);font-size:11px">(включая расходы '+MONEY(b.freightSom)+' сом)</span>':'')+(b.deductSom>0?' <span style="color:var(--muted);font-size:11px">(за вычетом '+MONEY(b.deductSom)+' сом)</span>':'')+'</span><b>'+MONEY(b.cvTotal)+' сом</b></div>';
   html+='<div class="calc-line"><span>Пошлина по всем позициям</span><b>'+MONEY(b.dutyTotal)+' сом</b></div>';
   if(b.excTotal)html+='<div class="calc-line"><span>Акциз по всем позициям</span><b>'+MONEY(b.excTotal)+' сом</b></div>';
   html+='<div class="calc-line"><span>НДС 12%</span><b>'+MONEY(b.vatTotal)+' сом</b></div>';
@@ -1875,7 +1908,7 @@ async function renderCalcBatch(){
   html+='</div>';
   html+='<div class="side-h" style="margin-top:22px">Разрешительные документы и ограничения по партии</div>';
   html+=batchRequirementsHtml();
-  html+='<div class="batch-note">Транспортные и сопутствующие расходы до места прибытия входят в таможенную стоимость, поэтому они увеличивают и пошлину, и НДС. Сбор считается один раз на декларацию: п.38 Инструкции к '+docLink('Пост. КМ КР №79 от 13.02.2020 (ред. от 29.06.2026)',DOC_SOURCES.instr79)+' привязывает его к действиям по помещению товаров под таможенную процедуру, и вилка 5–2500 расчётных показателей применяется к декларации, а не к строке. Если партия подаётся несколькими декларациями, сбор считается по каждой. Акциз, антидемпинговые пошлины и преференции по стране происхождения в итог не входят.</div>';
+  html+='<div class="batch-note">Транспортные и сопутствующие расходы до места прибытия на территорию ЕАЭС (перевозка, погрузка, страховка) входят в таможенную стоимость, поэтому они увеличивают и пошлину, и НДС; перевозка по территории Союза после места прибытия и пошлины с налогами в цене DDP вычитаются, только если выделены в документах ('+docLink('ст. 40 ТК ЕАЭС',DOC_SOURCES.tkEaes)+'). Сбор считается один раз на декларацию: п.38 Инструкции к '+docLink('Пост. КМ КР №79 от 13.02.2020 (ред. от 29.06.2026)',DOC_SOURCES.instr79)+' привязывает его к действиям по помещению товаров под таможенную процедуру, и вилка 5–2500 расчётных показателей применяется к декларации, а не к строке. Если партия подаётся несколькими декларациями, сбор считается по каждой. Акциз, антидемпинговые пошлины и преференции по стране происхождения в итог не входят.</div>';
   html+='</div>';
   box.innerHTML=html;
   applyNbkrRatesToVisibleFields();
@@ -2245,7 +2278,7 @@ async function printCalcEstimate(){
       +reqs.map(x=>'<tr><td>'+esc(x.req.l)+'</td><td>'+x.codes.map(c=>esc(fmtCode(c))).join(', ')+'</td></tr>').join('')
       +'</tbody></table>';
   }
-  html+='<div class="est-foot">Транспортные и сопутствующие расходы ('+MONEY(b.freightSom)+' сом) распределены '
+  html+='<div class="est-foot">'+(calcFreight.term?'Условие поставки: '+esc(calcFreight.term)+' (Инкотермс 2020). ':'')+(b.deductSom>0?'Вычеты, выделенные в документах (п. 2 ст. 40 ТК ЕАЭС): '+MONEY(b.deductSom)+' сом. ':'')+'Транспортные и сопутствующие расходы ('+MONEY(b.freightSom)+' сом) распределены '
     +(b.mode==='weight'?'пропорционально весу':(b.mode==='equal'?'поровну по позициям':'пропорционально стоимости'))
     +' и включены в таможенную стоимость. Ставки — ЕТТ ЕАЭС; сбор за таможенные операции — Закон КР №52 от 24.04.2019 (ст.41, 44) и п.38 Инструкции к пост. КМ КР №79 от 13.02.2020 в редакции пост. №444 от 29.06.2026. Акциз включён только по тем позициям, где выбран пункт статьи 336 НК КР и введён объём; ставки базовые, по ч.2 ст.336 фактическая может быть ниже. Расчёт рассчитан на коммерческий ввоз: для товаров электронной торговли, приобретённых физическим лицом для личного пользования, сбор равен 6 сомам за 1 кг брутто (п.38² Инструкции), а пошлина и налоги считаются по единым ставкам таблицы 1 приложения № 2 к Решению Совета ЕЭК от 20.12.2017 № 107 — для этого есть отдельная вкладка «📦 Личные отправления». В расчёт не входят антидемпинговые и специальные пошлины, преференции по стране происхождения, сбор за таможенное сопровождение и платежи за иные таможенные процедуры. Проверьте применимость ставки к конкретному товару по описанию позиции ТН ВЭД.</div>';
   html+='</div>';
