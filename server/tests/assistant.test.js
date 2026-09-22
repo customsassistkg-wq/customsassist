@@ -206,7 +206,7 @@ const a = require('../src/services/assistant');
   assert.doesNotMatch(t, /Односторонн|Срок действия истёк/);                               // мер КР по этому коду нет
   assert.doesNotMatch(t, /Совпадение по коду — не совпадение|Перечни доверенных лиц|#page=/); // пояснение ТРОИС и ссылки на страницы
   assert.match(t, /Правовая основа:/);
-  assert.match(t, /…и ещё 10 строк/);                                                       // УСИР — пять строк, если не о стоимости
+  assert.doesNotMatch(t, /УСИР/);                                                          // УСИР убран 22.09.2026: источник не опубликован
   // ТРОИС по 8471 30 — семь знаков: пять, если вопрос не о знаке, и все, если о нём
   assert.equal((a.searchBase({ query: '8471300000' }).match(/№\d+\/ТЗ/g) || []).length, 5);
   assert.equal((a.searchBase({ query: '8471300000' }, { question: 'какие товарные знаки?' }).match(/№\d+\/ТЗ/g) || []).length, 7);
@@ -221,7 +221,6 @@ const a = require('../src/services/assistant');
   assert.match(a.searchBase({ query: '2309909609' }), /Односторонняя мера Кыргызской Республики/);
   assert.doesNotMatch(a.searchBase({ query: '7204210000' }), /Односторонняя мера Кыргызской Республики/);
   assert.match(a.searchBase({ query: '7204210000', direction: 'ex' }), /Односторонняя мера Кыргызской Республики/);
-  assert.match(a.searchBase({ query: '8517130000' }, { question: 'стоимость по УСИР?' }), /APPLE IPHONE 17 PRO MAX \( 2 TB\)/);
   // товарная позиция и вопрос о льготах: карточки НДС первыми и целиком, прочие — строкой, без обрезки хвоста
   t = a.searchBase({ query: '8418' }, { question: 'какие льготы по НДС на холодильники 8418?' });
   const firstCard = t.split('\n').find((l) => /НДС 0%|ЕТТ ЕАЭС/.test(l));
@@ -233,8 +232,8 @@ const a = require('../src/services/assistant');
   const whole = a.searchBase({ query: '8418', full: true }, { question: 'льготы по НДС' });
   // вес и цена по-русски: без \b, которого между кириллическими буквами нет
   const firstOf = (text, re) => text.split('\n').find((l) => re.test(l));
-  assert.match(firstOf(a.searchBase({ query: '8418' }, { question: 'сколько платить за вес 500 кг?' }), /НДС 0%|ЕТТ ЕАЭС|УСИР/), /ЕТТ ЕАЭС/);
-  assert.match(firstOf(a.searchBase({ query: '8418' }, { question: 'какая цена по индикаторам?' }), /НДС 0%|ЕТТ ЕАЭС|УСИР|НБ НДС/), /УСИР|НБ НДС/);
+  assert.match(firstOf(a.searchBase({ query: '8418' }, { question: 'сколько платить за вес 500 кг?' }), /НДС 0%|ЕТТ ЕАЭС|НБ НДС/), /ЕТТ ЕАЭС/);
+  assert.match(firstOf(a.searchBase({ query: '8418' }, { question: 'какая цена по индикаторам?' }), /НДС 0%|ЕТТ ЕАЭС|НБ НДС/), /НБ НДС/);
   assert.doesNotMatch(whole, /сокращены до строки/);
   console.log('PASS: выдача для модели — без мер вывоза и истёкшего, нужное по вопросу первым, прочее строкой');
 

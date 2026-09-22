@@ -99,8 +99,8 @@ console.log('PASS: разбор страны и сопоставление с м
 // которые при вывозе не применяются: тарифными и налоговыми.
 assert.ok(baseCode.includes('data-dir="im" data-kind="tariff" data-cty="оаэ эмираты"'));
 assert.ok(baseCode.includes('data-cty="estp"'));
-assert.equal(baseCode.split('data-dir="im"').length - 1, 35); // +5 (18.09.2026): три карточки СЭН, опасные отходы, льгота BAN_DB
-console.log('PASS: признаки направления проставлены 35 карточкам');
+assert.equal(baseCode.split('data-dir="im"').length - 1, 33); // +5 (18.09.2026): три карточки СЭН, опасные отходы, льгота BAN_DB; −2 (22.09.2026): УСИР и коэффициент КНР убраны
+console.log('PASS: признаки направления проставлены 33 карточкам');
 
 // ── Ставка для страны происхождения (правила — по текстам решений ЕЭК) ──
 const ettOf = c => (ETT_DB.find(r => r[0] === c) || [])[3];

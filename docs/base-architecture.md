@@ -18,7 +18,7 @@ Nearly the entire script is variations on: **one `SCREAMING_SNAKE_CASE` const ho
 
 `renderLookupForm`/`submitLookup` ask in the order a customs decision is actually made — direction (ввоз / вывоз / транзит), country, and only then the goods — because the first two answers decide which of `render()`'s ~40 cards apply at all. The filter re-queries nothing: it reads three attributes that `render()` now writes onto the card itself.
 
-- `data-dir="im"` — a measure that exists only on import: ЕТТ and every preferential rate, excise, УСИР, the ГНС VAT-base risk list, antidumping, tariff quotas, the trigger measure, обязательная сертификация, ТР ЕАЭС and all fifteen VAT-exemption cards. 30 cards carry it.
+- `data-dir="im"` — a measure that exists only on import: ЕТТ and every preferential rate, excise, the ГНС VAT-base risk list, antidumping, tariff quotas, the trigger measure, обязательная сертификация, ТР ЕАЭС and all fifteen VAT-exemption cards. 28 cards carry it (30 until the УСИР and КНР-coefficient cards were removed on 22.09.2026).
 - `data-kind="tariff"` — the subset that an EAEU origin removes: in взаимная торговля there is no ЕТТ, no preference and no protective measure.
 - `data-cty` — the origin the measure is tied to, spelled as the act spells it (`оаэ эмираты`, `кнр украина`, `estp` for the ЕСТП card).
 

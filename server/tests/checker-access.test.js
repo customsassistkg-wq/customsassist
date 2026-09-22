@@ -15,7 +15,7 @@ assert(!html.includes('const BAN_DB='));
 assert(!html.includes('const ETT_DB='));
 // С 17.09.2026 база не уходит в браузер: checker.js — только интерфейс, данные и findX() — в base.js.
 const baseCode = fs.readFileSync(path.join(root, 'server/private/base.js'), 'utf8');
-for (const name of ['ETT_DB', 'BAN_DB', 'TNVED_MAP', 'NTM_DB', 'TROIS_DB', 'SPECIES_DB', 'USIR_DB', 'SOURCE_AUDIT', 'AUTO_DB', 'findBan', 'findETT', 'renderHtml', 'ENGINE_API']) {
+for (const name of ['ETT_DB', 'BAN_DB', 'TNVED_MAP', 'NTM_DB', 'TROIS_DB', 'SPECIES_DB', 'SOURCE_AUDIT', 'AUTO_DB', 'findBan', 'findETT', 'renderHtml', 'ENGINE_API']) {
   assert.match(baseCode, new RegExp('^(const|function) ' + name + '\\b', 'm'), name + ' in base.js');
   assert.doesNotMatch(code, new RegExp('^(const|let|var|function) ' + name + '\\b', 'm'), name + ' must not be sent to the browser');
 }

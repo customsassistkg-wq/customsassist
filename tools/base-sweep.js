@@ -38,8 +38,7 @@ const g = (expr) => new vm.Script(expr).runInContext(sb);
 const KNOWN = {
   // длина не 2/4/6/8/9/10: самый длинный живой префикс кода, который акт пишет по прежней редакции (source-audit.md)
   len: new Set(['NKS_MAP:68151', 'NKS_MAP:84622', 'NKS_ITCAT:68151', 'NKS_ITCAT:84622', 'TNVED_MAP_keys:68151', 'TNVED_MAP_keys:84622',
-    'SERT_CODES:44181', 'SERT_CODES:44182', 'MAT_CODES:29142', 'MAT_CODES:1515905', 'MAT_CODES:2930909',
-    'USIR_DB:81099', 'USIR_DB:84289', 'USIR_DB:84713']),
+    'SERT_CODES:44181', 'SERT_CODES:44182', 'MAT_CODES:29142', 'MAT_CODES:1515905', 'MAT_CODES:2930909']),
   // кода нет в ЕТТ и нет в TNVED_MAP: опечатки самого акта (перечень к Пост. № 709), помечены в наименовании
   dead: new Set(['ART297_P26_SPORT_CODES:850491', 'ART297_P26_SPORT_CODES:903400']),
   // базы, где мёртвые коды и повторы — свойство источника: реестр ТРОИС; в EEC_DECISIONS коды идут по товарам решения
@@ -59,13 +58,13 @@ const mapped = (c) => Object.keys(TN).some((k) => k === c || c.startsWith(k) || 
 const X = {};
 const keysOf = (n) => () => Object.keys(g(n)).map((k) => ({ code: k }));
 for (const n of ['NKS_MAP', 'NKS_ITCAT', 'LS_CODES', 'SERT_CODES', 'MED_CODES', 'MAT_CODES', 'ART297_CODES', 'ART300_CODES', 'ART299_CODES', 'POST131_APP6_VET_CODES',
-  'ART297_P20_VIE_CODES', 'ART297_P26_SPORT_CODES', 'ART297_P30_JEWEL_CODES', 'EEC_WASTE', 'KEF1606_MAP', 'CODE_VOLUME_FALLBACK']) X[n] = keysOf(n);
+  'ART297_P20_VIE_CODES', 'ART297_P26_SPORT_CODES', 'ART297_P30_JEWEL_CODES', 'EEC_WASTE', 'CODE_VOLUME_FALLBACK']) X[n] = keysOf(n);
 const lists = (n, pick) => () => g(n).flatMap((r, i) => (pick(r) || []).map((c) => ({ code: c, list: i })));
 for (const n of ['BAN_DB', 'VET_DB', 'PHYTO_DB', 'SAN_REG_DB', 'SAN_SUB_DB']) X[n] = lists(n, (r) => r.codes);
 for (const n of ['ART301_GROUP1', 'ART301_GROUP2', 'RS_CHEESE']) X[n] = () => g(n).map((c) => ({ code: c, list: 0 }));
 for (const n of ['ART297_PERECHEN_LISTS', 'ART298_LISTS']) X[n] = () => g(n).flatMap((l) => Object.keys(l.codes).map((c) => ({ code: c })));
 X.TR_EAEU_DB = () => Object.entries(g('TR_EAEU_DB')).flatMap(([k, tr]) => (tr.items || []).flatMap((it, i) => (it[2] || []).map((cc) => ({ code: Array.isArray(cc) ? cc[0] : cc, list: k + ':' + i }))));
-for (const n of ['ETT_UAE_DB', 'ETT_MN_DB', 'ETT_RS_DB', 'ETT_IRAN_DB', 'ETT_VN_DB', 'USIR_DB']) X[n] = () => g(n).map((r) => ({ code: r[0] }));
+for (const n of ['ETT_UAE_DB', 'ETT_MN_DB', 'ETT_RS_DB', 'ETT_IRAN_DB', 'ETT_VN_DB']) X[n] = () => g(n).map((r) => ({ code: r[0] }));
 X.NBNDS_DB = () => g('NBNDS_DB').map((r) => ({ code: r[1] }));
 for (const [n, idx] of [['ANTIDUMP_DB', 0], ['TRIGGER_DB', 0], ['QUOTA_DB', 0], ['NTM_DB', 2], ['EEC_DECISIONS', 1]]) X[n] = lists(n, (r) => r[idx]);
 X.TROIS_DB = () => g('TROIS_DB').flatMap((r) => (r[9] || []).map((c) => ({ code: String(c), list: r[0] })));
