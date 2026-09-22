@@ -196,6 +196,16 @@
     } else if (sd === null || (sd && !sd.backup)) {
       tiles.push(tile('Ночной бэкап', '—', st('none', 'systemd недоступен')));
     }
+    // Вывоз копий на машину владельца: метку пишет её задача после удачной выгрузки.
+    // Дамп делается в 03:31 UTC, задача забирает его в 06:00 UTC, поэтому «свежо» — до 30 часов.
+    if (sd) {
+      const at = sd.pull && sd.pull.at;
+      const ageH = at ? (new Date(d.now) - new Date(at)) / 3600e3 : null;
+      tiles.push(tile('Вывоз копий', esc(at ? fmt.ago(at, d.now) : '—'),
+        st(!at ? 'none' : ageH < 30 ? 'ok' : ageH < 72 ? 'warn' : 'bad',
+          !at ? 'нет отметки' : ageH < 30 ? 'копии у владельца' : ageH < 72 ? 'задержка' : 'копии не вывозятся')
+        + ' <span class="small">задача на машине владельца, 12:00 по Бишкеку</span>'));
+    }
     // Сертификаты
     for (const c of d.certs || []) {
       if (c.error) tiles.push(tile('TLS ' + c.host, '—', st('bad', 'не проверить') + ` <span class="small">${esc(c.error)}</span>`));

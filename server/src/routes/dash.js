@@ -99,6 +99,15 @@ function sdTime(s) {
   const d = m[3] === 'UTC' ? new Date(`${m[1]}T${m[2]}Z`) : new Date(`${m[1]} ${m[2]} ${m[3]}`);
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
+// Метка последнего вывоза копий: одна строка ISO-времени. Лежит в /var/lib/tnved, а не рядом с дампами: каталог дампов принадлежит postgres и закрыт (700), служба работает под tnved и прочитать его не может.
+function pullMark() {
+  try {
+    const at = new Date(fs.readFileSync('/var/lib/tnved/last-pull', 'utf8').trim());
+    return isNaN(at.getTime()) ? null : { at: at.toISOString() };
+  } catch (e) {
+    return null; // метки нет: вывоз ещё ни разу не отмечался
+  }
+}
 async function systemdSection() {
   const [api, backup, timer] = await Promise.all([
     systemctlShow('tnved.service', ['ActiveState', 'SubState', 'NRestarts', 'ActiveEnterTimestamp']),
@@ -107,6 +116,11 @@ async function systemdSection() {
   ]);
   if (!api && !backup && !timer) return null; // не Linux или systemctl недоступен
   return {
+    // Вывоз копий на машину владельца: сам вывоз делает её задача (server/pull-db-backups.ps1),
+    // сервер о нём знает только по метке, которую она пишет после удачной выгрузки. Без метки
+    // сломанный вывоз не виден ниоткуда: 22.09.2026 задача была убита по десятиминутному лимиту,
+    // и копия за сутки не уехала — заметить это удалось случайно.
+    pull: pullMark(),
     api: api && { active: api.ActiveState, sub: api.SubState, restarts: Number(api.NRestarts) || 0, since: sdTime(api.ActiveEnterTimestamp) },
     backup: backup && { result: backup.Result, active: backup.ActiveState, lastStart: sdTime(backup.ExecMainStartTimestamp),
       lastExit: sdTime(backup.ExecMainExitTimestamp), exitStatus: backup.ExecMainStatus },
