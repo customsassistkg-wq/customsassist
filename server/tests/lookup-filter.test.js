@@ -227,6 +227,15 @@ app.get('/', (req,res)=>res.type('html').send(html));
     assert.equal(await vis('.card[data-cty]'),0, 'для Германии страновые карточки убраны');
     assert.match(r.head,/Германия/);
 
+    // Страна ЗСТ СНГ и Азербайджан: плашка 0% на карточке ЕТТ появляется после ответа lkRates — до 22.09.2026
+    // lkApplyRates выходил на «нет pref», и для них показывалась только синяя подсказка.
+    const plaque=async(cty,text)=>{
+      await run('im',cty,'8517130000');
+      await page.waitForFunction((t)=>document.getElementById('result').innerHTML.indexOf(t)>=0,text,{timeout:15000});
+    };
+    await plaque('Узбекистан','ЗСТ СНГ (Узбекистан): <b>0%</b>');
+    await plaque('Азербайджан','Соглашение о свободной торговле КР–Азербайджан: <b>0%</b>');
+
     // Вывоз: ставка ЕТТ и льготы по НДС к нему не относятся.
     r=await run('ex','','8517130000');
     assert.equal(await vis('.card[data-dir="im"]'),0);

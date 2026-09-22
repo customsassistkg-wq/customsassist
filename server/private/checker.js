@@ -3215,7 +3215,9 @@ function lkRateHtml(opts,ettTxt){
 // Подставляет ставку для страны в карточки ЕТТ справки. Ставка ЕТТ остаётся
 // видна зачёркнутой: инспектору нужно видеть обе, а не одну вместо другой.
 async function lkApplyRates(dir,cty,ctyTxt,box,seq){
-  if(dir!=='im'||!cty||!cty.pref)return;
+  // cis — страны ЗСТ СНГ и двустороннего соглашения: у них нет pref, а ставка есть (lkPrefRates); до 22.09.2026 плашка
+  // 0% на карточке ЕТТ для них не запрашивалась вовсе — только синяя подсказка над выдачей.
+  if(dir!=='im'||!cty||!(cty.pref||cty.cis))return;
   box=box||document.getElementById('result');
   if(!box)return;
   const dateEl=document.getElementById('lookupDate');
