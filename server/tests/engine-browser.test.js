@@ -23,11 +23,19 @@ const vatFree = codeWhere((c) => c.startsWith('30') && B.vatFreeHits(c).firm.len
 const excise = codeWhere((c) => c.startsWith('2402') && B.findExcise(c).length > 0);
 const banned = codeWhere((c) => B.calcWarnings(c).some((w) => w.level === 'red'));
 assert.ok(vatFree && excise && banned, `коды для проверки: ${vatFree} ${excise} ${banned}`);
-// модель авто, у первого варианта которой есть код ТН ВЭД (тогда расчёт спрашивает предупреждения по коду)
+// модель авто из прайс-листа: с кодом ТН ВЭД, если такая есть (тогда расчёт спрашивает предупреждения по коду),
+// иначе первая с вариантами — с 22.09.2026 строки с кодами (УСИР, СИР) из прайс-листа убраны
 const autoPick = (() => {
-  for (const b of B.ENGINE_API.autoBrands()) for (const m of B.ENGINE_API.autoModels(b)) if (B.ENGINE_API.autoVariants(b, m)[0].code) return [b, m];
+  let any = null;
+  for (const b of B.ENGINE_API.autoBrands()) for (const m of B.ENGINE_API.autoModels(b)) {
+    const v = B.ENGINE_API.autoVariants(b, m);
+    if (!v.length) continue;
+    if (v[0].code) return [b, m];
+    any = any || [b, m];
+  }
+  return any;
 })();
-assert.ok(autoPick, 'модель авто с кодом');
+assert.ok(autoPick, 'модель авто в прайс-листе');
 
 const app = express();
 app.use(express.json());
@@ -198,7 +206,8 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
 
     assert.deepEqual(errors, []);
     assert.deepEqual(csps, []);
-    for (const fn of ['sourceAuditHtml', 'speciesHtml', 'calcCodeList', 'codeBundle', 'specLookup', 'treeChapter', 'autoBrands', 'autoModels', 'autoVariants', 'calcWarnings', 'auditNote', 'renderHtml']) {
+    // calcWarnings интерфейс спрашивает только для варианта прайс-листа с кодом ТН ВЭД; с 22.09.2026 таких строк нет
+    for (const fn of ['sourceAuditHtml', 'speciesHtml', 'calcCodeList', 'codeBundle', 'specLookup', 'treeChapter', 'autoBrands', 'autoModels', 'autoVariants', 'auditNote', 'renderHtml']) {
       assert.ok(engineCalls.includes(fn), 'вызов ' + fn);
     }
     console.log('PASS: браузер — сверка, виды, калькулятор и партия, спецификация, дерево, авто, личные отправления, гонка ответов, лимит');
