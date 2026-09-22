@@ -27,7 +27,7 @@ const sandbox = {console, setTimeout, clearTimeout, addEventListener:noop, local
 sandbox.window = sandbox;
 vm.createContext(sandbox);
 new vm.Script(code).runInContext(sandbox);
-new vm.Script(baseCode + '\nthis.__lk={lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded,adActive,ANTIDUMP_DB};').runInContext(sandbox);
+new vm.Script(baseCode + '\nthis.__lk={renderHtml,lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded,adActive,ANTIDUMP_DB};').runInContext(sandbox);
 const {lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB, banOn, BAN_DB, umTermEnded, adActive, ANTIDUMP_DB} = sandbox.__lk;
 
 // ── Антидемпинговые меры и тарифные льготы: машинная дата окончания у каждой ──
@@ -134,7 +134,8 @@ console.log('PASS: ставка по стране происхождения —
 
 // ── Зона свободной торговли СНГ: 0% по любому коду, условие — происхождение, дата — для пары «КР — страна» ──
 for (const [q, n] of [['Узбекистан', 'Узбекистан'], ['узбекистана', 'Узбекистан'], ['Республика Узбекистан', 'Узбекистан'],
-  ['Таджикистан', 'Таджикистан'], ['Молдавия', 'Молдова'], ['Украины', 'Украина']]) assert.equal(lkCountry(q).cis.n, n, q);
+  ['Таджикистан', 'Таджикистан'], ['Молдавия', 'Молдова'], ['Украины', 'Украина'],
+  ['Азербайджан', 'Азербайджан'], ['азербайджана', 'Азербайджан'], ['Азербайджанская Республика', 'Азербайджан']]) assert.equal(lkCountry(q).cis.n, n, q);
 for (const q of ['камера', 'ткань', 'сахар', 'украшения', 'молоко', 'таджикский', 'Германия', 'Казахстан']) assert.ok(!lkCountry(q).cis, q);
 r = rate('3307900008', 'Узбекистан', '2026-09-18');
 assert.equal(r.length, 1);
@@ -145,7 +146,21 @@ assert.equal(rate('3307900008', 'Узбекистан', '2017-01-01')[0].pending
 assert.match(rate('8212101000', 'Таджикистан', '2026-09-18')[0].note, /СТ-1/);
 assert.equal(rate('2208601100', 'Молдова', '2026-09-18')[0].rate, '0%');          // изъятий у КР нет — и для водки
 assert.equal(rate('3307900008', 'Казахстан', '2026-09-18').length, 0);             // ЕАЭС — не преференция, а взаимная торговля
-console.log('PASS: зона свободной торговли СНГ — Узбекистан по Протоколу, Таджикистан, Молдова, Украина');
+// Азербайджан — двустороннее соглашение 2004 г. (не ЗСТ СНГ): 0%, основание — п.1 ст.102 Договора о ЕАЭС и ст.8 Закона о таможенном тарифе
+r = rate('8517130000', 'Азербайджан', '2026-09-22');
+assert.equal(r.length, 1);
+assert.deepEqual([r[0].rate, r[0].who], ['0%', 'Соглашение о свободной торговле КР–Азербайджан']);
+assert.match(r[0].basis, /от 12\.01\.2004, ст\.1 .*п\.1 ст\.102 Договора о ЕАЭС и подп\.1 п\.1 ст\.8 Закона КР «О таможенном тарифе»/);
+assert.match(r[0].note, /СТ-1/);
+assert.equal(rate('8517130000', 'Азербайджан', '2003-12-31')[0].pending, '12.01.2004'); // временное применение со дня подписания
+const az = sandbox.__lk.renderHtml('Азербайджан', '').html;
+assert.match(az, /Двустороннее соглашение о свободной торговле: ввозная пошлина не применяется/);
+assert.match(az, /cbd\.minjust\.gov\.kg\/17625\/edition\/297684\/ru/);
+assert.doesNotMatch(az, /Зона свободной торговли СНГ:/);
+// Грузия (только РНБ) и Туркменистан (торгового соглашения нет) — не преференция: карточки страны нет
+assert.doesNotMatch(sandbox.__lk.renderHtml('Грузия', '').html, /пошлина не применяется/);
+assert.ok(!lkCountry('Грузия').cis && !lkCountry('Туркменистан').cis);
+console.log('PASS: зона свободной торговли СНГ — Узбекистан по Протоколу, Таджикистан, Молдова, Украина; Азербайджан — по двустороннему соглашению');
 
 if (!process.env.PLAYWRIGHT_MODULE) {
   console.log('SKIP: браузерная часть (задайте PLAYWRIGHT_MODULE)');
