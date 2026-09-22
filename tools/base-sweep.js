@@ -58,7 +58,7 @@ const mapped = (c) => Object.keys(TN).some((k) => k === c || c.startsWith(k) || 
 const X = {};
 const keysOf = (n) => () => Object.keys(g(n)).map((k) => ({ code: k }));
 for (const n of ['NKS_MAP', 'NKS_ITCAT', 'LS_CODES', 'SERT_CODES', 'MED_CODES', 'MAT_CODES', 'ART297_CODES', 'ART300_CODES', 'ART299_CODES', 'POST131_APP6_VET_CODES',
-  'ART297_P20_VIE_CODES', 'ART297_P26_SPORT_CODES', 'ART297_P30_JEWEL_CODES', 'EEC_WASTE', 'CODE_VOLUME_FALLBACK']) X[n] = keysOf(n);
+  'ART297_P20_VIE_CODES', 'ART297_P26_SPORT_CODES', 'ART297_P30_JEWEL_CODES', 'EEC_WASTE']) X[n] = keysOf(n);
 const lists = (n, pick) => () => g(n).flatMap((r, i) => (pick(r) || []).map((c) => ({ code: c, list: i })));
 for (const n of ['BAN_DB', 'VET_DB', 'PHYTO_DB', 'SAN_REG_DB', 'SAN_SUB_DB']) X[n] = lists(n, (r) => r.codes);
 for (const n of ['ART301_GROUP1', 'ART301_GROUP2', 'RS_CHEESE']) X[n] = () => g(n).map((c) => ({ code: c, list: 0 }));
@@ -68,7 +68,6 @@ for (const n of ['ETT_UAE_DB', 'ETT_MN_DB', 'ETT_RS_DB', 'ETT_IRAN_DB', 'ETT_VN_
 X.NBNDS_DB = () => g('NBNDS_DB').map((r) => ({ code: r[1] }));
 for (const [n, idx] of [['ANTIDUMP_DB', 0], ['TRIGGER_DB', 0], ['QUOTA_DB', 0], ['NTM_DB', 2], ['EEC_DECISIONS', 1]]) X[n] = lists(n, (r) => r[idx]);
 X.TROIS_DB = () => g('TROIS_DB').flatMap((r) => (r[9] || []).map((c) => ({ code: String(c), list: r[0] })));
-X.AUTO_DB = () => g('AUTO_DB').filter((r) => r[0] && /^\d+$/.test(r[0])).map((r) => ({ code: r[0] }));
 X.UNIMEAS_DB = () => g('UNIMEAS_DB').flatMap((r, i) => [6, 7, 8, 9].flatMap((k) => (Array.isArray(r[k]) ? r[k] : []).filter((c) => /^\d+$/.test(c)).map((c) => ({ code: c, list: i + ':' + k }))));
 X.TNVED_MAP_keys = () => Object.keys(TN).map((k) => ({ code: k }));
 X.TNVED_MAP_targets = () => Object.entries(TN).flatMap(([k, v]) => (v.t || []).map((c) => ({ code: c, list: k, target: true })));

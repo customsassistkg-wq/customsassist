@@ -1155,18 +1155,18 @@ async function runPersonalCalc(){
   out.innerHTML=html;
 }
 
-let acSelectedCode=null;
 async function renderAutoCalcPanel(){
-  // Марки, модели и варианты — из прайс-листа в базе на сервере (AUTO_CALC_IDX в private/base.js).
+  // Марки, модели и заводские объёмы — справочник популярных моделей в базе (AUTO_CALC_IDX в private/base.js);
+  // прайс-листа цен нет с 22.09.2026 — стоимость вводится по инвойсу.
   const brands=await engine('autoBrands').catch(()=>[]);
   let html='<div class="calc-card" style="margin-bottom:16px"><h1 class="pg-h1">Ввоз авто физлицом</h1><div class="pg-sub">Легковые авто гл. 8703 для личного пользования — единая ставка по объёму двигателя и возрасту</div>';
   html+='<label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:10px;cursor:pointer"><input type="checkbox" id="acManual" onchange="onAcManualToggle()"/> Марки/модели нет в списке — ввести вручную</label>';
   html+='<div id="acListMode">';
   html+='<div class="calc-row"><div class="calc-field"><label>Марка</label><select id="acBrand" onchange="onAcBrandChange()"><option value="">— выберите —</option>'+brands.map(b=>'<option value="'+esc(b)+'">'+esc(b)+'</option>').join('')+'</select></div>';
   html+='<div class="calc-field"><label>Модель</label><select id="acModel" onchange="onAcModelChange()" disabled><option value="">— сначала марка —</option></select></div></div>';
-  html+='<div class="calc-row"><div class="calc-field"><label>Вариант из прайс-листа</label><select id="acVariant" onchange="onAcVariantChange()" disabled><option value="">— сначала модель —</option></select></div></div>';
+  html+='<div class="calc-row"><div class="calc-field"><label>Объём двигателя по справочнику</label><select id="acVariant" onchange="onAcVariantChange()" disabled><option value="">— сначала модель —</option></select></div></div>';
   html+='</div>';
-  html+='<div style="font-size:10px;color:var(--muted);margin:6px 0">Стоимость и объём ниже подставляются из прайс-листа, но их можно изменить вручную (например, если у вас другой инвойс или марки нет в базе).</div>';
+  html+='<div style="font-size:10px;color:var(--muted);margin:6px 0">Объём двигателя подставляется из справочника моделей — проверьте по ПТС; стоимость авто введите по инвойсу.</div>';
   html+='<div class="calc-row"><div class="calc-field"><label>Объём двигателя, см³</label><input type="number" id="acVolume" min="0" step="1" placeholder="напр. 1998"/></div>';
   html+='<div class="calc-field"><label>Возраст авто (с момента выпуска)</label><select id="acAge">'+CAR_AGE_BANDS.map(b=>'<option value="'+b[0]+'">'+esc(b[1])+'</option>').join('')+'</select></div></div>';
   html+='<div class="calc-row"><div class="calc-field"><label>Стоимость авто</label><input type="number" id="acValue" min="0" step="1" placeholder="напр. 20000"/></div>';
@@ -1175,7 +1175,7 @@ async function renderAutoCalcPanel(){
   html+='<div class="calc-row" id="acUsdRateRow" style="display:none"><div class="calc-field"><label id="acCurRateLbl">Курс $ → сом (для стоимости авто)</label><input type="number" id="acCurRate" min="0" step="0.01" placeholder="напр. 87.00"/></div></div>';
   html+='<button class="calc-btn" onclick="runAutoCalc()">Рассчитать</button>';
   html+='<div id="acOut"></div>';
-  html+='<div style="font-size:10px;color:var(--muted);margin-top:10px">Стоимость из прайс-листа — справочный ориентир (ТПО/ИТС), фактическая таможенная стоимость определяется по инвойсу/декларации, поэтому её можно скорректировать вручную выше. Электромобили и коммерческий ввоз юрлицом сюда не входят — используйте раздел «Таможенный калькулятор» по коду ТН ВЭД.</div>';
+  html+='<div style="font-size:10px;color:var(--muted);margin-top:10px">Стоимость авто — по инвойсу и декларации (таможенная стоимость). Электромобили и коммерческий ввоз юрлицом сюда не входят — используйте раздел «Таможенный калькулятор» по коду ТН ВЭД.</div>';
   html+='</div>';
   const panel=document.getElementById('autoCalcPanel');
   if(panel){
@@ -1188,7 +1188,6 @@ function onAcManualToggle(){
   const manual=document.getElementById('acManual').checked;
   document.getElementById('acListMode').style.display=manual?'none':'';
   document.getElementById('acOut').innerHTML='';
-  acSelectedCode=null;
   if(manual){
     document.getElementById('acVolume').value='';
     document.getElementById('acValue').value='';
@@ -1201,7 +1200,6 @@ async function onAcBrandChange(){
   const variantSel=document.getElementById('acVariant');
   variantSel.innerHTML='<option value="">— сначала модель —</option>'; variantSel.disabled=true;
   document.getElementById('acOut').innerHTML='';
-  acSelectedCode=null;
   if(!brand){ modelSel.innerHTML='<option value="">— сначала марка —</option>'; modelSel.disabled=true; return; }
   const models=await engine('autoModels',brand).catch(()=>[]);
   if(document.getElementById('acBrand').value!==brand)return;
@@ -1214,12 +1212,11 @@ async function onAcModelChange(){
   const model=document.getElementById('acModel').value;
   const variantSel=document.getElementById('acVariant');
   document.getElementById('acOut').innerHTML='';
-  acSelectedCode=null;
   if(!model){ variantSel.innerHTML='<option value="">— сначала модель —</option>'; variantSel.disabled=true; return; }
   const variants=await engine('autoVariants',brand,model).catch(()=>[]);
   if(document.getElementById('acBrand').value!==brand||document.getElementById('acModel').value!==model)return;
   acVariants=variants;
-  variantSel.innerHTML=variants.map((v,i)=>'<option value="'+i+'">'+(v.approx?'≈':'')+v.volume+' см³'+(v.year?', '+v.year+' г.':'')+' — '+(v.val!=null?(v.val+' '+esc(v.cur)):'без цены')+' ('+esc(v.src)+(v.approx?', объём приблизительный по коду ЕТТ':'')+')</option>').join('');
+  variantSel.innerHTML=variants.map((v,i)=>'<option value="'+i+'">'+v.volume+' см³ — '+esc(v.src)+'</option>').join('');
   variantSel.disabled=false;
   onAcVariantChange();
 }
@@ -1229,21 +1226,10 @@ function onAcVariantChange(){
   const model=document.getElementById('acModel').value;
   const vIdx=document.getElementById('acVariant').value;
   document.getElementById('acOut').innerHTML='';
-  if(vIdx===''){ acSelectedCode=null; return; }
+  if(vIdx==='')return;
   const variant=acVariants[vIdx];
-  if(!variant){ acSelectedCode=null; return; }
-  acSelectedCode=variant.code||null;
-  document.getElementById('acVolume').value=variant.volume;
-  if(variant.val!=null){
-    document.getElementById('acValue').value=variant.val;
-    document.getElementById('acCurrency').value=variant.cur;
-  } else {
-    document.getElementById('acValue').value='';
-  }
-  onAcCurrencyChange();
-  const ageSel=document.getElementById('acAge');
-  const band=carAgeBandForYear(variant.year);
-  if(band) ageSel.value=band; // год выпуска из прайс-листа задаёт возрастную группу приблизительно — проверьте по ПТС
+  if(!variant)return;
+  document.getElementById('acVolume').value=variant.volume; // объём по справочнику; стоимость, возраст и валюту пользователь задаёт сам
 }
 
 function onAcCurrencyChange(){
@@ -1279,11 +1265,7 @@ async function runAutoCalc(){
   const duty=d.eur*eurRate;
   const fee=CUSTOMS_FEE_CAR_PERSONAL;
   const total=duty+fee;
-  let warnHtml='';
-  if(acSelectedCode){
-    for(const w of await engine('calcWarnings',acSelectedCode).catch(()=>[])){ warnHtml+='<div class="calc-warn w-'+w.level+'">'+w.text+'</div>'; }
-  }
-  out.innerHTML=warnHtml+'<div class="calc-result">'
+  out.innerHTML='<div class="calc-result">'
     +'<div class="calc-line"><span>Стоимость авто</span><b>'+valueSom.toFixed(2)+' сом ('+value+' '+esc(cur)+' ≈ '+valueEur.toFixed(2)+' €)</b></div>'
     +'<div class="calc-line"><span>Единая ставка <span style="color:var(--muted);font-size:11px">('+esc(d.note)+' × курс '+eurRate+')</span></span><b>'+duty.toFixed(2)+' сом</b></div>'
     +'<div class="calc-line"><span>НДС <span style="color:var(--muted);font-size:11px">(отдельно не начисляется — единая ставка включает и пошлину, и налоги)</span></span><b>0.00 сом</b></div>'
@@ -1410,12 +1392,6 @@ const CAR_RATE_3_5=[[1000,1.5],[1500,1.7],[1800,2.5],[2300,2.7],[3000,3],[null,3
 const CAR_RATE_OVER5=[[1000,3],[1500,3.2],[1800,3.5],[2300,4.8],[3000,5],[null,5.7]];
 const CAR_AGE_BANDS=[['new','не более 3 лет с момента выпуска'],['y3_5','более 3, но не более 5 лет'],['over5','более 5 лет']];
 function carAgeBandLabel(band){const b=CAR_AGE_BANDS.find(x=>x[0]===band);return b?b[1]:''}
-function carAgeBandForYear(year){
-  if(!year)return null;
-  const age=new Date().getFullYear()-year;
-  return age<=3?'new':(age<=5?'y3_5':'over5');
-}
-
 // Размер единой ставки в евро плюс пояснение, как он получен.
 // Для автомобилей не старше 3 лет ставка — процент от стоимости, но не менее
 // фиксированной суммы за см³, поэтому нужна и стоимость в евро, и объём.
