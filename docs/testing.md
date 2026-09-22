@@ -23,6 +23,9 @@ node server/tests/login-enumeration.test.js   # вход не выдаёт, ес
 node server/tests/api-boundary.test.js        # Origin, тело помощника после входа, 400/413 вместо 500
 node server/tests/direction-regime.test.js   # режим по направлению: запреты несут направление, «из», исключения, дата
 node server/tests/static-assets.test.js      # ссылки страницы и манифеста на свои файлы: картинки на месте
+node server/tests/dash.test.js               # дашборд администраторов: только admin, вход на dash.*, страница без кода; браузер — 8 разделов, 1280/420
+node server/tests/payments.test.js           # оплаты и расходы: только admin, продление подписки от срока, конец месяца, поля, журнал
+node server/tests/retention.test.js          # сроки хранения: очистка журнала по purge_after и оплат с 1 января восьмого года; срок ставится до удаления учётной записи
 ```
 The browser test needs `PLAYWRIGHT_MODULE` pointing at an installed `playwright-core`; it drives the system Edge, touches no live database and sends no mail. Prior sessions left an install at `%TEMP%/pw_check/node_modules/playwright-core`; without the variable the browser tests print SKIP or pass only their offline part, which is how the broken registration button of 14–17.09.2026 went unnoticed. One more test is not in the list because it needs a database: `TEST_DATABASE_URL=<disposable db> node server/tests/reset-password.test.js` (concurrent resets have one winner, sessions end, replay is rejected); without the variable it fails on its first line, which is a precondition, not a regression. The full list and the deployment order live in [server/CHECKER.md](../server/CHECKER.md).
 

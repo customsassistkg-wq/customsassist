@@ -9,11 +9,14 @@ const vm = require('node:vm');
 
 const DIR = path.join(__dirname, '../../private');
 let ctx = null;
+// Когда и за сколько разобрана база — для дашборда администраторов (routes/dash.js).
+const info = { loadedAt: null, loadMs: null };
 
 // Разбор 12 МБ занимает секунду-другую и ~150 МБ памяти; сервер вызывает load() при
 // старте, чтобы первый поиск пользователя этого не ждал. Тесты загружают по требованию.
 function load() {
   if (ctx) return ctx;
+  const t0 = Date.now();
   const noop = () => {};
   const boxes = {};
   const el = (id) => boxes[id] || (boxes[id] = {
@@ -36,8 +39,13 @@ function load() {
     new vm.Script(fs.readFileSync(path.join(DIR, f), 'utf8'), { filename: f }).runInContext(sb);
   }
   // const верхнего уровня не становятся свойствами sandbox — берём их выражением в том же контексте.
+  // Последняя строка — то, что читает только дашборд администраторов (routes/dash.js): даты
+  // мер и записи сверки. В браузер эти имена по-прежнему не уходят.
   ctx = new vm.Script('({ENGINE_API,renderHtml,findByName,lkCountry,lkCtyMatch,lkPrefRates,ETT_DB,fmtCode,fmtRate,'
-    + 'TNVED_MAP,parseRateInfo,itemDuty,vatFreeHits,customsFeeGoods,findExcise,calcWarnings})').runInContext(sb);
+    + 'TNVED_MAP,parseRateInfo,itemDuty,vatFreeHits,customsFeeGoods,findExcise,calcWarnings,'
+    + 'BAN_DB,ANTIDUMP_DB,LK_IN_FORCE,SOURCE_AUDIT,AUDIT_REV,UNIMEAS_ASOF})').runInContext(sb);
+  info.loadedAt = new Date().toISOString();
+  info.loadMs = Date.now() - t0;
   return ctx;
 }
 
@@ -52,4 +60,4 @@ function call(fn, args) {
   return result === undefined ? null : result;
 }
 
-module.exports = { load, has, call };
+module.exports = { load, has, call, info };

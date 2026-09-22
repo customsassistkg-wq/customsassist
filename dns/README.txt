@@ -139,3 +139,23 @@ https://customsassist.trade/privacy.html — файл лежит в корне �
    до истечения.
 Плюсы: кэш и сжатие (главный файл сайта весит около 12 МБ) и скрытый адрес
 сервера. Минус: лишний слой при отладке.
+
+ДАШБОРД АДМИНИСТРАТОРОВ — dash.customsassist.trade (22.09.2026)
+----------------------------------------------------------------
+Тот же сервер 65.109.170.170, отдельный блок nginx (server/nginx.conf), вход
+только администраторам (docs/backend-ops.md, «The administrators' dashboard»).
+
+СДЕЛАНО 22.09.2026: запись добавлена владельцем, сертификат расширен на dash.* (до 21.12.2026),
+автопродление проверено (certbot renew --dry-run). Ниже — как это делалось.
+
+Что нужно сделать в Cloudflare (только владелец аккаунта):
+  dash.customsassist.trade   A   65.109.170.170   — DNS only (серое облако), TTL 300
+Запись уже есть в customsassist.trade.zone.txt; можно импортировать файл заново
+(дубли Cloudflare не создаёт) или добавить одну запись вручную.
+
+После того как запись отвечает (nslookup dash.customsassist.trade 1.1.1.1), на сервере:
+  certbot certonly --nginx --cert-name customsassist.trade -d customsassist.trade -d www.customsassist.trade -d dash.customsassist.trade --expand
+  (certonly — чтобы certbot не переписывал конфигурацию nginx; она ставится из server/nginx.conf)
+  nginx -t && systemctl reload nginx
+Блок nginx уже установлен и ссылается на тот же сертификат; до расширения браузер
+покажет предупреждение о сертификате на dash.* — это ожидаемо.

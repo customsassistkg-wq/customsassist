@@ -23,8 +23,10 @@ function refs(text) {
 const page = read('tnved_checker.html');
 const manifest = read('manifest.webmanifest');
 const all = new Map();
+// server/dash/index.html — страница дашборда администраторов: отдаётся своим блоком nginx
+// (dash.*), картинки берёт из того же /assets/ через alias.
 for (const [file, text] of [['tnved_checker.html', page], ['manifest.webmanifest', manifest],
-  ['privacy.html', read('privacy.html')], ['terms.html', read('terms.html')]]) {
+  ['privacy.html', read('privacy.html')], ['terms.html', read('terms.html')], ['server/dash/index.html', read('server/dash/index.html')]]) {
   for (const r of refs(text)) if (!all.has(r)) all.set(r, file);
 }
 

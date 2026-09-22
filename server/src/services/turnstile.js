@@ -32,8 +32,10 @@ function isEnabled() {
 
 // Разрешённые имена хостов берём из APP_ORIGIN: виджет заведён на
 // customsassist.trade, и токен, выпущенный где-то ещё, нам не годится.
+// Дашборд администраторов живёт на своём имени (DASH_ORIGIN) и показывает капчу
+// на входе так же, как основной сайт, — его имя тоже допустимо.
 function allowedHostnames() {
-  const raw = process.env.PUBLIC_ORIGIN || process.env.APP_ORIGIN || '';
+  const raw = (process.env.PUBLIC_ORIGIN || process.env.APP_ORIGIN || '') + ',' + (process.env.DASH_ORIGIN || '');
   const out = [];
   for (const part of String(raw).split(',')) {
     const v = part.trim();

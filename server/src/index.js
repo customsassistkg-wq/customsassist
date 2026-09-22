@@ -23,6 +23,10 @@ app.disable('x-powered-by');
 // reverse proxy described in CLAUDE.md's deploy notes.
 app.set('trust proxy', 1);
 
+// Счётчики запросов по маршрутам, задержка цикла событий и последние строки журнала —
+// для дашборда администраторов (routes/dash.js). Первым в цепочке, чтобы считать и отказы.
+require('./services/metrics').install(app);
+
 // Помощник принимает страницы документов в base64 (/read — по одной; вопрос — со старых вкладок) — остальному API
 // хватает стандартных 100 КБ, и поднимать лимит для всех незачем. Большое тело
 // разбирается только после проверки сессии (ниже, после authMiddleware): до
@@ -67,7 +71,9 @@ app.use(
 // loading the origin pinned in its capacitor.config.json until the store
 // release reaches the user's phone. A single value stays valid and behaves
 // exactly as before.
-const ALLOWED_ORIGINS = (process.env.APP_ORIGIN || '')
+// DASH_ORIGIN — дашборд администраторов на своём имени (routes/dash.js): тот же API,
+// поэтому его origin тоже разрешён. Пустая переменная — дашборд не опубликован.
+const ALLOWED_ORIGINS = ((process.env.APP_ORIGIN || '') + ',' + (process.env.DASH_ORIGIN || ''))
   .split(',')
   .map((o) => o.trim().replace(/\/+$/, ''))
   .filter(Boolean);
@@ -107,6 +113,10 @@ app.use('/api/nbkr-rates', nbkrRatesRoutes);
 app.use('/api/checker.js', require('./routes/checker'));
 app.use('/api/engine', require('./routes/engine'));
 app.use('/api/assistant', require('./routes/assistant'));
+// Дашборд администраторов: код интерфейса и данные — только администратору (requireAdmin).
+const dash = require('./routes/dash');
+app.get('/api/dash.js', dash.script);
+app.use('/api/dash', dash.router);
 
 
 // Convenience for local dev (`npm run dev`) without Nginx in front - in
@@ -118,6 +128,9 @@ if (process.env.NODE_ENV !== 'production') {
   app.get(['/', '/tnved_checker.html', '/privacy.html', '/terms.html', '/ai-risk.json', '/manifest.webmanifest'], (req, res) => {
     res.sendFile(path.join(root, req.path === '/' ? 'tnved_checker.html' : req.path.slice(1)));
   });
+  // Дашборд администраторов: в продакшене это отдельный хост (dash.customsassist.trade,
+  // блок в nginx.conf с root server/dash), локально — /dash на том же порту.
+  app.get('/dash', (req, res) => res.sendFile(path.join(root, 'server', 'dash', 'index.html')));
   // Картинки сайта — одной папкой assets/. Исходники логотипа (assets/source/) —
   // вход генераторов в tools/: на сервер они не выкладываются, здесь закрыты явно.
   app.use('/assets/source', (req, res) => res.status(404).end());
@@ -144,6 +157,7 @@ app.use((err, req, res, next) => {
 if (require.main === module) {
   classDecisionsService.init();
   nbkrRatesService.init();
+  require('./services/retention').init();
   // База грузится до открытия порта: первый поиск пользователя не ждёт разбора 12 МБ.
   require('./services/base').load();
   const port = process.env.PORT || 3000;

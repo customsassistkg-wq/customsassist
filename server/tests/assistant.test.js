@@ -34,7 +34,7 @@ const a = require('../src/services/assistant');
     assert.equal(route.bishkekMonth(new Date('2026-09-30T17:59:00Z')).start.toISOString(), '2026-08-31T18:00:00.000Z');
     // и граница дня: 16.09 18:30 UTC — уже 17 сентября в Бишкеке
     assert.equal(route.bishkekDay(new Date('2026-09-16T18:30:00Z')).start.toISOString(), '2026-09-16T18:00:00.000Z');
-    assert.deepEqual(Object.values(route.PLANS).map((p) => [p.day, p.month]), [[3, 100], [20, 300], [60, 1000]]);
+    assert.deepEqual(Object.values(route.PLANS).map((p) => [p.day, p.month, p.pages, p.price]), [[3, 90, 30, 490], [20, 300, 150, 990], [100, 1500, 500, 1990]]);
     const app = express();
     app.use(express.json({ limit: '15mb' }));
     app.use((req, res, next) => { req.user = user; next(); });
@@ -50,8 +50,9 @@ const a = require('../src/services/assistant');
       assert.equal(r.status, 429);
       let j = await r.json();
       assert.equal(j.error, 'quota_exceeded');
-      assert.deepEqual([j.quota.remaining, j.quota.blockedBy, j.quota.remainingMonth], [0, 'day', 90]);
-      assert.equal(j.quota.plans.max.day, 60);
+      assert.deepEqual([j.quota.remaining, j.quota.blockedBy, j.quota.remainingMonth], [0, 'day', 80]);
+      // сетка тарифов 22.09.2026: цена, вопросы в день и в месяц, страницы в месяц
+      assert.deepEqual([j.quota.plans.max.day, j.quota.plans.max.month, j.quota.plans.max.pages, j.quota.plans.pro.price, j.quota.price], [100, 1500, 500, 990, 490]);
       // месяц исчерпан — держит месяц, даже если сегодня вопросов не было
       used = 100; today = 0;
       j = await (await post()).json();
@@ -59,8 +60,8 @@ const a = require('../src/services/assistant');
       // остаток — по меньшему из лимитов
       used = 37; today = 1;
       j = await (await fetch(base + '/quota')).json();
-      assert.deepEqual([j.plan, j.remainingDay, j.remainingMonth, j.remaining], ['base', 2, 63, 2]);
-      user.ai_plan = 'max'; used = 999; today = 10;
+      assert.deepEqual([j.plan, j.remainingDay, j.remainingMonth, j.remaining], ['base', 2, 53, 2]);
+      user.ai_plan = 'max'; used = 1499; today = 10;
       j = await (await fetch(base + '/quota')).json();
       assert.deepEqual([j.name, j.remaining, j.blockedBy], ['Max', 1, 'month']);
       user.role = 'admin'; used = 5000; today = 500;
@@ -151,14 +152,14 @@ const a = require('../src/services/assistant');
       assert.deepEqual([r.status, (await r.json()).error], [502, 'read_failed']);
       row = inserts[inserts.length - 1];
       assert.deepEqual([row[9], row[11], row[12]], ['AI API 500: down', 0.001, 'read']);
-      // лимит страниц: Базовый — 60 в день; вопросы при этом не расходуются
-      user.ai_plan = 'base'; used = 0; today = 0; pages = 60; pagesToday = 60;
+      // лимит страниц: Базовый — 30 в месяц (дневного нет); вопросы при этом не расходуются
+      user.ai_plan = 'base'; used = 0; today = 0; pages = 30; pagesToday = 5;
       r = await read({ image: img });
       j = await r.json();
-      assert.deepEqual([r.status, j.error, j.quota.pagesRemaining, j.quota.pagesDay, j.quota.pagesBlockedBy, j.quota.remaining], [429, 'page_quota_exceeded', 0, 60, 'day', 3]);
+      assert.deepEqual([r.status, j.error, j.quota.pagesRemaining, j.quota.pagesDay, j.quota.pagesBlockedBy, j.quota.remaining], [429, 'page_quota_exceeded', 0, 30, 'month', 3]);
       pages = 2000; pagesToday = 0;
       j = await (await read({ image: img })).json();
-      assert.deepEqual([j.error, j.quota.pagesMonth, j.quota.pagesBlockedBy], ['page_quota_exceeded', 2000, 'month']);
+      assert.deepEqual([j.error, j.quota.pagesMonth, j.quota.pagesBlockedBy], ['page_quota_exceeded', 30, 'month']);
       // пятая страница одного пользователя разом — busy
       pages = 0;
       const gates = [];
@@ -825,7 +826,10 @@ const a = require('../src/services/assistant');
     let orient = 'правильно', stop = 'end_turn', vision = null, tokens = 0;
     global.fetch = async (url, opts) => {
       if (/oauth2\.googleapis\.com/.test(url)) { tokens++; return { ok: true, json: async () => ({ access_token: 'tok', expires_in: 3600 }) }; }
-      if (/vision\.googleapis\.com/.test(url)) { bodies.push({ vision: true, auth: opts.headers.authorization }); return { ok: true, json: async () => vision }; }
+      if (/vision\.googleapis\.com/.test(url)) {
+        assert.match(url, /^https:\/\/eu-vision\.googleapis\.com\//, 'Vision — только адрес ЕС: так написано в privacy.html');
+        bodies.push({ vision: true, auth: opts.headers.authorization }); return { ok: true, json: async () => vision };
+      }
       const body = JSON.parse(opts.body);
       bodies.push(body);
       const orientCall = /перевёрнут вверх ногами/.test(body.messages[0].content[1].text);

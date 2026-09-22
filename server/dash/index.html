@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#171A21" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#E8EBF1" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+<title>Customs Assist KG — мониторинг</title>
+<!-- Дашборд администраторов (dash.customsassist.trade). Страница держит только вход и
+     каркас: ни одной цифры здесь нет. Код дашборда приходит через /api/dash.js только
+     администратору, данные — /api/dash/data (routes/dash.js).
+     Оболочка — та же, что у основной страницы (tnved_checker.html, 22.09.2026): токены
+     тем, экран входа, шапка, левое меню, карточки, кнопки и панель вкладок скопированы
+     из её <style> по белому списку селекторов, чтобы дашборд выглядел как сайт. Правила
+     ниже «── Дашборд ──» — свои: плитки, графики, таблицы, шкалы. -->
+<style>
+  :root {
+    --bg:#171A21;--surface:#20242D;--border:rgba(255,255,255,.11);--indigo:#9AA4F5;--indigo-surface:#4350C0;
+    --red:#F08A82;--green:#6FCB92;--yellow:#DDB268;--blue:#A5A6F0;
+    --purple:#C79AE0;--teal:#63C3CC;--orange:#E5A76A;--cyan:#79BEDC;--pink:#F0879F;
+    --text:#D7DBE3;--muted:#979EAC;--app-bg:url(/assets/app-bg-dark.webp);--app-scrim:rgba(14,18,28,.38);--login-bg:url(/assets/login-bg-dark.webp);--login-scrim:rgba(8,14,30,.30);
+    --ink-cyan:#79C8DC;--ink-blue:#8FB8E8;--ink-link:#A8C4EA;--hint:#9AA2B2;--placeholder:#767D8C;
+    --mono:'SF Mono',ui-monospace,'Cascadia Code','Consolas','SFMono-Regular','Courier New',monospace;--head:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',ui-sans-serif,sans-serif;
+    --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;--space-6:32px;--space-7:48px;
+    --radius-xs:6px;--radius-sm:8px;--radius-md:10px;--radius-lg:12px;--radius-xl:12px;--radius-pill:999px;
+    --fs-xs:10px;--fs-sm:11px;--fs-md:12px;--fs-base:13px;--fs-lg:14px;--fs-xl:15px;--fs-2xl:16px;--fs-3xl:18px;--fs-4xl:20px;--fs-5xl:22px;
+    --ring:0 0 0 3px rgba(90,108,255,.24);--ring-bad:0 0 0 3px rgba(255,107,107,.18);--glow:0 12px 30px rgba(64,92,255,.38);--shadow-up:0 -4px 16px rgba(0,0,0,.18);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.25);--shadow-md:0 1px 2px rgba(0,0,0,.25);--shadow-lg:0 12px 32px rgba(0,0,0,.40);
+    --glass:#1E222A;--glass-border:rgba(255,255,255,.10);--glass-blur:none;
+    /* Графики: три категориальных цвета, проверенные валидатором dataviz на поверхности
+       --surface обеих тем; сетка — на шаг светлее поверхности; статусы — токены темы. */
+    --series-1:#3987e5;--series-2:#d95926;--series-3:#199e70;--series-dim:rgba(255,255,255,.16);
+    --grid:rgba(255,255,255,.07);--axis:rgba(255,255,255,.18);
+  }
+  :root[data-theme="light"]{
+    --bg:#E8EBF1;--surface:#F7F8FB;--border:rgba(20,28,48,.16);--indigo:#3B48CC;--indigo-surface:#3A46C8;
+    --red:#B3241C;--green:#146A38;--yellow:#7A4E00;--blue:#3C39A8;
+    --purple:#732C93;--teal:#0A6570;--orange:#8A4F00;--cyan:#0B6B8C;--pink:#A81745;
+    --text:#232A38;--muted:#545C6C;--app-bg:url(/assets/app-bg-light.webp);--app-scrim:rgba(248,250,254,.28);--login-bg:url(/assets/login-bg-light.webp);--login-scrim:rgba(248,250,254,.22);
+    --ink-cyan:#0A5E74;--ink-blue:#0B5E96;--ink-link:#0A4FA8;--hint:#545C6C;--placeholder:#8A93A6;
+    --glass:#FFFFFF;--glass-border:rgba(20,28,48,.14);--glass-blur:none;
+    --shadow-sm:0 1px 2px rgba(24,32,56,.08);--shadow-md:0 1px 2px rgba(24,32,56,.08);--shadow-lg:0 12px 32px rgba(24,32,56,.14);
+    --series-1:#2a78d6;--series-2:#eb6834;--series-3:#1baf7a;--series-dim:rgba(20,28,48,.14);
+    --grid:rgba(20,28,48,.08);--axis:rgba(20,28,48,.22);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:var(--head);min-height:100vh;overflow-x:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%;-webkit-tap-highlight-color:rgba(90,86,214,.18)}
+  body::before{content:none}
+  .wrap{position:relative;z-index:1;max-width:1560px;margin:0 auto;padding:20px 24px 80px}
+  #appWrap::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(var(--app-scrim),var(--app-scrim)),var(--app-bg) center/cover no-repeat}
+  header{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;min-height:44px;margin-bottom:22px}
+  .hdr-brand{margin-right:auto;line-height:0}
+  .hdr-logo{display:block;width:auto;margin-left:-5px}
+  .hdr-logo-dark{height:41px}
+  .hdr-logo-light{height:39px}
+  :root:not([data-theme="light"]) .hdr-logo-light,[data-theme="light"] .hdr-logo-dark{display:none}
+  .hdr-tools{order:9;display:flex;justify-content:flex-end;margin-bottom:var(--space-3)}
+  .ic{width:1em;height:1em;display:inline-block;vertical-align:-.15em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+  .nav-ico .ic,.at-ico .ic{width:18px;height:18px;display:block}
+  .tb-i .ic{width:22px;height:22px;display:block}
+  .card .ico .ic{width:18px;height:18px}
+  .card .ico{color:var(--muted)}
+  /* Тема — один тумблер «день/ночь», как на сайте (22.09.2026): бегунок несёт значок текущей темы,
+     на свободной стороне дорожки бледно видна другая. role=switch, aria-checked="true" — светлая. */
+  .theme-toggle{display:inline-flex;align-items:center;gap:10px;min-height:38px;padding:4px 14px 4px 4px;border:1px solid var(--border);border-radius:var(--radius-pill);background:var(--glass);color:var(--muted);font-family:var(--head);font-size:var(--fs-md);font-weight:600;line-height:1;cursor:pointer;box-shadow:var(--shadow-sm);transition:color .15s,border-color .15s,background .15s}
+  .theme-toggle:hover{color:var(--text);border-color:var(--indigo)}
+  .theme-toggle:focus-visible{outline:none;box-shadow:var(--ring)}
+  .theme-toggle .ic{display:block}
+  .tt-track{position:relative;display:block;width:54px;height:28px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid var(--border);transition:background .25s}
+  [data-theme="light"] .tt-track{background:rgba(20,28,48,.08)}
+  .tt-track>.ic{position:absolute;top:6px;width:14px;height:14px;color:var(--muted);opacity:.55}
+  .tt-track>.tt-moon{left:6px}
+  .tt-track>.tt-sun{right:6px}
+  .tt-knob{position:absolute;top:2px;left:2px;width:22px;height:22px;border-radius:50%;background:var(--indigo-surface);box-shadow:0 1px 3px rgba(0,0,0,.35);transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+  .tt-knob .ic{position:absolute;left:4px;top:4px;width:14px;height:14px;color:#fff;transition:opacity .2s}
+  .tt-knob .tt-k-sun{opacity:0}
+  .theme-toggle[aria-checked="true"] .tt-knob{transform:translateX(26px)}
+  .theme-toggle[aria-checked="true"] .tt-knob .tt-k-sun{opacity:1}
+  .theme-toggle[aria-checked="true"] .tt-knob .tt-k-moon{opacity:0}
+  @media (prefers-reduced-motion:reduce){.tt-track,.tt-knob,.tt-knob .ic{transition:none}}
+  .user-bar{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-3);font-size:var(--fs-sm);color:var(--muted);margin-bottom:var(--space-3)}
+  .user-bar b{color:var(--text)}
+  #userBar.user-bar{margin:0;order:7;font-size:var(--fs-md)}
+  .acc-wrap{position:relative}
+  .acc-btn{max-width:280px}
+  .acc-btn b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+  .acc-menu{display:none;position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:260px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);padding:8px;text-align:left}
+  .acc-wrap.open .acc-menu{display:block}
+  .acc-menu .acc-email{font-size:var(--fs-md);color:var(--muted);padding:4px 6px 8px;word-break:break-all}
+  .acc-menu .acc-status{display:block;margin:0 0 8px;font-size:var(--fs-md);padding:6px 10px;border-radius:var(--radius-sm)}
+  .acc-menu .btn{display:flex;width:100%;justify-content:flex-start;margin-top:4px}
+  .acc-status{font-size:var(--fs-md);font-weight:600;line-height:1.5;padding:10px 12px;border-radius:var(--radius-md)}
+  .acc-status.acc-ok{background:rgba(0,212,170,.1);color:var(--teal)}
+  .content-row{display:flex;gap:32px;align-items:flex-start}
+  .main-col{flex:1;min-width:0}
+  .sidebar{width:248px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;position:sticky;top:16px}
+  .side-panel{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-xl);padding:16px;box-shadow:none}
+  .nav-panel{display:flex;flex-direction:column;gap:2px;padding:12px}
+  .nav-grp{font-size:var(--fs-sm);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--hint);padding:12px 12px 4px}
+  .nav-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:none;border-radius:var(--radius-md);padding:9px 12px;font-family:var(--head);font-size:var(--fs-base);font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s}
+  .nav-item:hover{background:rgba(10,132,255,.08);color:var(--text)}
+  .nav-item.active{background:rgba(90,108,255,.16);color:var(--indigo);font-weight:600}
+  .nav-ico{font-size:var(--fs-2xl);flex-shrink:0}
+  .side-det>summary{cursor:pointer;list-style:none}
+  .side-det>summary::-webkit-details-marker{display:none}
+  .side-sum{display:flex;align-items:center;gap:9px;font-size:var(--fs-md);font-weight:700;color:var(--text)}
+  .side-sum .sd-chev{margin-left:auto;color:var(--muted);font-size:var(--fs-base);transition:transform .18s}
+  .side-det[open] .side-sum .sd-chev{transform:rotate(180deg)}
+  .side-sum .sd-sub{display:block;font-weight:400;font-size:var(--fs-xs);color:var(--muted);margin-top:3px;line-height:1.4}
+  .side-det>.side-body{margin-top:15px}
+  .side-note{font-size:var(--fs-xs);color:var(--muted);line-height:1.6;margin-top:8px}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:32px;line-height:1.2;background:var(--glass);border:1px solid var(--border);color:var(--muted);font-family:var(--head);font-weight:600;font-size:var(--fs-md);padding:6px 13px;border-radius:var(--radius-sm);cursor:pointer;transition:all .15s;letter-spacing:.02em}
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled,.btn[disabled]{opacity:.55;cursor:not-allowed;transform:none}
+  .btn.btn-primary{background:var(--indigo-surface);border-color:var(--indigo-surface);color:#fff}
+  .btn.btn-primary:hover{background:#3a46b0;border-color:#3a46b0;color:#fff}
+  .btn.danger{color:var(--red);border-color:rgba(224,52,43,.4)}
+  .btn:hover{border-color:var(--indigo);color:var(--indigo);background:rgba(10,132,255,0.1)}
+  [data-theme="light"] .btn{background:var(--glass)}
+  [data-theme="light"] .btn.btn-primary{background:var(--indigo-surface);border-color:var(--indigo-surface);color:#fff}
+  .calc-warn{padding:12px 14px;border-radius:var(--radius-md);margin-bottom:10px;font-size:var(--fs-md);line-height:1.6;border:1px solid}
+  .calc-warn.w-red{background:rgba(224,52,43,.11);border-color:rgba(224,52,43,.4);color:var(--red)}
+  .calc-warn.w-yellow{background:rgba(166,106,0,.11);border-color:rgba(166,106,0,.4);color:var(--yellow)}
+  .calc-warn.w-blue{background:rgba(90,86,214,.11);border-color:rgba(90,86,214,.4);color:var(--blue)}
+  @keyframes sli{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+  .card{border-radius:var(--radius-md);padding:16px 18px;margin-bottom:12px;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);box-shadow:var(--shadow-md);animation:sli .18s ease-out;overflow-wrap:anywhere}
+  .rh{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+  .rh .rn-title{font-size:var(--fs-xl);font-weight:600;line-height:1.35;color:var(--text);margin:0 0 3px}
+  .card .rh .rc.rc-code{font-family:var(--mono);font-size:var(--fs-md);font-weight:600;letter-spacing:.04em;color:var(--muted)}
+  .rn{font-size:var(--fs-base);color:var(--text);font-weight:500;line-height:1.5;margin-bottom:10px}
+  .ico{width:36px;height:36px;border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;font-size:var(--fs-3xl);flex-shrink:0}
+  .card .ico{background:rgba(255,255,255,.06);border-radius:var(--radius-sm);width:32px;height:32px;font-size:var(--fs-2xl)}
+  [data-theme="light"] .card .ico{background:rgba(20,28,48,.06)}
+  .card[data-sec="danger"]{box-shadow:inset 3px 0 0 var(--red),var(--shadow-sm)}
+  .card[data-sec="danger"] .ico{color:var(--red);background:rgba(224,52,43,.18)}
+  .card[data-sec="warn"]{box-shadow:inset 3px 0 0 var(--orange),var(--shadow-sm)}
+  .card[data-sec="warn"] .ico{color:var(--orange)}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .tag{font-size:var(--fs-sm);letter-spacing:0;padding:3px 9px;border-radius:var(--radius-xs);font-weight:600;font-family:var(--head)}
+  [data-theme="light"] .tag{background:rgba(255,255,255,.66)}
+  .res-sec{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;margin:0 0 22px}
+  .res-sec .card{margin-bottom:0}
+  .res-sec-h{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;font-family:var(--head);font-size:var(--fs-base);font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+  .res-sec-h .res-sec-n{font-size:var(--fs-md);font-weight:600;color:var(--hint)}
+  .tab-bar{display:none}
+  /* minmax(0,1fr), не 1fr: 1fr = minmax(auto,1fr), и таблица с nowrap-колонками растянула бы
+     колонку до своей min-content ширины (577 px на телефоне при 420 px экрана). */
+  .res-sec > .card{min-width:0}
+  @media (max-width:900px){ .res-sec{grid-template-columns:minmax(0,1fr)} }
+  @media (max-width:1180px){
+    .content-row{flex-direction:column}
+    .sidebar{width:100%;position:static}
+    .sidebar-left{display:contents}
+    .main-col{order:-1;width:100%}
+    .nav-panel{order:-2;align-self:stretch;width:100%;max-width:100%;min-width:0;flex-direction:row;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;gap:4px;padding:6px;margin-bottom:16px}
+    .nav-panel::-webkit-scrollbar{display:none}
+    .nav-panel{-webkit-mask-image:linear-gradient(to right,#000 90%,transparent);mask-image:linear-gradient(to right,#000 90%,transparent)}
+    .nav-grp{display:none}
+    .nav-item{width:auto;flex-shrink:0;white-space:nowrap;padding:9px 12px}
+    .nav-panel ~ .side-panel{order:1;align-self:stretch;width:100%;margin-top:16px}
+  }
+
+  /* ── Вход: тот же экран, что на сайте (#authScreen, .auth-*) ── */
+  #authScreen{--ac-ink:#D7DBE3;--ac-dim:#98A0B0;--ac-brand:#5B6CFF;--ac-brand2:#2F6BFF;--ac-line:rgba(255,255,255,.10);--ac-field:rgba(255,255,255,.05)}
+  [data-theme="light"] #authScreen{--ac-ink:#232A38;--ac-dim:#545C6C;--ac-line:rgba(20,28,48,.14);--ac-field:rgba(255,255,255,.82)}
+  .auth-screen{position:fixed;inset:0;z-index:50;display:flex;align-items:stretch;justify-content:center;overflow-y:auto;
+    background:linear-gradient(var(--login-scrim),var(--login-scrim)),var(--login-bg) center/cover no-repeat,#0A1D4A;color:var(--ac-ink)}
+  [data-theme="light"] .auth-screen{background:linear-gradient(var(--login-scrim),var(--login-scrim)),var(--login-bg) center/cover no-repeat,#E3EEFA}
+  .auth-theme{position:absolute;top:18px;right:18px;z-index:2;border-color:var(--ac-line);background:rgba(255,255,255,.07);color:var(--ac-dim);box-shadow:none}
+  .auth-theme:hover{color:var(--ac-ink);border-color:var(--ac-line);background:rgba(255,255,255,.13)}
+  .auth-theme .tt-track{border-color:var(--ac-line);background:rgba(255,255,255,.08)}
+  .auth-theme .tt-track>.ic{color:var(--ac-dim)}
+  [data-theme="light"] .auth-theme{background:rgba(255,255,255,.7)}
+  [data-theme="light"] .auth-theme:hover{background:#fff}
+  [data-theme="light"] .auth-theme .tt-track{background:rgba(20,28,48,.08)}
+  .auth-shell{width:100%;max-width:1180px;margin:auto;display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;padding:40px 32px}
+  .auth-hero{position:relative;min-width:0}
+  .auth-hero-inner{position:relative}
+  .auth-logo-img{display:block;max-width:100%;height:auto;margin-bottom:32px}
+  .auth-logo-dark{width:322px;margin-left:-2px}
+  .auth-logo-light{width:307px;margin-left:-4px}
+  :root:not([data-theme="light"]) .auth-logo-light,[data-theme="light"] .auth-logo-dark{display:none}
+  .auth-hero-title{font-family:var(--head);font-size:46px;line-height:1.08;font-weight:800;letter-spacing:-.03em;margin:0 0 20px;
+    background:linear-gradient(180deg,#EDEFF4 25%,#AEB6C8 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+  [data-theme="light"] .auth-hero-title{background:linear-gradient(180deg,#1C2330 20%,#3E4C78 100%);-webkit-background-clip:text;background-clip:text}
+  .auth-hero-sub{font-size:var(--fs-xl);line-height:1.65;color:var(--ac-dim);max-width:46ch;margin:0 0 34px}
+  .auth-feats{list-style:none;display:flex;flex-direction:column;gap:14px;margin:0;padding:0}
+  .auth-feats li{display:flex;align-items:flex-start;gap:14px}
+  .af-ico{width:38px;height:38px;flex-shrink:0;border-radius:var(--radius-md);display:grid;place-items:center;font-size:var(--fs-2xl);background:rgba(255,255,255,.06);border:1px solid var(--ac-line)}
+  [data-theme="light"] .af-ico{background:rgba(255,255,255,.7)}
+  .af-t{display:block;font-size:var(--fs-lg);font-weight:600;color:var(--ac-ink);line-height:1.35}
+  .af-s{display:block;font-size:var(--fs-md);color:var(--ac-dim);line-height:1.5;margin-top:2px}
+  .auth-pane{display:flex;justify-content:center;min-width:0}
+  .auth-card{width:100%;max-width:420px;border-radius:24px;padding:36px 34px 26px;
+    background:linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.03));
+    backdrop-filter:blur(26px) saturate(1.4);-webkit-backdrop-filter:blur(26px) saturate(1.4);
+    border:1px solid var(--ac-line);box-shadow:0 34px 80px rgba(4,7,20,.55),inset 0 1px 0 rgba(255,255,255,.09)}
+  [data-theme="light"] .auth-card{background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(250,251,254,.86));box-shadow:0 24px 60px rgba(24,32,56,.14),inset 0 1px 0 rgba(255,255,255,.9)}
+  .auth-card-logo{display:none;margin-bottom:22px}
+  .auth-card-logo .auth-logo-img{max-width:100%;margin:0 auto}
+  .auth-card h1{font-family:var(--head);font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0 0 7px;color:var(--ac-ink)}
+  .auth-card .sub{font-size:var(--fs-base);line-height:1.55;color:var(--ac-dim);margin:0 0 26px}
+  .auth-field{margin-bottom:16px}
+  .auth-field label{display:block;font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.11em;color:var(--ac-dim);margin-bottom:7px;font-weight:600}
+  .auth-field input{width:100%;background:var(--ac-field);border:1px solid var(--ac-line);border-radius:var(--radius-lg);color:var(--ac-ink);
+    font-family:var(--head);font-size:var(--fs-xl);padding:13px 15px;outline:none;transition:border-color .15s,box-shadow .15s,background .15s}
+  .auth-field input::placeholder{color:var(--placeholder)}
+  .auth-field input:hover{background:rgba(255,255,255,.075)}
+  .auth-field input:focus{border-color:var(--ac-brand);background:rgba(255,255,255,.085);box-shadow:var(--ring)}
+  .auth-field.is-bad input{border-color:#FF6B6B;box-shadow:var(--ring-bad)}
+  .auth-btn{width:100%;border:0;border-radius:16px;padding:15px 18px;font-family:var(--head);font-size:var(--fs-lg);font-weight:600;
+    color:#fff;cursor:pointer;background:linear-gradient(135deg,var(--ac-brand),var(--ac-brand2));
+    box-shadow:var(--glow);transition:transform .12s,box-shadow .18s,filter .18s;position:relative}
+  .auth-btn:hover:not(:disabled){filter:brightness(1.07);box-shadow:var(--glow)}
+  .auth-btn:active:not(:disabled){transform:translateY(1px)}
+  .auth-btn:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
+  .auth-btn.ghost{background:rgba(255,255,255,.06);border:1px solid var(--ac-line);box-shadow:none;color:var(--ac-ink);font-weight:500}
+  [data-theme="light"] .auth-btn.ghost{background:rgba(255,255,255,.72)}
+  .auth-btn.ghost:hover:not(:disabled){background:rgba(255,255,255,.1);filter:none}
+  .auth-btn.is-busy .ab-label{visibility:hidden}
+  .auth-btn.is-busy::after{content:'';position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;
+    border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:acspin .7s linear infinite}
+  @keyframes acspin{to{transform:rotate(360deg)}}
+  .auth-note{text-align:center;font-size:var(--fs-md);color:var(--ac-dim);margin:10px 0 0}
+  .auth-note a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+  #authScreen .calc-warn{border-radius:var(--radius-lg);font-size:var(--fs-md);margin-bottom:14px}
+  #authScreen .w-red{background:rgba(255,107,107,.13);border-color:rgba(255,107,107,.38);color:#FF9B9B}
+  [data-theme="light"] #authScreen .w-red{background:rgba(179,36,28,.10);border-color:rgba(179,36,28,.34);color:#96201A}
+  #turnstileLogin:empty{display:none}
+  #turnstileLogin{margin:0 0 14px}
+  @media (max-width:980px){
+    .auth-shell{grid-template-columns:1fr;gap:0;padding:24px 18px;max-width:520px}
+    .auth-hero{display:none}
+    .auth-card-logo{display:flex}
+    .auth-card{max-width:none;padding:30px 24px 22px;border-radius:22px}
+    .auth-card h1{font-size:var(--fs-5xl)}
+  }
+  @media (max-width:560px){ .auth-theme .tt-txt{display:none} .auth-theme{padding-right:4px} }
+  @media (max-width:400px){ .auth-shell{padding:16px 12px} .auth-card{padding:26px 18px 20px} }
+  @media (prefers-reduced-motion:reduce){ .auth-btn,.auth-field input{transition:none} .card{animation:none} }
+
+  /* ── Дашборд: своё поверх оболочки ── */
+  .res-sec-h .res-sec-sub{margin-left:auto;font-size:var(--fs-md);font-weight:500;letter-spacing:0;text-transform:none;color:var(--hint);text-align:right}
+  .card.span2{grid-column:1/-1}
+  .card.tiles-card{grid-column:1/-1;padding:0;background:transparent;border:0;box-shadow:none;animation:none}
+  .tiles{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+  .tile{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius-md);padding:12px 14px;min-width:0;box-shadow:var(--shadow-sm);animation:sli .18s ease-out}
+  .tile .l{font-size:var(--fs-md);color:var(--muted);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tile .v{font-size:var(--fs-5xl);font-weight:600;letter-spacing:-.02em;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+  .tile .v small{font-size:var(--fs-md);font-weight:500;color:var(--muted);margin-left:4px;letter-spacing:0}
+  .tile .d{font-size:var(--fs-md);color:var(--muted);margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;line-height:1.4}
+  .tile.hero .v{font-size:32px}
+  .tile .meter{margin-top:8px}
+  .rh .rn-sub{font-size:var(--fs-md);color:var(--muted);line-height:1.4}
+  .card .err{color:var(--muted);font-size:var(--fs-md)}
+  .tag.st{display:inline-flex;align-items:center;gap:6px;border:1px solid transparent;white-space:nowrap}
+  .tag.st .dot{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+  .tag.st.ok{background:rgba(31,163,77,.12);color:var(--green);border-color:rgba(31,163,77,.36)}
+  .tag.st.warn{background:rgba(166,106,0,.12);color:var(--yellow);border-color:rgba(166,106,0,.36)}
+  .tag.st.bad{background:rgba(224,52,43,.14);color:var(--red);border-color:rgba(224,52,43,.40)}
+  .tag.st.info{background:rgba(90,108,255,.12);color:var(--indigo);border-color:rgba(90,108,255,.32)}
+  .tag.st.none{background:transparent;border-color:var(--border);color:var(--muted)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:var(--fs-base);align-items:baseline}
+  .kv .k{color:var(--muted);white-space:nowrap}
+  .kv .v{min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+  .rows{display:flex;flex-direction:column;gap:8px}
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .row .n{flex:1 1 160px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .x{color:var(--muted);font-size:var(--fs-md);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .meter{position:relative;height:8px;border-radius:4px;background:var(--series-dim);overflow:hidden;flex:1 1 120px;min-width:80px}
+  .meter i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--series-1)}
+  .meter.warn i{background:var(--yellow)}
+  .meter.bad i{background:var(--red)}
+  table{width:100%;border-collapse:collapse;font-size:var(--fs-md)}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:var(--fs-sm);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .mono{font-family:var(--mono);font-size:var(--fs-sm);overflow-wrap:anywhere}
+  tr:last-child td{border-bottom:0}
+  .tbl{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .small{font-size:var(--fs-md);color:var(--muted)}
+  .note{font-size:var(--fs-md);color:var(--muted);margin-top:8px;line-height:1.5}
+  details.tv{margin-top:8px}
+  details.tv summary{cursor:pointer;color:var(--muted);font-size:var(--fs-md);user-select:none}
+  details.tv summary:hover{color:var(--text)}
+  .chart{position:relative;width:100%}
+  .chart svg{display:block;width:100%;height:auto;overflow:visible}
+  .chart .tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 9px;font-size:var(--fs-md);box-shadow:var(--shadow-lg);white-space:nowrap;display:none;z-index:2;transform:translate(-50%,-110%);color:var(--text)}
+  .chart .tip.show{display:block}
+  .ax{font-size:10px;fill:var(--muted)}
+  .gl{stroke:var(--grid);stroke-width:1}
+  .base{stroke:var(--axis);stroke-width:1}
+  .log{font-family:var(--mono);font-size:var(--fs-sm);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px}
+  .log .t{color:var(--muted)}
+  .log .w{color:var(--yellow)}
+  .log .e{color:var(--red)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  #dash{transition:opacity .2s}
+  #dash.loading{opacity:.55}
+  .empty{padding:40px 16px;text-align:center;color:var(--muted)}
+  #stamp{font-variant-numeric:tabular-nums;white-space:nowrap}
+  #stamp.stale{color:var(--yellow)}
+  @media (max-width:640px){
+    .wrap{padding:calc(10px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) calc(84px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left))}
+    header{gap:6px 8px;margin-bottom:10px}
+    .hdr-brand{order:0}
+    .hdr-logo-dark{height:31px}
+    .hdr-logo-light{height:29px}
+    .hdr-tools{order:1;margin-left:auto}
+    .hdr-tools .tt-txt{display:none}
+    .hdr-tools .theme-toggle{padding-right:4px}
+    /* Своей строкой и с переносом: иначе «обновлено 16:18:38» уезжает за левый край. */
+    #userBar.user-bar{order:11;flex:1 1 100%;min-width:0;gap:8px;font-size:var(--fs-md);flex-wrap:wrap;justify-content:flex-end}
+    #userBar .btn{min-height:44px}
+    .content-row{gap:20px}
+    .side-panel{padding:16px}
+    .btn{min-height:38px;padding:9px 14px;font-size:var(--fs-md);display:inline-flex;align-items:center;justify-content:center;touch-action:manipulation}
+    .nav-item{min-height:40px;font-size:var(--fs-base);touch-action:manipulation}
+    .tab-bar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--surface);border-top:1px solid var(--border);padding:6px 8px calc(6px + env(safe-area-inset-bottom));box-shadow:var(--shadow-up)}
+    .tab-bar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-height:44px;background:none;border:0;border-radius:var(--radius-sm);color:var(--muted);font-family:var(--head);font-size:var(--fs-xs);font-weight:600;padding:4px 2px;cursor:pointer;touch-action:manipulation}
+    .tab-bar button.active{color:var(--indigo);background:rgba(90,108,255,.12)}
+    .tab-bar .tb-i{font-size:var(--fs-3xl);line-height:1}
+    .side-panel.nav-panel{display:none}
+    body.nav-open .side-panel.nav-panel{display:flex;flex-direction:column;position:fixed;left:12px;right:12px;bottom:calc(72px + env(safe-area-inset-bottom));z-index:59;max-height:70vh;overflow:auto;padding:10px;box-shadow:var(--shadow-lg);-webkit-mask-image:none;mask-image:none}
+    body.nav-open .nav-panel .nav-grp{display:block}
+    body.nav-open .nav-panel .nav-item{width:100%;white-space:normal}
+    /* Подложка — в #appWrap, а не в body: .wrap — свой контекст наложения (z-index:1), и body::after (58)
+       лежал бы поверх меню (59) и панели вкладок (60) внутри него. Касание по подложке закрывает меню
+       (обработчик на #appWrap) и не доходит до ссылок под ней. Так же на сайте (22.09.2026). */
+    body.nav-open #appWrap::after{content:'';position:fixed;inset:0;z-index:58;background:rgba(0,0,0,.35)}
+    .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .tile .v{font-size:var(--fs-4xl)}
+    .tile.hero .v{font-size:26px}
+    .res-sec-h{flex-wrap:wrap}
+    .res-sec-h .res-sec-sub{margin-left:0;flex-basis:100%;text-align:left}
+  }
+</style>
+<script>
+  // Тема до первой отрисовки, как на сайте: иначе светлая тема мигала бы тёмным кадром.
+  try{ if(localStorage.getItem("ca-theme")==="light") document.documentElement.setAttribute("data-theme","light"); }catch(e){}
+</script>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20h16M7 16v-5M12 16V7M17 16v-8"/></symbol>
+  <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></symbol>
+  <symbol id="i-tree" viewBox="0 0 24 24"><path d="M9 3h6v4H9zM3 17h6v4H3zM15 17h6v4h-6zM12 7v3M6 17v-4h12v4"/></symbol>
+  <symbol id="i-clipboard" viewBox="0 0 24 24"><path d="M9 3h6v3H9zM7 5H5v16h14V5h-2M9 11h6M9 15h6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-coins" viewBox="0 0 24 24"><circle cx="9" cy="9" r="6"/><path d="M15 9.6a6 6 0 1 1-5.4 5.4"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l10 18H2zM12 10v4M12 18h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M16 15.5a5 5 0 0 1 5.5 4.5"/></symbol>
+  <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></symbol>
+</svg>
+
+<!-- ── Экран входа: та же двухколоночная посадочная, что на сайте ── -->
+<div id="authScreen" class="auth-screen">
+  <button type="button" class="theme-toggle auth-theme" id="authThemeBtn" role="switch" aria-checked="false" aria-label="Тема: тёмная. Включить светлую" title="Тема: тёмная. Включить светлую"><span class="tt-track" aria-hidden="true"><svg class="ic tt-moon"><use href="#i-moon"/></svg><svg class="ic tt-sun"><use href="#i-sun"/></svg><span class="tt-knob"><svg class="ic tt-k-moon"><use href="#i-moon"/></svg><svg class="ic tt-k-sun"><use href="#i-sun"/></svg></span></span><span class="tt-txt">Тёмная</span></button>
+  <div class="auth-shell">
+    <section class="auth-hero">
+      <div class="auth-hero-inner">
+        <img class="auth-logo-img auth-logo-dark" src="/assets/login-logo-dark.webp" width="490" height="120" alt="Customs Assist KG" decoding="async"><img class="auth-logo-img auth-logo-light" src="/assets/login-logo-light.webp" width="456" height="107" alt="Customs Assist KG" decoding="async">
+        <h2 class="auth-hero-title">Мониторинг.<br>Пользователи.<br>Расход.</h2>
+        <p class="auth-hero-sub">Состояние сервера и служб, пользователи и подписки, лимиты базы, AI-помощник, сроки мер правовой базы и журнал администрирования — в одном окне.</p>
+        <ul class="auth-feats">
+          <li><span class="af-ico"><svg class="ic" aria-hidden="true"><use href="#i-pulse"/></svg></span><div><span class="af-t">Состояние в реальном времени</span><span class="af-s">API, база данных, бэкап, сертификат, курс НБКР — с обновлением раз в минуту</span></div></li>
+          <li><span class="af-ico"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg></span><div><span class="af-t">Пользователи и подписки</span><span class="af-s">Кто онлайн, кто регистрируется, у кого истекает доступ</span></div></li>
+          <li><span class="af-ico"><svg class="ic" aria-hidden="true"><use href="#i-coins"/></svg></span><div><span class="af-t">Расход и лимиты</span><span class="af-s">AI-помощник по дням и пользователям, суточный потолок, перебор базы</span></div></li>
+        </ul>
+      </div>
+    </section>
+    <section class="auth-pane">
+      <div class="auth-card">
+        <div class="auth-card-logo"><img class="auth-logo-img auth-logo-dark" src="/assets/login-logo-dark.webp" width="490" height="120" alt="Customs Assist KG" decoding="async"><img class="auth-logo-img auth-logo-light" src="/assets/login-logo-light.webp" width="456" height="107" alt="Customs Assist KG" decoding="async"></div>
+        <div id="authViewLoading">
+          <h1>Мониторинг</h1>
+          <p class="sub" id="authStatus">Проверяем сессию…</p>
+        </div>
+        <div id="authViewLogin" style="display:none">
+          <h1>Вход для администраторов</h1>
+          <p class="sub">Дашборд открыт только учётным записям с ролью администратора. Учётная запись и пароль — те же, что на сайте.</p>
+          <div id="authMsg" class="calc-warn w-red" role="alert" style="display:none"></div>
+          <div class="auth-field" id="fEmail">
+            <label for="authEmail">Email</label>
+            <input id="authEmail" type="email" autocomplete="username" inputmode="email" placeholder="admin@example.com">
+          </div>
+          <div class="auth-field" id="fPassword">
+            <label for="authPassword">Пароль</label>
+            <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••">
+          </div>
+          <div id="turnstileLogin"></div>
+          <button id="authSubmit" class="auth-btn" type="button"><span class="ab-label">Войти</span></button>
+          <p class="auth-note"><a href="https://customsassist.trade/">Основной сайт</a></p>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- ── Приложение: шапка, левое меню, колонка разделов — как на сайте ── -->
+<div class="wrap" id="appWrap" style="display:none">
+  <header>
+    <div class="hdr-brand"><img class="hdr-logo hdr-logo-dark" src="/assets/app-logo-dark.webp" width="371" height="85" alt="Customs Assist KG" decoding="async"><img class="hdr-logo hdr-logo-light" src="/assets/app-logo-light.webp" width="335" height="77" alt="Customs Assist KG" decoding="async"></div>
+    <div class="hdr-tools">
+      <button type="button" class="theme-toggle" id="themeToggle" role="switch" aria-checked="false" aria-label="Тема: тёмная. Включить светлую" title="Тема: тёмная. Включить светлую"><span class="tt-track" aria-hidden="true"><svg class="ic tt-moon"><use href="#i-moon"/></svg><svg class="ic tt-sun"><use href="#i-sun"/></svg><span class="tt-knob"><svg class="ic tt-k-moon"><use href="#i-moon"/></svg><svg class="ic tt-k-sun"><use href="#i-sun"/></svg></span></span><span class="tt-txt">Тёмная</span></button>
+    </div>
+    <div class="user-bar" id="userBar">
+      <span id="stamp" title="Время последнего обновления по Бишкеку"></span>
+      <button id="refreshBtn" class="btn" type="button" title="Обновить сейчас"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Обновить</button>
+      <div class="acc-wrap" id="accWrap">
+        <button class="btn acc-btn" id="accBtn" type="button" aria-haspopup="true" aria-expanded="false"><b id="who"></b> ▾</button>
+        <div class="acc-menu">
+          <div class="acc-email" id="accEmail"></div>
+          <span class="acc-status acc-ok">Администратор · дашборд</span>
+          <button id="logoutBtn" class="btn" type="button">Выйти</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="content-row">
+    <div class="sidebar sidebar-left">
+      <div class="side-panel nav-panel" id="navPanel">
+        <button class="nav-item active" type="button" data-sec="sec-health"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></span> Состояние</button>
+        <button class="nav-item" type="button" data-sec="sec-http"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-pulse"/></svg></span> Запросы к API</button>
+        <div class="nav-grp">Люди и деньги</div>
+        <button class="nav-item" type="button" data-sec="sec-users"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg></span> Пользователи</button>
+        <button class="nav-item" type="button" data-sec="sec-engine"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg></span> Лимиты базы</button>
+        <button class="nav-item" type="button" data-sec="sec-assistant"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-sparkles"/></svg></span> AI-помощник</button>
+        <button class="nav-item" type="button" data-sec="sec-economy"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-coins"/></svg></span> Экономика</button>
+        <div class="nav-grp">Справочники</div>
+        <button class="nav-item" type="button" data-sec="sec-base"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-tree"/></svg></span> Правовая база</button>
+        <button class="nav-item" type="button" data-sec="sec-audit"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-clipboard"/></svg></span> Журнал администрирования</button>
+      </div>
+      <div class="side-panel">
+        <details class="side-det" open>
+          <summary><div class="side-sum"><span><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg></span><div>Об этих данных<span class="sd-sub">откуда берутся цифры</span></div><span class="sd-chev">▾</span></div></summary>
+          <div class="side-body">
+            <div class="side-note">Счётчики запросов, задержка цикла событий и журнал — из памяти процесса API, обнуляются при перезапуске. Пользователи, помощник и журнал администрирования — из PostgreSQL. Бэкап — из systemd. Сроки мер — из базы на сервере. Время — по Бишкеку (UTC+6). Обновление раз в минуту, пока вкладка видна.</div>
+          </div>
+        </details>
+      </div>
+    </div>
+    <div class="main-col">
+      <div id="dash"><p class="empty">Загружаем…</p></div>
+    </div>
+  </div>
+
+  <nav id="tabBar" class="tab-bar" aria-label="Разделы">
+    <button type="button" data-sec="sec-health"><span class="tb-i"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></span>Состояние</button>
+    <button type="button" data-sec="sec-users"><span class="tb-i"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg></span>Люди</button>
+    <button type="button" data-sec="sec-assistant"><span class="tb-i"><svg class="ic" aria-hidden="true"><use href="#i-sparkles"/></svg></span>AI</button>
+    <button type="button" data-sec="sec-base"><span class="tb-i"><svg class="ic" aria-hidden="true"><use href="#i-tree"/></svg></span>База</button>
+    <button type="button" id="tabMoreBtn"><span class="tb-i"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></span>Ещё</button>
+  </nav>
+</div>
+
+<script>
+// Всё до входа — только код этой страницы; код дашборда (dash.js) приходит после входа
+// администратора и исполняется как blob, как checker.js на основной странице.
+(function(){
+  'use strict';
+  const $=id=>document.getElementById(id);
+
+  // ── Тема: те же кнопки и тот же ключ localStorage, что на сайте ──
+  function currentTheme(){ return document.documentElement.getAttribute('data-theme')==='light' ? 'light' : 'dark'; }
+  function syncThemeButtons(){
+    const light=currentTheme()==='light',label=light?'Светлая':'Тёмная',hint=light?'Тема: светлая. Включить тёмную':'Тема: тёмная. Включить светлую';
+    document.querySelectorAll('.theme-toggle').forEach(b=>{b.setAttribute('aria-checked',String(light));b.setAttribute('aria-label',hint);b.title=hint;const t=b.querySelector('.tt-txt');if(t)t.textContent=label;});
+  }
+  function applyTheme(t){
+    if(t==='light')document.documentElement.setAttribute('data-theme','light');else document.documentElement.removeAttribute('data-theme');
+    try{localStorage.setItem('ca-theme',t);}catch(e){}
+    syncThemeButtons();
+    if(window.dashTheme)window.dashTheme(t);
+  }
+  syncThemeButtons();
+  document.querySelectorAll('.theme-toggle').forEach(b=>b.addEventListener('click',()=>applyTheme(currentTheme()==='light'?'dark':'light')));
+
+  // ── Капча на входе: только когда сервер её потребовал (captcha_required) ──
+  let TS_KEY=null,tsReady=false,tsWidget;
+  async function initTurnstile(){
+    try{const r=await fetch('/api/auth/config',{credentials:'include'});if(!r.ok)return;const c=await r.json();if(c.turnstileSiteKey)TS_KEY=c.turnstileSiteKey;}catch(e){}
+  }
+  function tsLoad(){
+    return new Promise(resolve=>{
+      if(tsReady||!TS_KEY)return resolve();
+      window.onTurnstileLoad=function(){tsReady=true;resolve();};
+      const s=document.createElement('script');
+      s.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onTurnstileLoad';
+      s.async=true;s.defer=true;s.onerror=()=>resolve();
+      document.head.appendChild(s);
+    });
+  }
+  async function tsRender(){
+    await tsLoad();
+    if(!tsReady||!window.turnstile||tsWidget!==undefined)return;
+    tsWidget=window.turnstile.render($('turnstileLogin'),{sitekey:TS_KEY,language:'ru',action:'login',theme:currentTheme()});
+  }
+  function tsToken(){if(!tsReady||!window.turnstile||tsWidget===undefined)return '';try{return window.turnstile.getResponse(tsWidget)||'';}catch(e){return '';}}
+  function tsReset(){if(!tsReady||!window.turnstile||tsWidget===undefined)return;try{window.turnstile.reset(tsWidget);}catch(e){}}
+
+  // ── Вход ──
+  let currentUser=null,busy=false;
+  function showMsg(text){const m=$('authMsg');m.textContent=text||'';m.style.display=text?'':'none';}
+  function showAuthView(v){$('authViewLoading').style.display=v==='loading'?'':'none';$('authViewLogin').style.display=v==='login'?'':'none';}
+  function showAuth(msg){
+    currentUser=null;
+    if(window.dashStop)window.dashStop();
+    $('dash').innerHTML='<p class="empty">Загружаем…</p>';
+    $('who').textContent='';$('accEmail').textContent='';$('stamp').textContent='';
+    $('accWrap').classList.remove('open');document.body.classList.remove('nav-open');
+    $('appWrap').style.display='none';$('authScreen').style.display='flex';
+    showAuthView('login');showMsg(msg);
+  }
+  function showLoading(text){$('authScreen').style.display='flex';showAuthView('loading');$('authStatus').textContent=text;}
+  function btnBusy(b,on){b.classList.toggle('is-busy',on);b.disabled=on;}
+  const AUTH_EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  async function doLogin(){
+    if(busy)return;
+    const email=$('authEmail').value.trim(),password=$('authPassword').value,btn=$('authSubmit');
+    $('fEmail').classList.toggle('is-bad',!AUTH_EMAIL_RE.test(email));
+    $('fPassword').classList.toggle('is-bad',!password);
+    if(!AUTH_EMAIL_RE.test(email)||!password){showMsg('Введите email и пароль.');return;}
+    busy=true;btnBusy(btn,true);showMsg('');
+    try{
+      const res=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,turnstileToken:tsToken()})});
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok){
+        if(data.error==='captcha_required'){await tsRender();showMsg('Слишком много неудачных попыток. Пройдите проверку и нажмите «Войти» ещё раз.');}
+        else{
+          tsReset();
+          showMsg(data.error==='admin_only'?'Доступ к дашборду есть только у администраторов.'
+            :data.error==='invalid credentials'?'Неверный email или пароль.'
+            :data.error==='email_not_verified'?'Адрес не подтверждён — подтвердите его на основном сайте.'
+            :res.status===429?'Слишком много попыток. Попробуйте позже.'
+            :'Ошибка входа ('+res.status+').');
+        }
+        return;
+      }
+      currentUser=data;
+      $('authPassword').value='';
+      await startDash();
+    }catch(e){showMsg('Не удалось соединиться с сервером.');}
+    finally{busy=false;btnBusy(btn,false);}
+  }
+  $('authSubmit').addEventListener('click',doLogin);
+  $('authPassword').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+  $('authEmail').addEventListener('keydown',e=>{if(e.key==='Enter')$('authPassword').focus();});
+
+  async function doLogout(){
+    try{await fetch('/api/auth/logout',{method:'POST',credentials:'include'});}catch(e){}
+    showAuth('');
+  }
+  $('logoutBtn').addEventListener('click',doLogout);
+  $('accBtn').addEventListener('click',()=>{const w=$('accWrap');w.classList.toggle('open');$('accBtn').setAttribute('aria-expanded',String(w.classList.contains('open')));});
+  document.addEventListener('click',e=>{if(!$('accWrap').contains(e.target))$('accWrap').classList.remove('open');});
+
+  // ── Меню разделов: прокрутка к разделу и подсветка текущего ──
+  function goSec(id){
+    const el=document.getElementById(id);
+    document.body.classList.remove('nav-open');
+    if(el)el.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+  document.querySelectorAll('#navPanel .nav-item,#tabBar button[data-sec]').forEach(b=>b.addEventListener('click',()=>goSec(b.dataset.sec)));
+  $('tabMoreBtn').addEventListener('click',()=>document.body.classList.toggle('nav-open'));
+  // На #appWrap, не на document: iOS не шлёт click от касания по элементу без обработчика у него или предка.
+  $('appWrap').addEventListener('click',e=>{if(document.body.classList.contains('nav-open')&&!$('navPanel').contains(e.target)&&!$('tabBar').contains(e.target))document.body.classList.remove('nav-open');});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')document.body.classList.remove('nav-open');});
+  function markActive(id){
+    document.querySelectorAll('#navPanel .nav-item,#tabBar button[data-sec]').forEach(b=>b.classList.toggle('active',b.dataset.sec===id));
+  }
+  let observer=null;
+  function observeSections(){
+    if(observer)observer.disconnect();
+    observer=new IntersectionObserver(entries=>{
+      const vis=entries.filter(e=>e.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top);
+      if(vis.length)markActive(vis[0].target.id);
+    },{rootMargin:'-20% 0px -70% 0px',threshold:0});
+    document.querySelectorAll('#dash section[id]').forEach(s=>observer.observe(s));
+  }
+
+  // ── Код дашборда: только администратору, как blob ──
+  let codeLoaded=false;
+  function loadCode(){
+    return new Promise((resolve,reject)=>{
+      if(codeLoaded)return resolve();
+      const xhr=new XMLHttpRequest();
+      xhr.open('GET','/api/dash.js');xhr.responseType='blob';xhr.timeout=60000;
+      const fail=(m,s)=>{const e=new Error(m);e.status=s;reject(e);};
+      xhr.onerror=()=>fail('Соединение прервалось.');
+      xhr.ontimeout=()=>fail('Загрузка не завершилась.');
+      xhr.onload=()=>{
+        if(xhr.status!==200)return fail('Код дашборда не получен ('+xhr.status+').',xhr.status);
+        const url=URL.createObjectURL(new Blob([xhr.response],{type:'application/javascript'}));
+        const s=document.createElement('script');s.src=url;
+        s.onload=()=>{URL.revokeObjectURL(url);s.remove();if(window.dashStart){codeLoaded=true;resolve();}else fail('Код дашборда не запустился.');};
+        s.onerror=()=>{URL.revokeObjectURL(url);s.remove();fail('Код дашборда не открылся.');};
+        document.head.appendChild(s);
+      };
+      xhr.send();
+    });
+  }
+  async function startDash(){
+    if(!currentUser||currentUser.role!=='admin'){
+      try{await fetch('/api/auth/logout',{method:'POST',credentials:'include'});}catch(e){}
+      showAuth('Доступ к дашборду есть только у администраторов.');return;
+    }
+    showLoading('Загружаем дашборд…');
+    try{await loadCode();}
+    catch(e){showAuth(e.status===403?'Доступ к дашборду есть только у администраторов.':e.message);return;}
+    $('who').textContent=currentUser.email;$('accEmail').textContent=currentUser.email;
+    $('authScreen').style.display='none';$('appWrap').style.display='';
+    window.dashStart({mount:$('dash'),stamp:$('stamp'),refresh:$('refreshBtn'),theme:currentTheme(),onRender:observeSections,onSessionEnd:()=>showAuth('Сессия завершена. Войдите снова.')});
+  }
+
+  (async function init(){
+    showLoading('Проверяем сессию…');
+    initTurnstile();
+    try{
+      const res=await fetch('/api/auth/me',{credentials:'include'});
+      if(!res.ok){showAuth('');return;}
+      currentUser=await res.json();
+      await startDash();
+    }catch(e){showAuth('Не удалось соединиться с сервером.');}
+  })();
+})();
+</script>
+</body>
+</html>

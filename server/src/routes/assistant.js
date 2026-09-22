@@ -5,31 +5,28 @@ const { sendEmail, renderEmail, BRAND } = require('../services/email');
 
 const router = express.Router();
 
-// Тарифы AI-ассистента: лимит вопросов в день и в месяц. base входит в подписку.
-// День и месяц — календарные по времени Бишкека (UTC+6), как и отчёт для счёта.
-// Дневной лимит платных тарифов — примерно вдвое выше среднего расхода месячного
-// (300/30 ≈ 10 → 20, 1000/30 ≈ 33 → 60): в загруженный день хватает, а выбрать
-// месяц за день или делить учётную запись на нескольких человек — нет.
-// Вопрос с ошибкой модели не списывается: пользователь ответа не получил.
-// Администраторы без лимита. Переопределение: AI_PLAN_LIMITS={"base":{"day":3,"month":100},...}.
+// Тарифы AI-ассистента (сетка владельца, 22.09.2026): цена в сомах за месяц, вопросов в день и в
+// месяц, страниц документов в месяц. Дневной лимит — против дележа одной учётной записи на офис,
+// продаётся месячная квота; страницы ограничены только месяцем — всплеск держит общий суточный
+// потолок расхода (AI_DAILY_BUDGET_USD). День и месяц — календарные по времени Бишкека (UTC+6).
+// Вопрос с ошибкой модели не списывается: пользователь ответа не получил. Администраторы без лимита.
+// Переопределение: AI_PLAN_LIMITS={"base":{"day":3,"month":90,"pages":30,"price":490},...}.
 const PLANS = {
-  base: { name: 'Базовый', day: 3, month: 100 },
-  pro: { name: 'Pro', day: 20, month: 300 },
-  max: { name: 'Max', day: 60, month: 1000 },
+  base: { name: 'Базовый', price: 490, day: 3, month: 90, pages: 30 },
+  pro: { name: 'Pro', price: 990, day: 20, month: 300, pages: 150 },
+  max: { name: 'Max', price: 1990, day: 100, month: 1500, pages: 500 },
 };
 if (process.env.AI_PLAN_LIMITS) {
   for (const [k, v] of Object.entries(JSON.parse(process.env.AI_PLAN_LIMITS))) {
     if (!PLANS[k]) continue;
     if (typeof v === 'number') PLANS[k].month = v;
-    else Object.assign(PLANS[k], v.day != null ? { day: Number(v.day) } : {}, v.month != null ? { month: Number(v.month) } : {});
+    else for (const f of ['day', 'month', 'pages', 'price']) if (v[f] != null) PLANS[k][f] = Number(v[f]);
   }
 }
 
 // Страницы документов (сканы и фото) читаются моделью по одной при прикреплении и тоже стоят денег: три чтения
-// со сверкой — около 0,37 цента страница вне пика и вдвое больше в пик (живой прогон 17.09.2026: 11 страниц скана
-// с двумя перевёрнутыми — 4,1 цента). Лимит страниц — 20 на каждый вопрос тарифа, в день и в месяц:
-// у Базового 60 страниц в день и 2 000 в месяц. Текст PDF, таблицы и Word моделью не читаются и не считаются.
-const PAGES_PER_QUESTION = 20;
+// со сверкой — около 0,6 цента страница по журналу за сентябрь 2026, плюс 3 цента Document AI при споре
+// прочтений. Текст PDF, таблицы и Word моделью не читаются и не считаются.
 
 // Суточный потолок расхода на модель и распознавание по всем пользователям, $ за сутки Бишкека.
 // Тарифы ограничивают одного пользователя, а не сумму: пробные учётные записи и сбойные вопросы
@@ -82,7 +79,7 @@ async function quotaFor(user) {
   );
   const used = rows[0]?.used || 0, usedToday = rows[0]?.used_today || 0;
   const pages = rows[0]?.pages || 0, pagesToday = rows[0]?.pages_today || 0;
-  const plans = Object.fromEntries(Object.entries(PLANS).map(([k, v]) => [k, { name: v.name, day: v.day, month: v.month }]));
+  const plans = Object.fromEntries(Object.entries(PLANS).map(([k, v]) => [k, { name: v.name, price: v.price, day: v.day, month: v.month, pages: v.pages }]));
   const base = { used, usedToday, pages, pagesToday, resets: ymd(month.next), tomorrow: ymd(day.next), plans };
   // Сама сумма пользователю не уходит — только признак.
   const spentAll = rows[0]?.spent_all || 0;
@@ -94,9 +91,10 @@ async function quotaFor(user) {
   const plan = PLANS[user.ai_plan] ? user.ai_plan : 'base';
   const p = PLANS[plan];
   const leftMonth = Math.max(0, p.month - used), leftDay = Math.max(0, p.day - usedToday);
-  const pagesDay = p.day * PAGES_PER_QUESTION, pagesMonth = p.month * PAGES_PER_QUESTION;
+  // Страницы — только месячный лимит; поле pagesDay остаётся для интерфейса и равно месячному.
+  const pagesDay = p.pages, pagesMonth = p.pages;
   return {
-    plan, name: p.name, limit: p.month, day: p.day, ...base,
+    plan, name: p.name, price: p.price, limit: p.month, day: p.day, ...base,
     remainingMonth: leftMonth, remainingDay: leftDay,
     remaining: Math.min(leftMonth, leftDay),
     pagesDay, pagesMonth,
@@ -282,4 +280,6 @@ module.exports = router;
 module.exports.bishkekMonth = bishkekMonth;
 module.exports.bishkekDay = bishkekDay;
 module.exports.PLANS = PLANS;
-module.exports.PAGES_PER_QUESTION = PAGES_PER_QUESTION;
+// Для дашборда администраторов (routes/dash.js): потолок расхода и число вопросов в работе.
+module.exports.DAILY_BUDGET_USD = DAILY_BUDGET_USD;
+module.exports.inFlight = inFlight;

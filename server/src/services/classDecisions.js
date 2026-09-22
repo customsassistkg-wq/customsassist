@@ -107,6 +107,7 @@ function saveToDisk() {
 // вручную (см. session.md). У него нет CORS и он не расcчитан на запрос от каждого
 // клиента при каждом поиске, поэтому держим локальную копию и обновляем её раз в
 // сутки одним запросом с сервера, а не проксируем живой запрос на каждый ввод кода.
+let lastError = null; // { at, message } — последняя неудача обновления, для дашборда администраторов
 async function refresh() {
   if (refreshing) return refreshing;
   refreshing = (async () => {
@@ -115,10 +116,12 @@ async function refresh() {
       if (fresh.length > 0) {
         items = fresh;
         fetchedAt = new Date().toISOString();
+        lastError = null;
         saveToDisk();
         console.log(`class-decisions: refreshed, ${items.length} items`);
       }
     } catch (err) {
+      lastError = { at: new Date().toISOString(), message: err.message };
       console.error('class-decisions: refresh failed', err.message);
     } finally {
       refreshing = null;
@@ -156,4 +159,9 @@ function init() {
   setInterval(refresh, REFRESH_INTERVAL_MS);
 }
 
-module.exports = { init, search, refresh };
+// Состояние справочника для дашборда администраторов (routes/dash.js).
+function status() {
+  return { count: items.length, fetchedAt, lastError };
+}
+
+module.exports = { init, search, refresh, status };

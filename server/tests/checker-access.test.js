@@ -193,6 +193,27 @@ app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send
       assert.deepEqual(await page.evaluate(()=>histLoad()),[],'чужая история поиска не читается');
       await page.locator('#inp').fill('8703231910');
       await page.locator('#result .card').first().waitFor();
+      // Меню «Ещё» на телефоне (22.09.2026): подложка лежала поверх меню и панели вкладок, и после
+      // нажатия «Ещё» ни один элемент не отвечал — страница «висла» до перезагрузки. click() без force
+      // проверяет, что касание получает сам элемент, а не то, что лежит поверх.
+      const navOpen=()=>page.evaluate(()=>document.body.classList.contains('nav-open'));
+      const hitsItself=sel=>page.evaluate(s=>{const el=document.querySelector(s),r=el.getBoundingClientRect(),t=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !!t&&(t===el||el.contains(t));},sel);
+      await page.locator('#tabMoreBtn').click({timeout:5000});
+      assert.equal(await navOpen(),true);
+      for(const sel of ['#navCalcBtn','#navTreeBtn','#tabMoreBtn','#tabBar button[data-nav="navAiBtn"]'])assert.ok(await hitsItself(sel),'касание получает '+sel);
+      assert.equal(await hitsItself('#inp'),false,'содержимое под подложкой не нажимается');
+      await page.locator('#navCalcBtn').click({timeout:5000});
+      assert.equal(await navOpen(),false,'пункт меню закрывает меню');
+      assert.equal(await page.evaluate(()=>searchMode),'calc');
+      await page.locator('#tabMoreBtn').click({timeout:5000});
+      await page.locator('#tabMoreBtn').click({timeout:5000});
+      assert.equal(await navOpen(),false,'повторное «Ещё» закрывает');
+      await page.locator('#tabMoreBtn').click({timeout:5000});
+      await page.mouse.click(200,150);
+      assert.equal(await navOpen(),false,'касание мимо меню закрывает');
+      await page.locator('#tabMoreBtn').click({timeout:5000});
+      await page.keyboard.press('Escape');
+      assert.equal(await navOpen(),false,'Escape закрывает');
       assert.deepEqual(errors,[]);
       assert.deepEqual(cspViolations,[],'Content-Security-Policy');
       const gated=await browser.newPage();

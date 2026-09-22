@@ -245,6 +245,9 @@ router.delete('/users/:id', async (req, res, next) => {
     // delete (so the FK doesn't block this), but `detail` still snapshots
     // the email so the audit trail stays readable after the row is gone.
     await audit(req.user.id, 'delete_user', id, { email: existing[0].email });
+    // Три года после удаления — срок из privacy.html; после delete связь с учётной записью
+    // пропадёт, поэтому срок ставится сейчас, а удаляет services/retention.js.
+    await pool.query("update admin_audit_log set purge_after = now() + interval '3 years' where target_user_id = $1", [id]);
     await endUserSessions(id, 'account_deleted');
     await pool.query('delete from users where id=$1', [id]);
 
@@ -312,4 +315,147 @@ router.get('/assistant', async (req, res, next) => {
   }
 });
 
+// ── Деньги: оплаты подписки и постоянные расходы (миграция 0013) ────────────────────
+// Оплата проходит вне сервиса (перевод, платёжное приложение, наличные); администратор
+// записывает её здесь, и запись сразу продлевает подписку на оплаченные месяцы и ставит
+// тариф помощника. Сумма и способ — для учёта и раздела «Экономика» дашборда.
+const PLAN_KEYS = ['base', 'pro', 'max'];
+const METHOD_MAX = 40, NOTE_MAX = 500;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// До какой даты продлевает оплата на months месяцев: от текущего срока, если он ещё не
+// истёк, иначе от сегодня; конец дня по UTC ставится как в parseSubscriptionValue.
+// 31.01 + 1 месяц в JS перескакивает на 03.03 — держим последний день целевого месяца.
+function extendedUntil(current, months, now = new Date()) {
+  const from = current && new Date(current) > now ? new Date(current) : now;
+  const d = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + months, from.getUTCDate()));
+  if (d.getUTCDate() !== from.getUTCDate()) d.setUTCDate(0);
+  return d.toISOString().slice(0, 10);
+}
+
+router.get('/payments', async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+    const { rows } = await pool.query(
+      `select p.id, p.user_id, p.email, p.amount::float as amount, p.currency, p.plan, p.months, p.paid_until::text as paid_until,
+              p.method, p.note, p.created_at, a.email as actor
+         from payments p left join users a on a.id = p.created_by
+        order by p.created_at desc limit $1`,
+      [limit]
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/payments', async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const id = normalizeUserId(b.user_id);
+    if (!id) return res.status(400).json({ error: 'invalid user id' });
+    const amount = Number(b.amount);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1e7) return res.status(400).json({ error: 'invalid amount' });
+    const currency = b.currency == null || b.currency === '' ? 'KGS' : String(b.currency).toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) return res.status(400).json({ error: 'invalid currency' });
+    const months = b.months == null ? 1 : Number(b.months);
+    if (!Number.isInteger(months) || months < 1 || months > 24) return res.status(400).json({ error: 'invalid months' });
+    const plan = b.plan == null || b.plan === '' ? null : String(b.plan);
+    if (plan && !PLAN_KEYS.includes(plan)) return res.status(400).json({ error: 'invalid plan' });
+    const method = b.method == null ? null : String(b.method).slice(0, METHOD_MAX);
+    const note = b.note == null ? null : String(b.note).slice(0, NOTE_MAX);
+    const extend = b.extend !== false;
+
+    const { rows: found } = await pool.query('select id, email, role, subscription_expires_at from users where id = $1', [id]);
+    const u = found[0];
+    if (!u) return res.status(404).json({ error: 'not found' });
+    // Администратору срок не ставится: у него доступ и так без ограничения.
+    const paidUntil = extend && u.role !== 'admin' ? extendedUntil(u.subscription_expires_at, months) : null;
+    const { rows } = await pool.query(
+      `insert into payments (user_id, email, amount, currency, plan, months, paid_until, method, note, created_by)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id, created_at`,
+      [id, u.email, amount, currency, plan, months, paidUntil, method, note, req.user.id]
+    );
+    let user = null;
+    if (paidUntil) {
+      ({ rows: [user] } = await pool.query(
+        'update users set subscription_expires_at = $2, ai_plan = coalesce($3, ai_plan) where id = $1 returning id, email, subscription_expires_at, ai_plan',
+        [id, paidUntil + 'T23:59:59.999Z', plan]
+      ));
+    } else if (plan) {
+      ({ rows: [user] } = await pool.query('update users set ai_plan = $2 where id = $1 returning id, email, subscription_expires_at, ai_plan', [id, plan]));
+    }
+    await audit(req.user.id, 'payment', id, { amount, currency, plan, months, paid_until: paidUntil, method });
+    res.status(201).json({ id: rows[0].id, created_at: rows[0].created_at, paid_until: paidUntil, user });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Запись убирается, подписка остаётся: срок правит администратор кнопкой «Подписка».
+router.delete('/payments/:id', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid id' });
+    const { rows } = await pool.query('delete from payments where id = $1 returning user_id, email, amount, currency', [id]);
+    if (!rows[0]) return res.status(404).json({ error: 'not found' });
+    await audit(req.user.id, 'delete_payment', rows[0].user_id, { email: rows[0].email, amount: Number(rows[0].amount), currency: rows[0].currency });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/expenses', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `select id, name, amount::float as amount, currency, period, starts_on::text as starts_on, ends_on::text as ends_on, note, created_at
+         from expenses order by ends_on nulls first, starts_on desc, id`
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/expenses', async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const name = String(b.name == null ? '' : b.name).trim().slice(0, 120);
+    const amount = Number(b.amount);
+    const currency = b.currency == null || b.currency === '' ? 'USD' : String(b.currency).toUpperCase();
+    const period = b.period == null || b.period === '' ? 'month' : String(b.period);
+    const starts = b.starts_on ? String(b.starts_on) : new Date().toISOString().slice(0, 10);
+    const ends = b.ends_on ? String(b.ends_on) : null;
+    if (!name) return res.status(400).json({ error: 'name required' });
+    if (!Number.isFinite(amount) || amount < 0 || amount > 1e7) return res.status(400).json({ error: 'invalid amount' });
+    if (!/^[A-Z]{3}$/.test(currency)) return res.status(400).json({ error: 'invalid currency' });
+    if (!['month', 'year', 'once'].includes(period)) return res.status(400).json({ error: 'invalid period' });
+    if (!DATE_RE.test(starts) || (ends && !DATE_RE.test(ends))) return res.status(400).json({ error: 'invalid date' });
+    const note = b.note == null ? null : String(b.note).slice(0, NOTE_MAX);
+    const { rows } = await pool.query(
+      'insert into expenses (name, amount, currency, period, starts_on, ends_on, note) values ($1,$2,$3,$4,$5,$6,$7) returning id, created_at',
+      [name, amount, currency, period, starts, ends, note]
+    );
+    await audit(req.user.id, 'expense_add', null, { name, amount, currency, period });
+    res.status(201).json({ id: rows[0].id, created_at: rows[0].created_at });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/expenses/:id', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid id' });
+    const { rows } = await pool.query('delete from expenses where id = $1 returning name', [id]);
+    if (!rows[0]) return res.status(404).json({ error: 'not found' });
+    await audit(req.user.id, 'expense_delete', null, { name: rows[0].name });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
+module.exports.extendedUntil = extendedUntil;

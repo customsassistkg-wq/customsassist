@@ -949,8 +949,10 @@ async function googleToken(sa) {
   visionToken = { value: data.access_token, till: Date.now() + (data.expires_in || 3600) * 1000 };
   return visionToken.value;
 }
+// Адрес ЕС, а не общий vision.googleapis.com: на общем Google не обещает места обработки, на eu- хранит и
+// обрабатывает только в ЕС (документация Cloud Vision, «Multi-regional support»). Так записано в privacy.html.
 async function googleOcr(data) {
-  const res = await fetch('https://vision.googleapis.com/v1/images:annotate', {
+  const res = await fetch('https://eu-vision.googleapis.com/v1/images:annotate', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + await googleToken(visionAccount()) },
     body: JSON.stringify({ requests: [{ image: { content: data }, features: [{ type: 'DOCUMENT_TEXT_DETECTION' }] }] }),

@@ -2383,12 +2383,12 @@ function aiShowQuota(q){
   // «мало» — по тому лимиту, что держит: у Базового 1 из 3 в день — уже повод предупредить
   const cap=q.blockedBy==='day'?q.day:q.limit;
   box.className='ai-quota'+(q.remaining===0?' out':(q.remaining<=Math.max(1,Math.ceil(cap*0.1))?' low':''));
-  box.textContent='Тариф «'+q.name+'»: сегодня осталось '+q.remainingDay+' из '+q.day+' · в месяц '+q.remainingMonth+' из '+q.limit
-    +(q.pagesToday&&q.pagesRemaining!=null?' · страниц документов можно прочитать ещё '+q.pagesRemaining:'');
+  box.textContent='Тариф «'+q.name+'»'+(q.price?' · '+q.price+' сом/мес':'')+': сегодня осталось '+q.remainingDay+' из '+q.day+' · в месяц '+q.remainingMonth+' из '+q.limit
+    +(q.pagesMonth!=null&&q.pagesRemaining!=null?' · страниц документов в этом месяце осталось '+q.pagesRemaining+' из '+q.pagesMonth:'');
 }
 function aiQuotaText(q){
   if(!q)return 'Лимит вопросов исчерпан.';
-  const up=Object.entries(q.plans||{}).filter(([k,p])=>p.month>q.limit).map(([k,p])=>'«'+p.name+'» — '+p.day+' в день, '+p.month+' в месяц');
+  const up=Object.entries(q.plans||{}).filter(([k,p])=>p.month>q.limit).map(([k,p])=>'«'+p.name+'» — '+p.day+' в день, '+p.month+' в месяц'+(p.pages?', '+p.pages+' страниц документов':'')+(p.price?', '+p.price+' сом/мес':''));
   const more=up.length?' Больше вопросов: '+up.join('; ')+'. Тариф подключает администратор.':'';
   if(q.blockedBy==='day')return 'На сегодня вопросы закончились: тариф «'+q.name+'» — '+q.day+' в день. Следующий вопрос — '+aiDate(q.tomorrow)+' с 00:00 по Бишкеку.'+more;
   return 'Лимит тарифа «'+q.name+'» — '+q.limit+' вопросов в месяц — исчерпан. Новые вопросы — с '+aiDate(q.resets)+'.'+more;
@@ -3454,13 +3454,13 @@ function adminUserRowHtml(u){
     +'<td title="Активность в последние 5 минут">'+onlineCell+'</td>'
     +'<td>'+subCell+'</td>'
     +'<td>'+(u.role==='admin'?'без лимита':'<select class="admin-plan-sel" aria-label="AI-тариф">'
-      +[['base','Базовый · 3/день · 100/мес'],['pro','Pro · 20/день · 300/мес'],['max','Max · 60/день · 1000/мес']].map(([v,t])=>'<option value="'+v+'"'+((u.ai_plan||'base')===v?' selected':'')+'>'+t+'</option>').join('')+'</select>')+'</td>'
+      +[['base','Базовый · 490 сом · 3/день · 90/мес · 30 стр.'],['pro','Pro · 990 сом · 20/день · 300/мес · 150 стр.'],['max','Max · 1 990 сом · 100/день · 1 500/мес · 500 стр.']].map(([v,t])=>'<option value="'+v+'"'+((u.ai_plan||'base')===v?' selected':'')+'>'+t+'</option>').join('')+'</select>')+'</td>'
     +'<td>'+(u.created_at?fmtDate(u.created_at):'—')+'</td>'
     +'<td>'+(u.last_login_at?fmtDateTime(u.last_login_at):'—')+'</td>'
     +'<td class="au-actions no-print">'
       +'<button class="btn admin-role-btn" type="button">'+(u.role==='admin'?'Сделать пользователем':'Сделать админом')+'</button>'
       +'<button class="btn admin-active-btn" type="button">'+(u.active?'Отключить':'Включить')+'</button>'
-      +(u.role==='admin'?'':'<button class="btn admin-sub-btn" type="button">Подписка</button>')
+      +(u.role==='admin'?'':'<button class="btn admin-sub-btn" type="button">Подписка</button><button class="btn admin-pay-btn" type="button">Оплата</button>')
       +'<button class="btn danger admin-delete-btn" type="button">Удалить</button>'
     +'</td></tr>';
 }
@@ -3525,6 +3525,7 @@ async function renderAdminPanel(){
         +'<button class="qa-btn no-print" id="adminPrintBtn" type="button">🖨️ Печать</button>'
         +'<button class="qa-btn no-print" id="adminExportBtn" type="button">⬇️ Экспорт CSV</button>'
         +'<button class="qa-btn no-print" id="adminAiLogBtn" type="button">✨ Журнал AI-ассистента</button>'
+        +'<button class="qa-btn no-print" id="adminMoneyBtn" type="button">💰 Оплаты и расходы</button>'
         +'<button class="calc-btn" id="adminCreateBtn" style="width:auto;padding:10px 18px" type="button">+ Новый пользователь</button>'
       +'</div>'
     +'</div>'
@@ -3557,6 +3558,7 @@ document.getElementById('adminResult').addEventListener('click',function(e){
   if(e.target.closest('#adminPrintBtn')){window.print();return;}
   if(e.target.closest('#adminExportBtn')){exportAdminUsersCSV();return;}
   if(e.target.closest('#adminAiLogBtn')){openAssistantLog(false);return;}
+  if(e.target.closest('#adminMoneyBtn')){openMoneyPanel();return;}
   const row=e.target.closest('.admin-tr');
   if(!row)return;
   const u=adminUserById(row.dataset.userId);
@@ -3564,6 +3566,7 @@ document.getElementById('adminResult').addEventListener('click',function(e){
   if(e.target.closest('.admin-role-btn')){confirmSetRole(u);}
   else if(e.target.closest('.admin-active-btn')){confirmSetActive(u);}
   else if(e.target.closest('.admin-sub-btn')){openSubscriptionModal(u);}
+  else if(e.target.closest('.admin-pay-btn')){openPaymentModal(u);}
   else if(e.target.closest('.admin-delete-btn')){confirmDeleteUser(u);}
 });
 
@@ -3668,6 +3671,88 @@ function confirmDeleteUser(u){
   pendingAction={type:'delete',id:u.id};
   document.getElementById('pendingCancelBtn').onclick=closeModal;
   document.getElementById('pendingConfirmBtn').onclick=runPendingAction;
+}
+
+// ─── Оплаты и расходы (22.09.2026) ───
+// Оплата проходит вне сервиса; администратор записывает её здесь, и запись продлевает подписку
+// на оплаченные месяцы и ставит тариф (POST /api/admin/payments). Цены — сетка владельца.
+const PLAN_PRICES={base:['Базовый',490],pro:['Pro',990],max:['Max',1990]};
+function openPaymentModal(u){
+  const plan0=PLAN_PRICES[u.ai_plan]?u.ai_plan:'base';
+  openModal(
+    '<h2>Оплата — '+esc(u.email)+'</h2>'
+    +'<div id="payError" class="calc-warn w-red" style="display:none"></div>'
+    +'<div class="calc-field"><label>Тариф</label><select id="payPlan">'+Object.entries(PLAN_PRICES).map(([k,[n,p]])=>'<option value="'+k+'"'+(k===plan0?' selected':'')+'>'+n+' · '+p+' сом/мес</option>').join('')+'</select></div>'
+    +'<div class="calc-field"><label>Месяцев</label><select id="payMonths">'+[1,2,3,6,12].map(m=>'<option value="'+m+'">'+m+'</option>').join('')+'</select></div>'
+    +'<div class="calc-field"><label>Сумма, сом</label><input id="payAmount" type="number" min="1" step="1"></div>'
+    +'<div class="calc-field"><label>Способ оплаты</label><select id="payMethod"><option>Перевод на карту</option><option>Mbank</option><option>Наличные</option><option>Другое</option></select></div>'
+    +'<div class="calc-field"><label>Заметка (необязательно)</label><input id="payNote" type="text" maxlength="500" placeholder="номер чека, кто платил…"></div>'
+    +'<label style="display:flex;gap:8px;align-items:center;margin-bottom:12px;font-size:13px"><input id="payExtend" type="checkbox" checked> Продлить подписку и установить тариф</label>'
+    +'<div id="payPreview" style="font-size:12px;color:var(--muted);margin-bottom:14px"></div>'
+    +'<div class="modal-actions"><button class="calc-btn ghost" type="button" id="payCancelBtn">Отмена</button><button class="calc-btn" type="button" id="paySaveBtn">Записать оплату</button></div>'
+  );
+  const g=id=>document.getElementById(id);
+  function recalc(){
+    const p=PLAN_PRICES[g('payPlan').value][1],m=+g('payMonths').value;
+    g('payAmount').value=p*m;
+    const from=u.subscription_expires_at&&new Date(u.subscription_expires_at)>new Date()?u.subscription_expires_at.slice(0,10):'';
+    g('payPreview').textContent=g('payExtend').checked?'Подписка будет продлена до '+fmtCalDate(addMonthsToDateStr(from,m))+(PLAN_PRICES[g('payPlan').value]?', тариф «'+PLAN_PRICES[g('payPlan').value][0]+'»':''):'Только запись об оплате: срок и тариф не меняются';
+  }
+  g('payPlan').onchange=recalc;g('payMonths').onchange=recalc;g('payExtend').onchange=recalc;recalc();
+  g('payCancelBtn').onclick=closeModal;
+  g('paySaveBtn').onclick=()=>submitPayment(u.id);
+}
+async function submitPayment(id){
+  const g=x=>document.getElementById(x),err=g('payError');err.style.display='none';
+  const body={user_id:id,amount:Number(g('payAmount').value),currency:'KGS',plan:g('payPlan').value,months:Number(g('payMonths').value),method:g('payMethod').value,note:g('payNote').value.trim()||null,extend:g('payExtend').checked};
+  if(!(body.amount>0)){err.textContent='Укажите сумму';err.style.display='block';return;}
+  g('paySaveBtn').disabled=true;
+  try{
+    const res=await apiFetch('/api/admin/payments',{method:'POST',body:JSON.stringify(body)});
+    if(!res.ok){const d=await res.json().catch(()=>({}));err.textContent=d.error||'Ошибка сохранения';err.style.display='block';return;}
+    closeModal();renderAdminPanel();
+  }catch(e){err.textContent='Ошибка сети';err.style.display='block';}
+  finally{const b=g('paySaveBtn');if(b)b.disabled=false;}
+}
+// Панель «Оплаты и расходы»: последние оплаты (удаление записи не трогает срок подписки)
+// и постоянные расходы (сервер, домен…) — то, что дашборд показывает в разделе «Экономика».
+async function openMoneyPanel(){
+  openModal('<h2>Оплаты и расходы</h2><div id="moneyBody">Загрузка…</div><div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');
+  const m=document.querySelector('#activeModal .modal');if(m)m.style.maxWidth='960px';
+  await moneyPanelRender();
+}
+async function moneyPanelRender(){
+  const box=document.getElementById('moneyBody');if(!box)return;
+  let pays=[],exps=[];
+  try{const [a,b]=await Promise.all([apiFetch('/api/admin/payments?limit=100'),apiFetch('/api/admin/expenses')]);if(a.ok)pays=await a.json();if(b.ok)exps=await b.json();}
+  catch(e){box.innerHTML='<div class="calc-warn w-red">Ошибка сети</div>';return;}
+  const money=v=>Number(v).toLocaleString('ru-RU'),per={month:'в месяц',year:'в год',once:'разово'};
+  box.innerHTML='<h3 style="margin:0 0 8px">Оплаты'+(pays.length?' ('+pays.length+')':'')+'</h3>'
+    +(pays.length?'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Дата</th><th>Кто</th><th>Сумма</th><th>Тариф</th><th>Мес.</th><th>До</th><th>Способ</th><th>Заметка</th><th></th></tr></thead><tbody>'
+      +pays.map(p=>'<tr><td>'+fmtDate(p.created_at)+'</td><td>'+esc(p.email)+'</td><td>'+money(p.amount)+' '+esc(p.currency)+'</td><td>'+esc(PLAN_PRICES[p.plan]?PLAN_PRICES[p.plan][0]:'—')+'</td><td>'+esc(p.months)+'</td><td>'+(p.paid_until?fmtCalDate(p.paid_until):'—')+'</td><td>'+esc(p.method||'')+'</td><td>'+esc(p.note||'')+'</td><td><button class="btn danger money-del-pay" data-id="'+esc(p.id)+'" type="button">Удалить</button></td></tr>').join('')
+      +'</tbody></table></div>':'<div style="color:var(--muted);font-size:12px;margin-bottom:12px">Оплат ещё не записано. Кнопка «Оплата» — в строке пользователя.</div>')
+    +'<h3 style="margin:16px 0 8px">Постоянные расходы</h3>'
+    +(exps.length?'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Статья</th><th>Сумма</th><th>Период</th><th>С</th><th>По</th><th>Заметка</th><th></th></tr></thead><tbody>'
+      +exps.map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+money(x.amount)+' '+esc(x.currency)+'</td><td>'+esc(per[x.period]||x.period)+'</td><td>'+esc(x.starts_on||'')+'</td><td>'+esc(x.ends_on||'—')+'</td><td>'+esc(x.note||'')+'</td><td><button class="btn danger money-del-exp" data-id="'+esc(x.id)+'" type="button">Удалить</button></td></tr>').join('')
+      +'</tbody></table></div>':'<div style="color:var(--muted);font-size:12px">Расходов не записано.</div>')
+    +'<div id="moneyError" class="calc-warn w-red" style="display:none;margin-top:10px"></div>'
+    +'<div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;margin-top:12px;align-items:end">'
+      +'<div class="calc-field"><label>Новая статья</label><input id="expName" type="text" maxlength="120" placeholder="например, Apple Developer"></div>'
+      +'<div class="calc-field"><label>Сумма</label><input id="expAmount" type="number" min="0" step="0.01"></div>'
+      +'<div class="calc-field"><label>Валюта</label><select id="expCurrency"><option>USD</option><option>KGS</option><option>EUR</option></select></div>'
+      +'<div class="calc-field"><label>Период</label><select id="expPeriod"><option value="month">в месяц</option><option value="year">в год</option><option value="once">разово</option></select></div>'
+    +'</div><button class="btn" type="button" id="expAddBtn">Добавить расход</button>';
+  const err=document.getElementById('moneyError'),fail=m=>{err.textContent=m;err.style.display='block';};
+  document.getElementById('expAddBtn').onclick=async()=>{
+    const body={name:document.getElementById('expName').value.trim(),amount:Number(document.getElementById('expAmount').value),currency:document.getElementById('expCurrency').value,period:document.getElementById('expPeriod').value};
+    if(!body.name||!(body.amount>=0)){fail('Название и сумма обязательны');return;}
+    try{const r=await apiFetch('/api/admin/expenses',{method:'POST',body:JSON.stringify(body)});if(!r.ok){fail((await r.json().catch(()=>({}))).error||'Ошибка сохранения');return;}moneyPanelRender();}catch(e){fail('Ошибка сети');}
+  };
+  box.querySelectorAll('.money-del-pay,.money-del-exp').forEach(b=>b.onclick=async()=>{
+    const isPay=b.classList.contains('money-del-pay');
+    if(!window.confirm(isPay?'Удалить запись об оплате? Срок подписки не изменится.':'Удалить статью расходов?'))return;
+    try{const r=await apiFetch('/api/admin/'+(isPay?'payments':'expenses')+'/'+encodeURIComponent(b.dataset.id),{method:'DELETE'});if(!r.ok){fail('Не удалось удалить');return;}moneyPanelRender();}catch(e){fail('Ошибка сети');}
+  });
 }
 
 function openSubscriptionModal(u){
@@ -3807,7 +3892,7 @@ chipGroups.forEach(([id,list])=>{
 });
 
 // Таб-панель «Ещё» открывает меню разделов листом; выбор раздела закрывает его.
-{const np=document.querySelector('.nav-panel');if(np)np.addEventListener('click',e=>{if(e.target.closest('.nav-item'))document.body.classList.remove('nav-open')})}
+{const np=document.querySelector('.nav-panel');if(np)np.addEventListener('click',e=>{if(e.target.closest('.nav-item'))document.body.classList.remove('nav-open')});const aw=document.getElementById('appWrap');if(aw)aw.addEventListener('click',e=>{if(document.body.classList.contains('nav-open')&&!e.target.closest('.nav-panel,#tabBar'))document.body.classList.remove('nav-open')});document.addEventListener('keydown',e=>{if(e.key==='Escape')document.body.classList.remove('nav-open')})}
 
 // История и подсказки: при фокусе на пустом поле — последние запросы, при вводе
 // 4–9 цифр — подпозиции с сервера. Список закрывается кликом вне поля и Escape.

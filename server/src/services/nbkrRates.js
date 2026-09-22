@@ -15,6 +15,11 @@ const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB', 'KZT'];
 
 let cache = null; // { date, usd, eur, rates: { USD, EUR, CNY, RUB, KZT } }
 let refreshing = null;
+// Когда курс в последний раз обновился и чем кончилась последняя неудача — для
+// дашборда администраторов (routes/dash.js): курс двухдневной давности при живом
+// процессе означает, что nbkr.kg не отвечает, и это должно быть видно.
+let updatedAt = null;
+let lastError = null; // { at, message }
 
 function fetchXml() {
   return new Promise((resolve, reject) => {
@@ -73,8 +78,13 @@ async function refresh() {
       // документ (страница ошибки, смена формата), и кэш лучше не трогать.
       if (rates.USD && rates.EUR) {
         cache = { date: dateMatch ? dateMatch[1] : null, usd: rates.USD, eur: rates.EUR, rates };
+        updatedAt = new Date().toISOString();
+        lastError = null;
+      } else {
+        lastError = { at: new Date().toISOString(), message: 'daily.xml без USD/EUR' };
       }
     } catch (err) {
+      lastError = { at: new Date().toISOString(), message: err.message };
       console.error('nbkr-rates: refresh failed', err.message);
     } finally {
       refreshing = null;
@@ -93,4 +103,8 @@ function init() {
   setInterval(refresh, REFRESH_INTERVAL_MS);
 }
 
-module.exports = { init, getRates, refresh };
+function status() {
+  return { date: cache ? cache.date : null, usd: cache ? cache.usd : null, eur: cache ? cache.eur : null, updatedAt, lastError };
+}
+
+module.exports = { init, getRates, refresh, status };

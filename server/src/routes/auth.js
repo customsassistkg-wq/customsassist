@@ -21,6 +21,16 @@ function publicOrigin() {
   return (explicit || first || '').trim().replace(/\/+$/, '');
 }
 
+// Дашборд администраторов — отдельное имя (DASH_ORIGIN, например
+// https://dash.customsassist.trade), тот же API за тем же Nginx. Вход на нём открыт
+// только администраторам: обычной учётной записи там нечего делать, и сессии у неё
+// не появляется. Имя хоста берётся из заголовка Host, который ставит Nginx.
+function isDashHost(req) {
+  const raw = String(process.env.DASH_ORIGIN || '').trim();
+  if (!raw) return false;
+  try { return req.hostname === new URL(raw).hostname; } catch (e) { return false; }
+}
+
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 // Подтверждение адреса живёт сутки, а не час: ссылку сброса человек ждёт
 // прямо сейчас, а письмо о регистрации вполне может быть открыто вечером.
@@ -176,17 +186,26 @@ router.post('/login', async (req, res, next) => {
       return res.status(403).json({ error: 'subscription_expired' });
     }
 
+    // Дашборд администраторов: не администратору — отказ уже после проверки пароля
+    // (существование адреса по отказу не узнать), сессия не создаётся.
+    const dash = isDashHost(req);
+    if (dash && user.role !== 'admin') {
+      return res.status(403).json({ error: 'admin_only' });
+    }
+
     // Enforce a single active session per account: a fresh login kicks out
     // any session already logged in as this user, so sharing one account's
     // credentials can't put two people in at the same time — the second
     // login always wins and the first is logged out on its next request
-    // (told why via req.authReason — see middleware/auth.js).
-    await endUserSessions(user.id, 'replaced');
+    // (told why via req.authReason — see middleware/auth.js). Сессии дашборда
+    // и основного сайта — два разных круга: вход в один не трогает другой.
+    await endUserSessions(user.id, 'replaced', undefined, { dash });
     await pool.query('update users set last_login_at=now(), last_seen_at=now() where id=$1', [user.id]);
 
     req.session.regenerate((err) => {
       if (err) return next(err);
       req.session.userId = user.id;
+      if (dash) req.session.dash = true;
       res.json({
         email: user.email,
         role: user.role,
@@ -511,3 +530,5 @@ router.post('/accept-terms', async (req, res, next) => {
 
 module.exports = router;
 module.exports.canonicalEmail = canonicalEmail;
+// Для дашборда администраторов (routes/dash.js): сколько учётных записей приняли действующую редакцию правил.
+module.exports.TERMS_VERSION = TERMS_VERSION;

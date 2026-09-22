@@ -92,7 +92,23 @@ node server/tests/login-enumeration.test.js
 node server/tests/api-boundary.test.js
 node server/tests/direction-regime.test.js
 node server/tests/static-assets.test.js
+node server/tests/dash.test.js
+node server/tests/payments.test.js
 ```
+
+**Дашборд администраторов (22.09.2026).** Третий закрытый файл — `private/dash.js`:
+интерфейс дашборда `https://dash.customsassist.trade`, отдаётся через `GET /api/dash.js`
+только администратору (`routes/dash.js`), данные — `GET /api/dash/data` (тоже
+`requireAdmin`; одна сводка: процесс и машина, PostgreSQL, systemd, сертификаты, курс НБКР и
+классрешения, правовая база — сроки мер и `SOURCE_AUDIT` из `services/base.js`, счётчики
+запросов из `services/metrics.js`, пользователи, лимиты `/api/engine`, помощник, журнал
+администрирования). Страница `server/dash/index.html` — вход и каркас в оболочке сайта,
+без цифр; в основном блоке nginx `/server/` закрыт, блок `dash.*` отдаёт этот каталог как
+корень. Выкладывается вместе с `src/`: `routes/dash.js`, `services/metrics.js`, `index.js`,
+правки `routes/auth.js`, `services/sessions.js`, `services/turnstile.js`, `services/base.js`
+(имена базы для дашборда в выражении контекста), `services/nbkrRates.js`,
+`services/classDecisions.js`; в `.env` — `DASH_ORIGIN`. `dash.test.js` проверяет доступ,
+вход на имени дашборда и, при `PLAYWRIGHT_MODULE`, семь разделов на 1280 и 420 px.
 
 Для браузерных частей задайте `PLAYWRIGHT_MODULE` путём к установленному
 `playwright-core`; тесты используют системный Edge, не обращаются к рабочей БД и
