@@ -81,6 +81,7 @@ No task is in progress at the last commit. The last stream of work (18–19.09.2
 
 ## Next steps
 
+- Get from the owner the publication of the КНР (and other countries') coefficients — the `KEF1606_MAP` card was restored on 22.09.2026 at the owner's word with the «первоисточник не подтверждён» caveat; cite the source in `DOC_SOURCES`/`kef` and add the other countries once it is known.
 - Watch the first nightly run of `tnved-db-backup.timer` after the restore-check change (journal line `restore check ok`), and the first `assistant: daily budget reached` line if it ever appears.
 - Re-check cbd.minjust.gov.kg for ПКМ № 607 and for extensions of № 115 and № 103; update `BAN_DB` and the `ban` audit record.
 - Watch the Document AI journal line after Google releases a new stable version.

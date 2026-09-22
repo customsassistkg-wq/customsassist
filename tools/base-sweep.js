@@ -58,7 +58,7 @@ const mapped = (c) => Object.keys(TN).some((k) => k === c || c.startsWith(k) || 
 const X = {};
 const keysOf = (n) => () => Object.keys(g(n)).map((k) => ({ code: k }));
 for (const n of ['NKS_MAP', 'NKS_ITCAT', 'LS_CODES', 'SERT_CODES', 'MED_CODES', 'MAT_CODES', 'ART297_CODES', 'ART300_CODES', 'ART299_CODES', 'POST131_APP6_VET_CODES',
-  'ART297_P20_VIE_CODES', 'ART297_P26_SPORT_CODES', 'ART297_P30_JEWEL_CODES', 'EEC_WASTE']) X[n] = keysOf(n);
+  'ART297_P20_VIE_CODES', 'ART297_P26_SPORT_CODES', 'ART297_P30_JEWEL_CODES', 'EEC_WASTE', 'KEF1606_MAP']) X[n] = keysOf(n);
 const lists = (n, pick) => () => g(n).flatMap((r, i) => (pick(r) || []).map((c) => ({ code: c, list: i })));
 for (const n of ['BAN_DB', 'VET_DB', 'PHYTO_DB', 'SAN_REG_DB', 'SAN_SUB_DB']) X[n] = lists(n, (r) => r.codes);
 for (const n of ['ART301_GROUP1', 'ART301_GROUP2', 'RS_CHEESE']) X[n] = () => g(n).map((c) => ({ code: c, list: 0 }));
