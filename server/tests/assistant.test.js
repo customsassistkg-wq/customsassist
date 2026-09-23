@@ -690,12 +690,18 @@ const a = require('../src/services/assistant');
   r = await a.ask([{ role: 'user', content: 'Разбери инвойс' }]);
   assert.equal(calls.length, 2);
   assert.equal(r.answer, 'Итого 43 952,77 EUR.');
-  // код, напечатанный в документе (здесь — телефон перевозчика из CMR), выдуманным не считается
+  // число, напечатанное в документе, выдуманным не считается (раньше здесь стоял телефон
+  // перевозчика из CMR — теперь он вырезается до модели, см. ниже и redact.test.js)
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: '8517130000' } }] : [{ type: 'text', text: 'Отправление 9983444840.' }]);
+  r = await a.ask([{ role: 'user', content: 'Разбери CMR' }], { docs: [{ name: 'cmr.pdf', pages: 1, text: 'Отправление 9983444840' }] });
+  assert.deepEqual([calls.length, r.unverified], [2, []]);
+  // тот же номер с пометкой «Тел.» до модели не доходит: он вырезан, и повтор его в ответе — выдумка
   calls.length = 0;
   script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: '8517130000' } }] : [{ type: 'text', text: 'Телефон 9983444840.' }]);
   r = await a.ask([{ role: 'user', content: 'Разбери CMR' }], { docs: [{ name: 'cmr.pdf', pages: 1, text: 'Тел. 9983444840' }] });
-  assert.deepEqual([calls.length, r.unverified], [2, []]);
-  console.log('PASS: числа ответа, которых нет в документах, — повторный раунд и пометка; код из документа не выдуман');
+  assert.deepEqual([calls.length, r.unverified], [3, ['9983444840']]);
+  console.log('PASS: числа ответа, которых нет в документах, — повторный раунд и пометка; число из документа не выдумано, а вырезанный телефон — выдумка');
 
   // вызовы инструментов текстом (разметка DSML DeepSeek): одна просьба вызвать как положено, затем ответ (живой прогон 18.09.2026)
   const dsml = '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="sum_check">\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>';

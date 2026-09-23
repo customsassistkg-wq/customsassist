@@ -95,6 +95,7 @@ node server/tests/engine-browser.test.js      # браузерный: кальк
 node server/tests/auth-loader.test.js
 node server/tests/admin-view.test.js
 node server/tests/admin-invitation.test.js
+node server/tests/redact.test.js              # персональные данные не уходят в модель: что вырезано, что осталось
 node server/tests/assistant.test.js           # AI-помощник без сети
 node server/tests/lookup-filter.test.js       # справка: направление, страна, фильтр
 node server/tests/login-enumeration.test.js   # вход не выдаёт, есть ли адрес

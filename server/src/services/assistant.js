@@ -1609,9 +1609,58 @@ function preTools(text) {
 const PRE_NOTE = 'Поиск выполнен по коду из вопроса без модели: направление — ввоз, страна происхождения не задана. '
   + 'Если в вопросе они названы иначе — повтори search_base с direction/country.\n\n';
 
+// ── Персональные данные не уходят в модель ──────────────────────────────────────
+// Решение владельца (23.09.2026): в DeepSeek (КНР) отправляется только то, что нужно для
+// классификации и расчёта — описание товара, характеристики, код ТН ВЭД, страна происхождения,
+// стоимость и валюта, технический текст. Всё остальное сервер вырезает сам: просить об этом
+// пользователя («не указывайте персональные данные») и модель бесполезно — вопрос пишет человек,
+// текст документа извлекает браузер из инвойса или CMR, где реквизиты сторон есть всегда.
+//
+// Два вида правил, и оба намеренно узкие. **По форме** — только то, что не спутать ни с чем:
+// адрес почты, телефон с кодом страны, номер карты. **По названию поля рядом** — ИНН, счёт,
+// паспорт, адрес, стороны сделки: вырезается значение после метки, а не «похожие» строки.
+// Поэтому десятизначный код ТН ВЭД, сумма, вес, курс, номер и дата инвойса остаются на месте —
+// их ничто не помечает, а без них ответ и расчёт развалятся. Голые последовательности цифр
+// не трогаются никогда: в живом прогоне 18.09.2026 телефон перевозчика из CMR уже уходил
+// пользователю как код ТН ВЭД, и лечится это метками, а не догадками по виду числа.
+const PII_RULES = [
+  [/\b[\w.+-]{1,64}@[\w-]+(?:\.[\w-]+)+\b/g, '[почта]'],
+  [/\+\d[\d\s()-]{7,16}\d/g, '[телефон]'],
+  // Метка должна быть отдельным словом: без этой проверки «Smartphone 8517130000» давало
+  // «Smartphone [телефон]» — код ТН ВЭД исчезал из-за «phone» внутри слова (поймал тест браузера).
+  [/(?<![A-Za-zА-Яа-яЁё])((?:тел|телефон|phone|tel|факс|fax|моб|mobile)\s*[.:№]*\s*)[+\d][\d\s()-]{5,}/gi, '$1[телефон]'],
+  [/\b\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{4}\b/g, '[карта]'],
+  [/(?<![A-Za-zА-Яа-яЁё])((?:IBAN|SWIFT|BIC|БИК|р\/с|к\/с|расч[её]тный сч[её]т|сч[её]т получателя|account(?:\s*(?:no|number))?)\s*[:№.]*\s*)[A-Z0-9][A-Z0-9 -]{6,30}/gi, '$1[счёт]'],
+  [/(?<![A-Za-zА-Яа-яЁё])((?:ИНН|ОКПО|БИН|ИИН|ПИН|УНП|ОГРН|VAT(?:\s*(?:no|number|id))?|tax\s*id)\s*[:№.]*\s*)[A-Z0-9][A-Z0-9 -]{4,20}/gi, '$1[идентификатор]'],
+  [/(?<![A-Za-zА-Яа-яЁё])((?:паспорт|passport)\s*[:№.]*\s*)[A-Z0-9][A-Z0-9 -]{4,20}/gi, '$1[документ]'],
+  // Значение после метки берётся до конца строки, но обрывается на разделителе таблицы и перед
+  // длинным числом: в расшифровке страницы «Seller: Shenzhen Co, 8517130000 — 12 500,00 USD»
+  // без этого исчезали код и сумма вместе с названием стороны.
+  [/(?<![A-Za-zА-Яа-яЁё])((?:адрес|address)\s*[:№.]*\s*)(?:(?!\d{6}|[|;])[^\n]){5,160}/gi, '$1[адрес]'],
+  [/(?<![A-Za-zА-Яа-яЁё])((?:продавец|покупатель|грузоотправитель|грузополучатель|отправитель|получатель|заказчик|поставщик|декларант|директор|руководитель|подпись|shipper|consignee|seller|buyer|exporter|importer|notify\s*party)\s*[:№.]*\s*)(?:(?!\d{6}|[|;])[^\n]){2,120}/gi, '$1[сторона]'],
+  // \b рядом с кириллицей в JS не работает (кириллица — не «словесный» символ), поэтому границы
+  // проверяются соседями: «Сыдыков А. Б.» и «А.Б. Сыдыков» без этого не находились вовсе.
+  [/(?<![А-Яа-яЁёA-Za-z])[А-ЯЁ][а-яё]{2,}\s+[А-ЯЁ]\.\s?[А-ЯЁ]\./g, '[ФИО]'],
+  [/(?<![А-Яа-яЁёA-Za-z])[А-ЯЁ]\.\s?[А-ЯЁ]\.\s?[А-ЯЁ][а-яё]{2,}(?![А-Яа-яЁёA-Za-z])/g, '[ФИО]'],
+];
+const PII_MARK = /(\[(?:почта|телефон|карта|сч[её]т|идентификатор|документ|адрес|сторона|ФИО)\])(?=\S)/g;
+function redactPersonal(text) {
+  let s = String(text == null ? '' : text);
+  for (const [re, to] of PII_RULES) s = s.replace(re, to);
+  // Пробел после пометки: значение обрывается перед числом, и без него получалось
+  // «[сторона]8517130000» — код слипался с пометкой.
+  return s.replace(PII_MARK, '$1 ');
+}
+
 // history — [{role:'user'|'assistant', content:string}], последняя реплика пользователя.
 // onStep получает шаги для экрана: {tool, input}.
 async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) {
+  // Всё, что пришло от пользователя, чистится здесь, до первого обращения к модели:
+  // и вопрос с перепиской, и текст приложенных документов. Дальше по функции тот же
+  // очищенный текст идёт и в проверку чисел ответа — иначе модель не могла бы назвать
+  // число, которого она не видела, а проверка считала бы его известным.
+  history = history.map((m) => ({ ...m, content: redactPersonal(m.content) }));
+  docs = docs.map((d) => ({ ...d, name: redactPersonal(d.name), text: redactPersonal(d.text) }));
   const messages = history.map((m) => ({ role: m.role, content: m.content }));
   const usage = { input: 0, output: 0, cacheRead: 0, costUsd: 0 };
   // Текст документов разговора — то, с чем сверяются числа ответа (unknownNumbers).
@@ -1623,7 +1672,7 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   const prepend = (m, blocks) => { m.content = [...blocks, ...(Array.isArray(m.content) ? m.content : [{ type: 'text', text: m.content }])]; };
   if (images.length) {
     onStep({ tool: 'read_images', input: { count: images.length } });
-    const readings = await transcribeImages(images, usage);
+    const readings = (await transcribeImages(images, usage)).map((r) => ({ ...r, text: redactPersonal(r.text) }));
     for (const r of readings) if (r.text) docTexts.push(r.text);
     prepend(messages[messages.length - 1], images.map((img, i) => (readings[i].text
       ? { type: 'text', text: `Изображение ${i + 1} из ${images.length}${readings[i].flipped ? ' (страница была перевёрнута, прочитана после поворота)' : ''}`
@@ -1834,4 +1883,4 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   throw Object.assign(new Error('no answer after tool rounds'), { usage });
 }
 
-module.exports = { ask, readPage, pageUnreliable, reconcileReadings, reconcileWords, reconcileIds, missedNumbers, fixVins, flatNumbers, searchBase, calcPayments, groupNotes, sumCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, unknownNumbers, checker, roundCost };
+module.exports = { ask, redactPersonal, readPage, pageUnreliable, reconcileReadings, reconcileWords, reconcileIds, missedNumbers, fixVins, flatNumbers, searchBase, calcPayments, groupNotes, sumCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, unknownNumbers, checker, roundCost };
