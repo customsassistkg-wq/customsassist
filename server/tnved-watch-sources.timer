@@ -1,0 +1,12 @@
+# Ежедневно в 04:30 UTC (10:30 по Бишкеку) — после ночного бэкапа (03:30 UTC) и к началу
+# рабочего дня администраторов. Установлен как /etc/systemd/system/tnved-watch-sources.timer.
+[Unit]
+Description=Daily watch of official sources for the base
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 UTC
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

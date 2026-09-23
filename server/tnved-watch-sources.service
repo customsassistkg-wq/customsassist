@@ -1,0 +1,20 @@
+# Дозор источников: свежие постановления Кабмина (gov.kg, реестр НПА), счётчик квоты ГТС,
+# сроки датированных мер базы — письмо администраторам, если есть что сказать.
+# Установлен как /etc/systemd/system/tnved-watch-sources.service; запускает
+# tnved-watch-sources.timer. Проверить вручную: systemctl start tnved-watch-sources
+# и journalctl -u tnved-watch-sources -n 40.
+[Unit]
+Description=Watch official sources for acts and expiries missing from the base
+After=network-online.target postgresql.service
+Wants=network-online.target
+OnFailure=tnved-alert@%n.service
+
+[Service]
+Type=oneshot
+User=tnved
+Group=tnved
+WorkingDirectory=/opt/tnved/server
+EnvironmentFile=/opt/tnved/server/.env
+# --mail: находки уходят письмом и код выхода 0; падение самого скрипта — OnFailure выше
+ExecStart=/usr/bin/node scripts/watch-sources.js --mail
+TimeoutStartSec=15min

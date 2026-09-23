@@ -107,6 +107,7 @@ node server/tests/dash.test.js               # дашборд администр
 node server/tests/payments.test.js           # оплаты и расходы: только admin, продление подписки от срока, конец месяца, поля, журнал
 node server/tests/retention.test.js          # сроки хранения: очистка журнала по purge_after и оплат с 1 января восьмого года; срок ставится до удаления учётной записи
 node server/tests/mail.test.js               # обращения: разбор письма (кодировки, multipart, вложения), приём по секрету, админка и ответ в цепочку
+node server/tests/watch-sources.test.js      # дозор источников: разбор gov.kg, реестра НПА и счётчика ГТС, сверка «№ N от даты» с базой, сроки мер
 ```
 
 The browser tests need `PLAYWRIGHT_MODULE` pointing at an installed `playwright-core` (prior sessions left one at `%TEMP%/pw_check/node_modules/playwright-core`); they drive the system Edge, touch no live database and send no mail. **Without the variable they print SKIP or pass only their offline part** — that is how a broken registration button went unnoticed for three days. `reset-password.test.js` additionally needs `TEST_DATABASE_URL=<disposable db>`. `python3` is the Windows Store alias and does not see git-bash paths like `/tmp`; write scratch files to a Windows path (the session scratchpad) and read them back with the Read tool, not by printing Cyrillic to the console. Runtime smoke tests (`require('./server/src/services/base').load()`), the vm harness with DOM stubs, the standalone page for UI checks and every testing trap: [docs/testing.md](docs/testing.md).
