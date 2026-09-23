@@ -1,4 +1,12 @@
 require('dotenv').config();
+// На этой машине маршрут IPv6 прописан, но связи по нему нет: curl -6 не проходит, а ip -6 route
+// показывает default via fe80::1. Node с версии 18 ходит по порядку, в котором отвечает DNS, и для
+// адресов за Cloudflare первым получает AAAA — соединение висит до таймаута и падает с
+// UND_ERR_CONNECT_TIMEOUT. Из-за этого через раз не уходили письма Resend (подтверждение адреса,
+// сброс пароля, ответы на обращения) и срывались вызовы модели, Vision и курсов НБКР: curl в тех же
+// условиях работал и маскировал причину, потому что сам откатывается на IPv4 (найдено 23.09.2026).
+// Спрашиваем IPv4 первым; когда IPv6 на сервере починят, строка останется безвредной.
+require('node:dns').setDefaultResultOrder('ipv4first');
 const path = require('path');
 const express = require('express');
 const session = require('express-session');
@@ -33,9 +41,12 @@ require('./services/metrics').install(app);
 // 17.09.2026 его разбирал любой запрос без входа, и 15-мегабайтные JSON грузили
 // процесс раньше, чем маршрут отвечал 401.
 const ASSISTANT_PATH = /^\/api\/assistant(?:\/read)?\/?$/;
+// Входящее письмо приходит целиком как message/rfc822: разбирает его сам маршрут
+// (routes/mail.js), поэтому разбор JSON на этом пути не нужен и только мешал бы.
+const MAIL_INBOUND_PATH = /^\/api\/mail\/inbound\/?$/;
 const jsonDefault = express.json();
 const jsonAssistant = express.json({ limit: '15mb' });
-app.use((req, res, next) => (ASSISTANT_PATH.test(req.path) ? next() : jsonDefault(req, res, next)));
+app.use((req, res, next) => (ASSISTANT_PATH.test(req.path) || MAIL_INBOUND_PATH.test(req.path) ? next() : jsonDefault(req, res, next)));
 
 app.use(
   session({
@@ -81,6 +92,10 @@ const ALLOWED_ORIGINS = ((process.env.APP_ORIGIN || '') + ',' + (process.env.DAS
 let warnedMissingOrigin = false;
 app.use((req, res, next) => {
   if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) return next();
+  // Единственное исключение: письмо от Cloudflare Email Worker. Браузера в этой цепочке нет,
+  // Origin не шлётся и cookie не участвует, поэтому подделывать межсайтовым запросом нечего;
+  // маршрут проверяет общий секрет и сессию не трогает (routes/mail.js).
+  if (MAIL_INBOUND_PATH.test(req.path)) return next();
 
   const allowed = ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : null;
   if (!allowed) {
@@ -113,6 +128,8 @@ app.use('/api/nbkr-rates', nbkrRatesRoutes);
 app.use('/api/checker.js', require('./routes/checker'));
 app.use('/api/engine', require('./routes/engine'));
 app.use('/api/assistant', require('./routes/assistant'));
+// Приём входящей почты от Cloudflare Email Worker: вход не нужен, проверяется общий секрет.
+app.use('/api/mail', require('./routes/mail'));
 // Дашборд администраторов: код интерфейса и данные — только администратору (requireAdmin).
 const dash = require('./routes/dash');
 app.get('/api/dash.js', dash.script);

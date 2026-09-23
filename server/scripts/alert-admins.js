@@ -12,6 +12,9 @@
 //
 // Usage: node scripts/alert-admins.js <unit> [--dry-run]
 require('dotenv').config();
+// Как в src/index.js: IPv6 на сервере прописан, но не работает, и без этой строки письмо о сбое
+// сначала ждёт таймаута по AAAA и не уходит. Скрипт запускает systemd отдельным процессом.
+require('node:dns').setDefaultResultOrder('ipv4first');
 const { execFileSync } = require('node:child_process');
 const { pool } = require('../src/db');
 const { sendEmail, renderEmail, BRAND } = require('../src/services/email');

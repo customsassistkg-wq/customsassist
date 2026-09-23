@@ -385,6 +385,26 @@ async function economySection() {
   };
 }
 
+// ── Обращения: входящая почта info@ и ответы на неё (миграция 0015) ─────────────
+async function mailSection() {
+  const [totals, recent] = await Promise.all([
+    pool.query(`select count(*) filter (where direction = 'in')::int as total,
+                       count(*) filter (where direction = 'in' and status = 'new')::int as unread,
+                       count(*) filter (where status = 'open')::int as open,
+                       count(*) filter (where direction = 'in' and created_at > now() - interval '30 days')::int as month,
+                       count(*) filter (where direction = 'out')::int as replies,
+                       count(*) filter (where status = 'spam')::int as spam,
+                       avg(extract(epoch from (answered_at - created_at))) filter (where direction = 'in' and answered_at is not null)::float as avg_reply_s,
+                       max(created_at) filter (where direction = 'in') as last_at,
+                       min(created_at) filter (where direction = 'in' and status in ('new', 'open')) as oldest_open
+                  from inbox`),
+    pool.query(`select id, direction, from_email, from_name, to_email, subject, status, created_at, answered_at,
+                       jsonb_array_length(attachments)::int as attachments
+                  from inbox order by created_at desc limit 10`),
+  ]);
+  return { ...(totals.rows[0] || {}), recent: recent.rows, configured: Boolean(process.env.MAIL_INBOUND_SECRET) };
+}
+
 // ── Журнал администрирования ───────────────────────────────────────────────────
 async function auditSection() {
   const { rows } = await pool.query(
@@ -402,7 +422,7 @@ router.use(requireAdmin);
 // Вся сводка одним объектом; отдельно от маршрута, чтобы проверять на сервере против настоящей
 // базы без сессии: node -e "require('dotenv').config();require('./src/routes/dash').collect('x').then(…)".
 async function collect(viewer) {
-  const [system, db, systemd, certs, users, engineUsage, ai, audit, legal, economy] = await Promise.all([
+  const [system, db, systemd, certs, users, engineUsage, ai, audit, legal, economy, mail] = await Promise.all([
     section('system', systemSection),
     section('db', dbSection),
     section('systemd', systemdSection),
@@ -413,9 +433,10 @@ async function collect(viewer) {
     section('audit', auditSection),
     section('base', async () => baseSection()),
     section('economy', economySection),
+    section('mail', mailSection),
   ]);
   return { now: new Date().toISOString(), viewer, system, db, systemd, certs, services: servicesSection(),
-    base: legal, http: metrics.snapshot(), users, engine: engineUsage, assistant: ai, audit, economy };
+    base: legal, http: metrics.snapshot(), users, engine: engineUsage, assistant: ai, audit, economy, mail };
 }
 
 router.get('/data', async (req, res, next) => {

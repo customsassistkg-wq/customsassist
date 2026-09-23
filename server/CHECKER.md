@@ -94,6 +94,7 @@ node server/tests/direction-regime.test.js
 node server/tests/static-assets.test.js
 node server/tests/dash.test.js
 node server/tests/payments.test.js
+node server/tests/mail.test.js
 ```
 
 **Дашборд администраторов (22.09.2026).** Третий закрытый файл — `private/dash.js`:

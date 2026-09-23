@@ -4,6 +4,8 @@ const { pool } = require('../db');
 const requireAdmin = require('../middleware/requireAdmin');
 const { endUserSessions } = require('../services/sessions');
 const { issueVerification } = require('../services/verification');
+// Ответы на обращения уходят тем же отправителем и той же оболочкой письма, что и остальная почта.
+const { sendEmail, renderEmail, BRAND } = require('../services/email');
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -457,5 +459,143 @@ router.delete('/expenses/:id', async (req, res, next) => {
   }
 });
 
+// ── Обращения: входящая почта и ответы на неё (миграция 0015, 23.09.2026) ──────────
+// Письма кладёт routes/mail.js, сюда приходит только чтение и ответ. Ответ уходит через
+// Resend с адреса поддержки и несёт In-Reply-To и References, поэтому у человека он
+// попадает в ту же переписку, а не отдельным письмом.
+// Адрес поддержки читается при вызове, а не при загрузке модуля: так .env можно поправить
+// без правки кода, а admin-invitation.test.js исполняет этот файл в песочнице без process.
+const supportFrom = () => process.env.MAIL_SUPPORT_FROM || `${BRAND} <info@customsassist.trade>`;
+const supportAddress = () => (supportFrom().match(/<([^>]+)>/) || [null, supportFrom()])[1].trim();
+const REPLY_MAX = 20000;
+const escHtml = (s) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+router.get('/mail', async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const status = ['new', 'open', 'done', 'spam'].includes(req.query.status) ? req.query.status : null;
+    const [list, counts] = await Promise.all([
+      pool.query(
+        `select m.id, m.direction, m.from_email, m.from_name, m.to_email, m.subject, m.status,
+                m.created_at, m.read_at, m.answered_at, m.size_bytes, m.had_html,
+                jsonb_array_length(m.attachments)::int as attachments,
+                left(m.body_text, 200) as preview, u.email as account, u.ai_plan, u.subscription_expires_at
+           from inbox m left join users u on u.id = m.user_id
+          ${status ? 'where m.status = $2' : ''}
+          order by m.created_at desc limit $1`,
+        status ? [limit, status] : [limit]
+      ),
+      pool.query(`select count(*) filter (where status = 'new' and direction = 'in')::int as new,
+                         count(*) filter (where status = 'open')::int as open,
+                         count(*) filter (where direction = 'in')::int as total,
+                         count(*) filter (where direction = 'in' and created_at > now() - interval '30 days')::int as month
+                    from inbox`),
+    ]);
+    res.json({ counts: counts.rows[0], rows: list.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Письмо целиком вместе со своей перепиской; открытие снимает пометку «новое».
+router.get('/mail/:id', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid id' });
+    const { rows } = await pool.query(
+      `select m.*, u.email as account, u.ai_plan, u.subscription_expires_at, u.active as account_active
+         from inbox m left join users u on u.id = m.user_id where m.id = $1`, [id]);
+    const msg = rows[0];
+    if (!msg) return res.status(404).json({ error: 'not found' });
+    const thread = msg.thread_key
+      ? (await pool.query(
+        `select id, direction, from_email, subject, body_text, created_at from inbox
+          where thread_key = $1 and id <> $2 order by created_at`, [msg.thread_key, id])).rows
+      : [];
+    if (!msg.read_at) {
+      await pool.query("update inbox set read_at = now(), status = case when status = 'new' then 'open' else status end where id = $1", [id]);
+      msg.read_at = new Date();
+      if (msg.status === 'new') msg.status = 'open';
+    }
+    res.json({ message: msg, thread });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/mail/:id/reply', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid id' });
+    const text = String((req.body && req.body.text) || '').trim();
+    if (!text) return res.status(400).json({ error: 'empty reply' });
+    if (text.length > REPLY_MAX) return res.status(400).json({ error: 'reply too long' });
+    if (!process.env.RESEND_API_KEY) return res.status(503).json({ error: 'mail not configured' });
+
+    const { rows } = await pool.query('select * from inbox where id = $1', [id]);
+    const msg = rows[0];
+    if (!msg) return res.status(404).json({ error: 'not found' });
+    if (msg.direction !== 'in') return res.status(400).json({ error: 'not an incoming message' });
+
+    const subject = /^re:/i.test(msg.subject || '') ? msg.subject : 'Re: ' + (msg.subject || 'обращение');
+    const headers = {};
+    if (msg.message_id) { headers['In-Reply-To'] = msg.message_id; headers.References = msg.message_id; }
+    const html = renderEmail({
+      title: subject,
+      intro: escHtml(text).replace(/\r?\n/g, '<br>'),
+      outro: 'Это ответ на ваше письмо на адрес ' + escHtml(msg.to_email || supportAddress())
+        + '. Можно ответить прямо на это письмо.',
+      footNote: 'Служба поддержки ' + escHtml(BRAND) + '.',
+    });
+    await sendEmail({ to: msg.from_email, subject, html, text, headers, from: supportFrom(), replyTo: supportAddress() });
+
+    const { rows: saved } = await pool.query(
+      `insert into inbox (direction, in_reply_to, thread_key, from_email, to_email, subject, body_text,
+                          size_bytes, user_id, status, answered_at)
+       values ('out',$1,$2,$3,$4,$5,$6,$7,$8,'done',now()) returning id, created_at`,
+      [msg.message_id, msg.thread_key || msg.message_id, supportAddress(), msg.from_email, subject, text,
+        Buffer.byteLength(text), msg.user_id]
+    );
+    await pool.query("update inbox set status = 'done', answered_at = now() where id = $1", [id]);
+    await audit(req.user.id, 'mail_reply', msg.user_id, { to: msg.from_email, subject });
+    res.status(201).json({ ok: true, id: saved[0].id, created_at: saved[0].created_at });
+  } catch (err) {
+    if (/Resend API error/.test(err.message)) {
+      console.error('mail reply failed:', err.message);
+      return res.status(502).json({ error: 'send failed' });
+    }
+    next(err);
+  }
+});
+
+router.patch('/mail/:id', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid id' });
+    const status = req.body && req.body.status;
+    if (!['new', 'open', 'done', 'spam'].includes(status)) return res.status(400).json({ error: 'invalid status' });
+    const { rows } = await pool.query('update inbox set status = $2 where id = $1 returning id, status', [id, status]);
+    if (!rows[0]) return res.status(404).json({ error: 'not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/mail/:id', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'invalid id' });
+    const { rows } = await pool.query('delete from inbox where id = $1 returning from_email, subject, user_id', [id]);
+    if (!rows[0]) return res.status(404).json({ error: 'not found' });
+    await audit(req.user.id, 'mail_delete', rows[0].user_id, { from: rows[0].from_email, subject: rows[0].subject });
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
 module.exports.extendedUntil = extendedUntil;
+module.exports.supportAddress = supportAddress;

@@ -3565,6 +3565,7 @@ async function renderAdminPanel(){
         +'<button class="qa-btn no-print" id="adminExportBtn" type="button">⬇️ Экспорт CSV</button>'
         +'<button class="qa-btn no-print" id="adminAiLogBtn" type="button">✨ Журнал AI-ассистента</button>'
         +'<button class="qa-btn no-print" id="adminMoneyBtn" type="button">💰 Оплаты и расходы</button>'
+        +'<button class="qa-btn no-print" id="adminMailBtn" type="button">📬 Обращения</button>'
         +'<button class="calc-btn" id="adminCreateBtn" style="width:auto;padding:10px 18px" type="button">+ Новый пользователь</button>'
       +'</div>'
     +'</div>'
@@ -3598,6 +3599,7 @@ document.getElementById('adminResult').addEventListener('click',function(e){
   if(e.target.closest('#adminExportBtn')){exportAdminUsersCSV();return;}
   if(e.target.closest('#adminAiLogBtn')){openAssistantLog(false);return;}
   if(e.target.closest('#adminMoneyBtn')){openMoneyPanel();return;}
+  if(e.target.closest('#adminMailBtn')){openMailPanel();return;}
   const row=e.target.closest('.admin-tr');
   if(!row)return;
   const u=adminUserById(row.dataset.userId);
@@ -3710,6 +3712,100 @@ function confirmDeleteUser(u){
   pendingAction={type:'delete',id:u.id};
   document.getElementById('pendingCancelBtn').onclick=closeModal;
   document.getElementById('pendingConfirmBtn').onclick=runPendingAction;
+}
+
+// ─── Обращения (23.09.2026) ───
+// Письма на info@ принимает Cloudflare Email Worker и передаёт серверу (routes/mail.js),
+// который разбирает их и кладёт в таблицу inbox. Здесь — список, чтение и ответ; ответ
+// уходит через Resend в ту же цепочку письма. HTML писем не хранится и не показывается:
+// в базе только текст, поэтому чужая разметка в админку попасть не может.
+const MAIL_STATUS={new:['Новое','t-sub-ok'],open:['В работе','t-user'],done:['Закрыто','t-off'],spam:['Спам','t-off']};
+let mailFilter='';
+async function openMailPanel(){
+  openModal('<h2>Обращения</h2><div id="mailBody">Загрузка…</div><div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');
+  const m=document.querySelector('#activeModal .modal');if(m)m.style.maxWidth='980px';
+  await mailListRender();
+}
+function mailStatusTag(st){const d=MAIL_STATUS[st]||[st,'t-user'];return '<span class="tag '+d[1]+'">'+esc(d[0])+'</span>';}
+async function mailListRender(){
+  const box=document.getElementById('mailBody');if(!box)return;
+  let d;
+  try{const r=await apiFetch('/api/admin/mail'+(mailFilter?'?status='+encodeURIComponent(mailFilter):''));if(!r.ok)throw new Error(r.status);d=await r.json();}
+  catch(e){box.innerHTML='<div class="calc-warn w-red">Не удалось загрузить обращения</div>';return;}
+  const c=d.counts||{};
+  const rows=(d.rows||[]).map(function(m){
+    return '<tr class="mail-tr" data-id="'+esc(m.id)+'" style="cursor:pointer">'
+      +'<td>'+(m.direction==='out'?'<span class="tag t-user">Ответ</span>':mailStatusTag(m.status))+'</td>'
+      +'<td>'+esc(fmtDateTime(m.created_at))+'</td>'
+      +'<td>'+esc(m.direction==='out'?m.to_email:(m.from_name||m.from_email))
+        +(m.account?'<br><span style="font-size:11px;color:var(--muted)">учётная запись · '+esc(AI_PLAN_NAMES[m.ai_plan]||m.ai_plan||'')+'</span>':'')+'</td>'
+      +'<td>'+esc(m.subject||'')+(m.attachments?' <span title="вложения">📎'+esc(m.attachments)+'</span>':'')
+        +'<br><span style="font-size:11px;color:var(--muted)">'+esc((m.preview||'').replace(/\s+/g,' ').slice(0,90))+'</span></td>'
+    +'</tr>';
+  }).join('');
+  box.innerHTML='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'
+    +['','new','open','done','spam'].map(function(v){const n=v===''?'Все':MAIL_STATUS[v][0];
+      return '<button class="btn mail-filter" data-v="'+v+'"'+(mailFilter===v?' style="border-color:var(--indigo);color:var(--indigo)"':'')+' type="button">'+esc(n)+'</button>';}).join('')
+    +'<span style="margin-left:auto;font-size:12px;color:var(--muted)">новых '+esc(c.new||0)+' · в работе '+esc(c.open||0)+' · за 30 дней '+esc(c.month||0)+'</span></div>'
+    +(rows?'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Статус</th><th>Когда</th><th>От кого</th><th>Тема</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      :'<div style="color:var(--muted);font-size:12px">Писем нет. Обращения приходят на info@customsassist.trade.</div>');
+  box.querySelectorAll('.mail-filter').forEach(function(b){b.onclick=function(){mailFilter=b.dataset.v;mailListRender();};});
+  box.querySelectorAll('.mail-tr').forEach(function(tr){tr.onclick=function(){mailOpen(tr.dataset.id);};});
+}
+async function mailOpen(id){
+  const box=document.getElementById('mailBody');if(!box)return;
+  box.innerHTML='Загрузка…';
+  let d;
+  try{const r=await apiFetch('/api/admin/mail/'+encodeURIComponent(id));if(!r.ok)throw new Error(r.status);d=await r.json();}
+  catch(e){box.innerHTML='<div class="calc-warn w-red">Не удалось открыть письмо</div>';return;}
+  const m=d.message||{};
+  const att=(m.attachments||[]).map(function(a){return '<span class="tag t-user">📎 '+esc(a.filename)+' · '+esc(Math.round((a.size||0)/1024))+' КБ</span>';}).join(' ');
+  const thread=(d.thread||[]).map(function(t){
+    return '<div style="border-left:2px solid var(--border);padding:6px 0 6px 10px;margin:8px 0">'
+      +'<div style="font-size:11px;color:var(--muted)">'+esc(t.direction==='out'?'Наш ответ':'Письмо')+' · '+esc(fmtDateTime(t.created_at))+'</div>'
+      +'<div style="white-space:pre-wrap;font-size:12px">'+esc((t.body_text||'').slice(0,4000))+'</div></div>';
+  }).join('');
+  box.innerHTML='<button class="btn" type="button" id="mailBackBtn">← К списку</button>'
+    +'<h3 style="margin:12px 0 4px">'+esc(m.subject||'(без темы)')+'</h3>'
+    +'<div style="font-size:12px;color:var(--muted);margin-bottom:10px">'+esc(m.from_name?m.from_name+' <'+m.from_email+'>':m.from_email)
+      +' · '+esc(fmtDateTime(m.created_at))+' · '+mailStatusTag(m.status)
+      +(m.account?' · учётная запись: '+esc(m.account)+', тариф '+esc(AI_PLAN_NAMES[m.ai_plan]||m.ai_plan||'')+(m.subscription_expires_at?', подписка до '+esc(fmtCalDate(m.subscription_expires_at)):', без срока'):' · учётной записи с таким адресом нет')+'</div>'
+    +(att?'<div class="tags">'+att+'</div><div style="font-size:11px;color:var(--muted);margin-bottom:8px">Файлы вложений не хранятся на сервере: они в копии письма, которую Worker переслал на вашу почту.</div>':'')
+    +(m.had_html?'<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Письмо было в HTML; показан его текст без разметки.</div>':'')
+    +'<div style="white-space:pre-wrap;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;max-height:320px;overflow:auto">'+esc(m.body_text||'(пустое письмо)')+'</div>'
+    +thread
+    +'<div id="mailError" class="calc-warn w-red" style="display:none;margin-top:10px"></div>'
+    +(m.direction==='in'?'<div class="calc-field" style="margin-top:12px"><label>Ответ</label><textarea id="mailReply" rows="6" style="width:100%" placeholder="Ответ уйдёт с адреса info@customsassist.trade в ту же переписку"></textarea></div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="calc-btn" type="button" id="mailSendBtn" style="width:auto;padding:10px 18px">Отправить ответ</button>'
+      +'<button class="btn" type="button" data-st="done">Закрыть обращение</button>'
+      +'<button class="btn" type="button" data-st="spam">Это спам</button>'
+      +'<button class="btn danger" type="button" id="mailDelBtn">Удалить</button></div>':'');
+  document.getElementById('mailBackBtn').onclick=mailListRender;
+  const err=document.getElementById('mailError');
+  const fail=function(t){err.textContent=t;err.style.display='block';};
+  box.querySelectorAll('[data-st]').forEach(function(b){b.onclick=async function(){
+    try{const r=await apiFetch('/api/admin/mail/'+encodeURIComponent(id),{method:'PATCH',body:JSON.stringify({status:b.dataset.st})});
+      if(!r.ok)return fail('Не удалось изменить статус');mailListRender();}catch(e){fail('Ошибка сети');}
+  };});
+  const del=document.getElementById('mailDelBtn');
+  if(del)del.onclick=async function(){
+    if(!window.confirm('Удалить письмо? Отменить будет нельзя.'))return;
+    try{const r=await apiFetch('/api/admin/mail/'+encodeURIComponent(id),{method:'DELETE'});
+      if(!r.ok)return fail('Не удалось удалить');mailListRender();}catch(e){fail('Ошибка сети');}
+  };
+  const send=document.getElementById('mailSendBtn');
+  if(send)send.onclick=async function(){
+    const text=document.getElementById('mailReply').value.trim();
+    if(!text)return fail('Ответ пустой');
+    send.disabled=true;
+    try{
+      const r=await apiFetch('/api/admin/mail/'+encodeURIComponent(id)+'/reply',{method:'POST',body:JSON.stringify({text:text})});
+      if(!r.ok){const j=await r.json().catch(function(){return {};});
+        return fail(j.error==='send failed'?'Почтовая служба не приняла письмо':(j.error==='reply too long'?'Ответ слишком длинный':'Не удалось отправить ответ'));}
+      mailOpen(id);
+    }catch(e){fail('Ошибка сети');}
+    finally{const b=document.getElementById('mailSendBtn');if(b)b.disabled=false;}
+  };
 }
 
 // ─── Оплаты и расходы (22.09.2026) ───

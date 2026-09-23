@@ -19,8 +19,12 @@ async function purgeExpired(now = new Date()) {
   const payments = await pool.query(
     "delete from payments where created_at < (date_trunc('year', $1::timestamptz at time zone 'Asia/Bishkek') - interval '7 years') at time zone 'Asia/Bishkek'",
     [now]);
-  const counts = { audit: audit.rowCount || 0, payments: payments.rowCount || 0 };
-  if (counts.audit || counts.payments) console.log(`retention: removed ${counts.audit} audit rows, ${counts.payments} payment records`);
+  // Переписка обращений — год с письма (миграция 0015), срок стоит в самой строке.
+  const inbox = await pool.query('delete from inbox where purge_after < $1', [now]);
+  const counts = { audit: audit.rowCount || 0, payments: payments.rowCount || 0, inbox: inbox.rowCount || 0 };
+  if (counts.audit || counts.payments || counts.inbox) {
+    console.log(`retention: removed ${counts.audit} audit rows, ${counts.payments} payment records, ${counts.inbox} messages`);
+  }
   return counts;
 }
 

@@ -6,12 +6,16 @@
 // the address the Resend account was signed up with — that is what silently
 // swallowed every password-reset mail to real users until the domain was
 // verified on 11.09.2026.
-async function sendEmail({ to, subject, html }) {
+// from, replyTo, text и headers нужны ответам на обращения (routes/admin.js, раздел
+// «Обращения»): они уходят с адреса info@, а не с noreply@, и несут In-Reply-To и
+// References, иначе почтовый клиент человека покажет ответ отдельным письмом, а не в
+// той же переписке. Письма самого сервиса вызывают функцию как раньше, без этих полей.
+async function sendEmail({ to, subject, html, from: fromOverride, replyTo, text, headers }) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     throw new Error('RESEND_API_KEY is not configured');
   }
-  const from = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+  const from = fromOverride || process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -23,7 +27,10 @@ async function sendEmail({ to, subject, html }) {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ from, to, subject, html }),
+    body: JSON.stringify({ from, to, subject, html,
+      ...(text ? { text } : {}),
+      ...(replyTo ? { reply_to: replyTo } : {}),
+      ...(headers && Object.keys(headers).length ? { headers } : {}) }),
   });
 
   if (!res.ok) {

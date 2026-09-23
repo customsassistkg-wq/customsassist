@@ -251,7 +251,11 @@
   .tile .l{font-size:var(--fs-md);color:var(--muted);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .tile .v{font-size:var(--fs-5xl);font-weight:600;letter-spacing:-.02em;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
   .tile .v small{font-size:var(--fs-md);font-weight:500;color:var(--muted);margin-left:4px;letter-spacing:0}
-  .tile .d{font-size:var(--fs-md);color:var(--muted);margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;line-height:1.4}
+  .tile .d{font-size:var(--fs-md);color:var(--muted);margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;line-height:1.4;min-width:0}
+  /* Плашка в подписи плитки набрана без переносов: длинная (например «MAIL_INBOUND_SECRET не
+     задан») расталкивала сетку плиток и давала горизонтальную прокрутку всей страницы на
+     телефоне (23.09.2026). Ширина плашки ограничена плиткой, хвост срезается многоточием. */
+  .tile .d .tag{max-width:100%;overflow:hidden;text-overflow:ellipsis}
   .tile.hero .v{font-size:32px}
   .tile .meter{margin-top:8px}
   .rh .rn-sub{font-size:var(--fs-md);color:var(--muted);line-height:1.4}
@@ -435,6 +439,7 @@
         <button class="nav-item" type="button" data-sec="sec-http"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-pulse"/></svg></span> Запросы к API</button>
         <div class="nav-grp">Люди и деньги</div>
         <button class="nav-item" type="button" data-sec="sec-users"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg></span> Пользователи</button>
+        <button class="nav-item" type="button" data-sec="sec-mail"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-clipboard"/></svg></span> Обращения</button>
         <button class="nav-item" type="button" data-sec="sec-engine"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg></span> Лимиты базы</button>
         <button class="nav-item" type="button" data-sec="sec-assistant"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-sparkles"/></svg></span> AI-помощник</button>
         <button class="nav-item" type="button" data-sec="sec-economy"><span class="nav-ico"><svg class="ic" aria-hidden="true"><use href="#i-coins"/></svg></span> Экономика</button>

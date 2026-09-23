@@ -463,9 +463,41 @@
       + card('Последние оплаты', table(['Когда', 'Кто', '#Сумма', 'Тариф', '#Мес.', 'До', 'Способ'], recentRows, 'Оплат ещё не записано: кнопка «Оплата» в строке пользователя в админке.'), 'последние 10', 'span2', 'i-coins'));
   }
 
+  // ── Обращения: письма на info@ и ответы на них ──
+  function secMail(d) {
+    const m = d.mail;
+    if (!m || m.error) return section('sec-mail', 'Обращения', '', card('Обращения', errBox(m, 'Раздел'), '', 'span2', 'i-clipboard', 'danger'));
+    const waiting = (n(m.unread) || 0) + (n(m.open) || 0);
+    const oldestDays = m.oldest_open ? Math.floor((new Date(d.now) - new Date(m.oldest_open)) / 86400e3) : null;
+    const avg = n(m.avg_reply_s);
+    const tiles = [
+      tile('Ждут ответа', esc(fmt.int(waiting)), waiting
+        ? st(oldestDays >= 2 ? 'warn' : 'info', oldestDays != null ? 'самое старое ' + fmt.days(oldestDays) : 'в работе')
+        : st('ok', 'разобрано всё'), { hero: true }),
+      tile('Новых', esc(fmt.int(m.unread)), `в работе ${fmt.int(m.open)} · спам ${fmt.int(m.spam)}`),
+      tile('За 30 дней', esc(fmt.int(m.month)), `всего ${fmt.int(m.total)} · ответов ${fmt.int(m.replies)}`),
+      tile('Ответ в среднем', avg == null ? '—' : esc(fmt.dur(avg)), 'от письма до ответа'),
+      tile('Последнее письмо', esc(m.last_at ? fmt.ago(m.last_at, d.now) : '—'), esc(fmt.dt(m.last_at))),
+      tile('Приём почты', m.configured ? 'включён' : 'выключен',
+        st(m.configured ? 'ok' : 'none', m.configured ? 'Email Worker' : 'секрет не задан')),
+    ];
+    const rows = (m.recent || []).map((r) => [
+      r.direction === 'out' ? st('info', 'ответ') : st(r.status === 'new' ? 'warn' : r.status === 'open' ? 'info' : 'none',
+        { new: 'новое', open: 'в работе', done: 'закрыто', spam: 'спам' }[r.status] || r.status),
+      esc(fmt.dt(r.created_at)),
+      esc(r.direction === 'out' ? r.to_email : (r.from_name || r.from_email)),
+      esc(r.subject || '') + (r.attachments ? ` <span class="small">📎 ${esc(fmt.int(r.attachments))}</span>` : ''),
+    ]);
+    return section('sec-mail', 'Обращения', 'почта info@ через Cloudflare Email Worker; читать и отвечать — в админ-панели сайта',
+      tilesCard(tiles)
+      + card('Последние письма', table(['Статус', 'Когда', 'Кто', 'Тема'], rows, 'Писем ещё не было.'),
+        'последние 10, входящие и ответы', 'span2', 'i-clipboard', waiting ? 'warn' : ''));
+  }
+
   const ACTIONS = { create_user: 'создал учётную запись', set_role: 'изменил роль', enable_user: 'включил', disable_user: 'отключил',
     set_ai_plan: 'изменил тариф AI', set_subscription: 'изменил срок подписки', delete_user: 'удалил учётную запись', terms_accepted: 'принял правила',
-    payment: 'записал оплату', delete_payment: 'удалил запись об оплате', expense_add: 'добавил статью расходов', expense_delete: 'удалил статью расходов' };
+    payment: 'записал оплату', delete_payment: 'удалил запись об оплате', expense_add: 'добавил статью расходов', expense_delete: 'удалил статью расходов',
+    mail_reply: 'ответил на обращение', mail_delete: 'удалил письмо' };
   function detailText(action, det) {
     if (!det || typeof det !== 'object') return '';
     const parts = [];
@@ -497,7 +529,7 @@
   // ── Сборка и цикл обновления ─────────────────────────────────────────────────
   let ctx = null, timer = null, tick = null, last = null, lastAt = 0, fetching = false;
   function render(d) {
-    const html = [secHealth(d), secHttp(d), secUsers(d), secEngine(d), secAssistant(d), secEconomy(d), secBase(d), secAudit(d)].join('');
+    const html = [secHealth(d), secHttp(d), secUsers(d), secMail(d), secEngine(d), secAssistant(d), secEconomy(d), secBase(d), secAudit(d)].join('');
     ctx.mount.innerHTML = html;
     bindTips(ctx.mount);
     if (ctx.onRender) ctx.onRender(); // страница подсвечивает раздел в меню по прокрутке

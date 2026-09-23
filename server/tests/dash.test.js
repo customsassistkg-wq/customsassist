@@ -89,7 +89,7 @@ const pageHtml = fs.readFileSync(path.join(root, 'server/dash/index.html'), 'utf
     assert.equal(r.status, 200);
     assert.match(r.headers.get('cache-control'), /no-store/);
     const d = await r.json();
-    for (const k of ['now', 'system', 'db', 'certs', 'services', 'base', 'http', 'users', 'engine', 'assistant', 'audit']) assert.ok(k in d, 'нет раздела ' + k);
+    for (const k of ['now', 'system', 'db', 'certs', 'services', 'base', 'http', 'users', 'engine', 'assistant', 'audit', 'economy', 'mail']) assert.ok(k in d, 'нет раздела ' + k);
     assert.equal(d.viewer, admin.email);
     assert.equal(typeof d.system.node, 'string');
     assert.equal(d.db.version, 'PostgreSQL 16.3');
@@ -166,7 +166,7 @@ const pageHtml = fs.readFileSync(path.join(root, 'server/dash/index.html'), 'utf
       await page.click('#authSubmit');
       await page.locator('#dash section#sec-audit').waitFor({ state: 'visible', timeout: 15000 });
       const secs = await page.$$eval('#dash section.res-sec', (els) => els.map((e) => e.id));
-      assert.deepEqual(secs, ['sec-health', 'sec-http', 'sec-users', 'sec-engine', 'sec-assistant', 'sec-economy', 'sec-base', 'sec-audit']);
+      assert.deepEqual(secs, ['sec-health', 'sec-http', 'sec-users', 'sec-mail', 'sec-engine', 'sec-assistant', 'sec-economy', 'sec-base', 'sec-audit']);
       assert.equal(await page.locator('#who').innerText(), admin.email);
       assert.ok((await page.locator('#dash .tile').count()) >= 20, 'плитки');
       assert.ok((await page.locator('#dash .chart svg').count()) >= 4, 'графики');
@@ -176,7 +176,16 @@ const pageHtml = fs.readFileSync(path.join(root, 'server/dash/index.html'), 'utf
         const w = document.documentElement.clientWidth;
         return [...document.querySelectorAll('body *')].map((e) => ({ r: e.getBoundingClientRect(), e }))
           .filter((x) => x.r.right > w + 1 && x.r.width > 0).sort((a, b) => b.r.width - a.r.width).slice(0, 8)
-          .map((x) => `${x.e.tagName.toLowerCase()}${x.e.id ? '#' + x.e.id : ''}.${[...x.e.classList].join('.')} ${Math.round(x.r.width)}px→${Math.round(x.r.right)}`);
+          .map((x) => {
+            // Раздел и карточка: по одному тегу «table» не понять, что именно вылезло (23.09.2026).
+            const sec = x.e.closest('section') ? x.e.closest('section').id : '—';
+            const card = x.e.closest('.card') ? (x.e.closest('.card').querySelector('.rn-title') || {}).textContent || '' : '';
+            // Контейнер прокрутки должен обрезать широкую таблицу; если он сам шире экрана,
+            // виновник — он, а не таблица.
+            const t = x.e.closest('.tbl');
+            const scroller = t ? ` в .tbl[${getComputedStyle(t).overflowX}, ${Math.round(t.getBoundingClientRect().width)}px→${Math.round(t.getBoundingClientRect().right)}]` : '';
+            return `${sec}/${card}: ${x.e.tagName.toLowerCase()}${x.e.id ? '#' + x.e.id : ''}.${[...x.e.classList].join('.')}${scroller} ${Math.round(x.r.width)}px→${Math.round(x.r.right)}`;
+          });
       });
       const noOverflow = async (what) => { const o = await overflow(); assert.equal(o, 0, `горизонтальная прокрутка ${what}: +${o}px; ` + (await offenders()).join(' | ')); };
       await noOverflow('на 1280');
@@ -212,7 +221,7 @@ const pageHtml = fs.readFileSync(path.join(root, 'server/dash/index.html'), 'utf
       assert.deepEqual(errors, [], 'ошибки страницы');
       assert.deepEqual(csps, [], 'нарушения CSP');
       fserver.close();
-      console.log('PASS: браузер — отказ не администратору, семь разделов, обе темы, 1280/420 без прокрутки, меню и выход');
+      console.log('PASS: браузер — отказ не администратору, девять разделов, обе темы, 1280/420 без прокрутки, меню и выход');
     } else {
       console.log('SKIP: браузерная часть (PLAYWRIGHT_MODULE не задан)');
     }
