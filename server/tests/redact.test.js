@@ -74,6 +74,16 @@ const { ask, redactPersonal } = require('../src/services/assistant');
   assert.ok(!/\](?=\S)/.test(redactPersonal('Seller: Shenzhen Co, 8517130000 — 12 500,00 USD')), 'пометка слиплась со следующим словом');
   console.log('PASS: в строке таблицы вырезана только сторона — код, сумма и разделители целы');
 
+  // ── повторная очистка ничего не меняет: текст чистится в браузере (/clean) и ещё раз в ask() ──
+  for (const line of [
+    'Тел. +996700112233, ИНН 12345678901234', 'Seller: Shenzhen Co, 8517130000 — 12 500,00 USD',
+    'Адрес: Бишкек, Киевская 12', 'Контактное лицо: Иванов Иван', 'ivan@example.kg и карта 4276 3800 1234 5678',
+  ]) {
+    const once = redactPersonal(line), twice = redactPersonal(once);
+    assert.equal(twice, once, `повторная очистка изменила текст: ${line}`);
+  }
+  console.log('PASS: повторная очистка ничего не меняет');
+
   // ── ask(): до модели доходит уже очищенный текст вопроса и документа ──
   const sent = [];
   global.fetch = async (url, opts) => {

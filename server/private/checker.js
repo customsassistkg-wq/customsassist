@@ -2775,6 +2775,13 @@ function aiAppend(m){
   d.className='ai-msg '+(m.role==='user'?'u':'a')+(m.err?' err':'');
   if(m.role==='user'){
     d.textContent=m.content+(m.imgs?'\n📎 изображений: '+m.imgs:'');
+    // «что ушло в модель» видно и после отправки: пометка появляется, только если что-то заменено
+    if(m.redacted){
+      const n=document.createElement('div');
+      n.style.cssText='margin-top:4px;font-size:11px;opacity:.75';
+      n.textContent='Персональные данные заменены пометками — в модель ушёл этот текст.';
+      d.appendChild(n);
+    }
     // документы реплики: нажатие показывает прочитанный текст; в записях до 17.09.2026 — только имена
     if(m.docs&&m.docs.length){
       const box=document.createElement('div');
@@ -2859,7 +2866,16 @@ async function aiSend(e){
   aiBusy=true;inp.value='';aiDocs=[];aiFileNote='';aiRenderThumbs();
   const ver=appViewVersion,btn=document.getElementById('aiSendBtn');
   btn.disabled=true;
-  const um={role:'user',content:q,docs:docs.length?docs.map(d=>({name:d.name,pages:d.pages,text:d.text,cut:d.cut===true})):undefined};
+  // Вопрос чистится до отправки тем же правилом, что и документы (/api/assistant/clean):
+  // в пузыре остаётся ровно то, что ушло в модель, и об этом сказано под сообщением.
+  // Не ответил — отправляем как есть: сервер всё равно чистит присланное (ask → redactPersonal).
+  let sent=q,redacted=false;
+  try{
+    const c=await apiFetch('/api/assistant/clean',{method:'POST',body:JSON.stringify({text:q})});
+    const j=c.ok?await c.json().catch(()=>null):null;
+    if(j&&typeof j.text==='string'&&j.text!==q){sent=j.text;redacted=true}
+  }catch(e){}
+  const um={role:'user',content:sent,redacted:redacted||undefined,docs:docs.length?docs.map(d=>({name:d.name,pages:d.pages,text:d.text,cut:d.cut===true})):undefined};
   aiHistory.push(um);aiSave();aiAppend(um);
   const wait=aiAppend({role:'assistant',content:'⏳ Готовлю ответ…'});
   // Вопрос и документы возвращаются в форму: повторить можно без повторного чтения страниц.
