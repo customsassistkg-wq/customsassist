@@ -962,6 +962,14 @@ const a = require('../src/services/assistant');
       e = await a.readPage(pg, { parts: strips, checkOrientation: false });
       assert.equal(e.text, 'СОБРАНО ИЗ ТЕКСТА');
 
+      // скан ID-карты: текста мало, но это не «пустая страница» — изображение не уходит, модель не зовётся
+      visionText = 'IDKGZID2198942621610199400511<\n9410165M3105 102KGZ<\nKOSHOKBAI<UULU<TALANTBEK<<<<';
+      sent.length = 0;
+      e = await a.readPage(pg, { parts: strips, checkOrientation: false });
+      assert.ok(/удостоверяющий личность/.test(e.text), 'страница-удостоверение не помечена: ' + e.text);
+      assert.ok(!/2198942|TALANTBEK/.test(e.text), 'данные удостоверения в тексте');
+      assert.ok(!sent.some((s) => s.kind !== 'vision'), 'скан удостоверения ушёл модели: ' + JSON.stringify(sent));
+
       // выключатель AI_READ_EU=0 возвращает прежний порядок
       visionText = 'ИНВОЙС 8517130000 и 8471300000' + filler;
       process.env.AI_READ_EU = '0';
