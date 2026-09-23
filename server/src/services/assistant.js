@@ -1007,6 +1007,21 @@ const docaiCents = (s) => {
   const k = m ? numKey(m[0]) : '';
   return k.endsWith('c') ? Number(k.slice(0, -1)) : Number(k || 0) * 100;
 };
+// Текст страницы от Vision: по полосам, если они есть (они крупнее уменьшенной страницы),
+// иначе по самой странице. Полная страница уже прочитана для определения положения — она и идёт в дело,
+// когда полос нет. Ошибка любого куска обрывает путь: половина страницы хуже, чем честный возврат к модели.
+async function euVisionText(img, parts, first) {
+  try {
+    if (!parts || !parts.length) return first ? first.text : (await googleOcr(img.data)).text;
+    const outs = [];
+    for (const p of parts) outs.push((await googleOcr(p.data)).text);
+    return outs.join('\n');
+  } catch (e) {
+    console.error('assistant: OCR for EU path failed:', e.message);
+    return null;
+  }
+}
+
 async function docaiRead(img) {
   const res = await fetch(docaiUrl(), {
     method: 'POST',
@@ -1306,6 +1321,51 @@ function pageUnreliable(main, vision) {
   if (theirs.length >= 8 && got < theirs.length * 0.4) return `распознавание Google видит на странице ${theirs.length} чисел, а в расшифровке из них ${got}`;
   return null;
 }
+// ── Чтение страницы: сначала Европа, изображение — только при недоверии ─────────
+// Замер 23.09.2026 на десяти страницах настоящих досье (session.md): текст Google Vision (регион ЕС)
+// находит практически те же числа, что модель по изображению (275 общих из 315), а структуру таблицы
+// модель восстанавливает из этого текста не хуже — 9 строк инвойса против 9. Расходятся пути на плохих
+// сканах: на туркменской CMR Vision прочёл коды как 6359004140 и 9103990009 вместо 6309000000 и
+// 9403990009 (проверено по инвойсу того же досье). Поэтому порядок такой: читает Европа, а изображение
+// уходит модели в КНР только тогда, когда тексту верить нельзя. Выключатель — AI_READ_EU=0.
+//
+// Признак доверия выведен замером, а не догадкой. **Уверенность самого Vision не годится**: у плохой
+// страницы 0,888, у хорошей — 0,878, разделить нельзя. Зато коды разделяют начисто: страница, где есть
+// и настоящие коды ЕТТ, и десятизначные числа, которых в ЕТТ нет, — это страница с испорченными цифрами
+// (2 из 7 на той CMR). Страница из одних «несуществующих кодов» не в счёт: это серийные номера
+// (44 из 44 на странице лабораторных номеров, прочитанной Vision безупречно).
+let ettCodes = null;
+function ettSet() {
+  if (!ettCodes) ettCodes = new Set((checker().ETT_DB || []).map((r) => r[0]));
+  return ettCodes;
+}
+function visionDistrust(text) {
+  const s = String(text || '');
+  if (s.replace(/\s/g, '').length < 200) return 'на странице почти нет текста';
+  const codes = [...new Set(s.match(/(?<!\d)\d{10}(?!\d)/g) || [])];
+  const ok = codes.filter((c) => ettSet().has(c)).length;
+  const bad = codes.length - ok;
+  if (ok && bad) return `цифры кодов прочитаны ненадёжно: ${bad} из ${codes.length} нет в ЕТТ`;
+  return null;
+}
+// Модель собирает документ из текста распознавания, изображения не видя. Формулировка проверена на
+// бланках: прежняя просьба «собери таблицы» строила из граф CMR таблицу на 104 строки.
+const REBUILD_PROMPT = 'Ниже — текст страницы документа, распознанный автоматически. Это может быть бланк с графами '
+  + '(CMR, накладная, декларация) или таблица (инвойс, упаковочный лист). Перепиши текст в читаемый вид, '
+  + 'сохраняя порядок строк и все числа ровно как в тексте. Таблицу в Markdown делай только там, где в тексте '
+  + 'действительно таблица товаров: несколько однотипных строк с количеством и суммой. Бланк с графами оставь '
+  + 'построчно, как «графа: значение», таблицу из него не строй. Ничего не додумывай: нет значения — оставь '
+  + 'пусто; непонятный обрывок оставь как есть. Печати, штампы и подписи обозначь одним словом в скобках.';
+async function rebuildFromText(text, usage) {
+  const res = await postModel({
+    model: MODEL, max_tokens: 16000, thinking: { type: 'disabled' },
+    messages: [{ role: 'user', content: [{ type: 'text', text: REBUILD_PROMPT + '\n\n' + text }] }],
+  });
+  addUsage(usage, { input: res.usage?.input_tokens, output: res.usage?.output_tokens,
+    cacheRead: res.usage?.cache_read_input_tokens, costUsd: roundCost(res.usage, MODEL) });
+  return (res.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n').trim();
+}
+
 async function readPage(img, { checkOrientation = true, parts = [], raw = false } = {}) {
   const usage = { input: 0, output: 0, cacheRead: 0, costUsd: 0 };
   const read = (x) => readImage(x.media_type, x.data, TRANSCRIBE_PROMPT, 16000, usage);
@@ -1316,6 +1376,23 @@ async function readPage(img, { checkOrientation = true, parts = [], raw = false 
       ? await googleOcr(img.data).catch((e) => { console.error('assistant: second OCR failed:', e.message); return null; })
       : null;
     if (first && first.turn) return { rotate: first.turn, usage };
+    // Европейский путь: текст даёт Vision по полосам (они крупнее полной страницы), структуру
+    // возвращает модель уже по тексту. В КНР уходит очищенный текст, изображение остаётся в ЕС.
+    if (process.env.AI_READ_EU !== '0' && visionAccount()) {
+      const euText = await euVisionText(img, parts, first);
+      const why = euText === null ? 'распознавание не ответило' : visionDistrust(euText);
+      if (!why) {
+        const rebuilt = await rebuildFromText(redactPersonal(euText), usage).catch((e) => {
+          console.error('assistant: rebuild from OCR failed:', e.message);
+          return null;
+        });
+        if (rebuilt) return raw
+          ? { text: fixVins(rebuilt), usage, raw: { main: rebuilt, others: [], vision: euText, docai: null, source: 'eu' } }
+          : { text: fixVins(rebuilt), usage, source: 'eu' };
+      } else {
+        console.warn('assistant: страница уходит модели изображением —', why);
+      }
+    }
     const reads = Promise.allSettled([
       parts.length ? Promise.all(parts.map(read)).then((t) => t.join('\n')) : read(img),
       ...(process.env.AI_READ_SINGLE === '1' ? [] : [read(img), read(img)]),

@@ -896,6 +896,79 @@ const a = require('../src/services/assistant');
     assert.equal(bodies.filter((b) => b.max_tokens === 16000).length, 3);
     vision = { responses: [{ fullTextAnnotation: { text: '19 6 $41.260,35 $247.562,10\nTotal 583.478,40' } }] };
 
+    // ── сначала Европа: текст Vision и сборка моделью, изображение — только при недоверии ──
+    // Порядок выведен замером на настоящих досье (session.md, 23.09.2026). Здесь проверяется само
+    // правило: надёжному тексту верим и картинку в КНР не отправляем, ненадёжному — не верим.
+    {
+      const sent = [];
+      let visionText = '';
+      const prevFetch = global.fetch;
+      global.fetch = async (url, opts) => {
+        if (/oauth2\.googleapis\.com/.test(url)) return { ok: true, json: async () => ({ access_token: 'tok', expires_in: 3600 }) };
+        if (/vision\.googleapis\.com/.test(url)) { sent.push({ kind: 'vision' }); return { ok: true, json: async () => ({ responses: [{ fullTextAnnotation: { text: visionText } }] }) }; }
+        const body = JSON.parse(opts.body);
+        const blocks = body.messages[0].content;
+        const txt = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+        const kind = /перевёрнут вверх ногами/.test(txt) ? 'orient' : /распознанный автоматически/.test(txt) ? 'rebuild' : 'read';
+        sent.push({ kind, image: blocks.some((b) => b.type === 'image') });
+        return { ok: true, json: async () => ({ content: [{ type: 'text', text: kind === 'orient' ? 'правильно' : kind === 'rebuild' ? 'СОБРАНО ИЗ ТЕКСТА' : 'ПРОЧТЕНО С КАРТИНКИ' }],
+          stop_reason: 'end_turn', usage: { input_tokens: 100, output_tokens: 10 } }) };
+      };
+      const filler = ' номер счёта, дата, условия поставки, наименование товара и прочий текст страницы.'.repeat(4);
+      const pg = { media_type: 'image/jpeg', data: 'AAAA' };
+      const strips = [{ media_type: 'image/jpeg', data: 'BBBB' }, { media_type: 'image/jpeg', data: 'CCCC' }];
+
+      // текст надёжный: коды из ЕТТ и достаточно текста — читает Европа
+      visionText = 'ИНВОЙС 8517130000 и 8471300000' + filler;
+      sent.length = 0;
+      let e = await a.readPage(pg, { parts: strips, checkOrientation: false });
+      assert.deepEqual([e.text, e.source], ['СОБРАНО ИЗ ТЕКСТА', 'eu']);
+      assert.ok(!sent.some((s) => s.image), 'изображение не должно уходить модели: ' + JSON.stringify(sent));
+      assert.equal(sent.filter((s) => s.kind === 'vision').length, 2, 'Vision читает обе полосы');
+
+      // коды-призраки рядом с настоящими — цифры прочитаны ненадёжно, идём к изображению
+      visionText = 'CMR 8517130000 и 6359004140' + filler;
+      sent.length = 0;
+      e = await a.readPage(pg, { parts: strips, checkOrientation: false });
+      assert.match(e.text, /^ПРОЧТЕНО С КАРТИНКИ/); // основное чтение склеивает обе полосы
+      assert.ok(sent.some((s) => s.image), 'при недоверии страница уходит модели изображением');
+
+      // страница почти без текста (фото ярлыка) — тоже к изображению
+      visionText = 'ЯРЛЫК 8517130000';
+      sent.length = 0;
+      e = await a.readPage(pg, { parts: strips, checkOrientation: false });
+      assert.match(e.text, /^ПРОЧТЕНО С КАРТИНКИ/); // основное чтение склеивает обе полосы
+
+      // одни несуществующие коды — это серийные номера, а не испорченные цифры: тексту верим
+      visionText = 'ЛАБОРАТОРНЫЙ ЖУРНАЛ 0003219762 0003220108 0003220454' + filler;
+      sent.length = 0;
+      e = await a.readPage(pg, { parts: strips, checkOrientation: false });
+      assert.equal(e.text, 'СОБРАНО ИЗ ТЕКСТА');
+
+      // выключатель AI_READ_EU=0 возвращает прежний порядок
+      visionText = 'ИНВОЙС 8517130000 и 8471300000' + filler;
+      process.env.AI_READ_EU = '0';
+      sent.length = 0;
+      e = await a.readPage(pg, { parts: strips, checkOrientation: false });
+      delete process.env.AI_READ_EU;
+      assert.match(e.text, /^ПРОЧТЕНО С КАРТИНКИ/); // основное чтение склеивает обе полосы
+
+      // в модель уходит очищенный текст: телефон из расшифровки до неё не доходит
+      visionText = 'ИНВОЙС 8517130000, тел. +996700112233' + filler;
+      sent.length = 0;
+      const seenText = [];
+      const f = global.fetch;
+      global.fetch = async (url, opts) => {
+        if (!/googleapis\.com/.test(url)) seenText.push(JSON.parse(opts.body).messages[0].content.map((b) => b.text || '').join(' '));
+        return f(url, opts);
+      };
+      await a.readPage(pg, { parts: strips, checkOrientation: false });
+      assert.ok(!seenText.join(' ').includes('996700112233'), 'телефон ушёл в модель');
+      assert.ok(seenText.join(' ').includes('[телефон]'), 'пометка очистки не дошла');
+      global.fetch = prevFetch;
+      console.log('PASS: страницу читает Европа, изображение уходит модели только при недоверии к тексту (коды-призраки, пустая страница, выключатель)');
+    }
+
     // сверка трёх чтений: основное — полосы (parts), неподтверждённое число заменяется тем, в чём сходятся два чтения
     // целиком, нерешённое большинством — в пометку; формат числа берётся из подтверждающего чтения
     const strips = { P1: '| 1 | ST-192 | 1 | $7.128,00 | $7.128,00 |', P2: '| 19 | ST-192 | 6 | $41.260,35 | $247.562,10 |\n| 20 | HYD | 1 | 15,00 | $10.545,00 |\nGrand Total: $563.478,40' };
