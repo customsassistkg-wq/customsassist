@@ -2709,6 +2709,15 @@ async function aiReadFile(f,doc){
   if(doc.cancelled||aiDocs.indexOf(doc)<0)return;
   doc.busy=false;
   doc.text=doc.parts.filter(Boolean).join('\n\n');
+  // Персональные данные вырезает сервер (services/assistant.js, redactPersonal): браузер держит
+  // ровно тот текст, который уйдёт в модель, и показывает его по кнопке «что уйдёт в модель».
+  // Расшифровки сканов приходят очищенными из /api/assistant/read; здесь чистится всё остальное,
+  // повторная очистка ничего не меняет. Не получилось — пометка в окне: сервер вычистит при отправке.
+  if(doc.text)try{
+    const c=await apiFetch('/api/assistant/clean',{method:'POST',body:JSON.stringify({text:doc.text})});
+    const j=c.ok?await c.json().catch(()=>null):null;
+    if(j&&typeof j.text==='string')doc.text=j.text;else doc.uncleaned=true;
+  }catch(e){doc.uncleaned=true}
   const room=Math.max(0,AI_DOCS_MAX_CHARS-aiDialogDocs().concat(aiDocs.filter(d=>d!==doc&&!d.busy)).reduce((s,d)=>s+d.text.length,0));
   if(!room&&!err)err='документы диалога уже заняли '+AI_DOCS_MAX_CHARS/1000+' тыс. знаков — начните новый диалог';
   else if(doc.text.length>room){
@@ -2730,20 +2739,34 @@ function aiRenderThumbs(){
   const icon={pdf:'📄',image:'🖼️',sheet:'📊',word:'📝'};
   box.innerHTML=aiDocs.map((d,i)=>{
     const st=d.busy?(d.total?'читаю '+d.done+' из '+d.total:'открываю…'):(d.pages?d.pages+(d.kind==='sheet'?' лист.':' стр.'):'');
-    return '<span class="ai-thumb ai-doc" style="'+chip+(d.busy?';opacity:.85':';cursor:pointer')+'" title="'+esc(d.name+(d.busy?'':' — посмотреть прочитанный текст'))+'"'
+    return '<span class="ai-thumb ai-doc" style="'+chip+(d.busy?';opacity:.85':';cursor:pointer')+'" title="'+esc(d.name+(d.busy?'':' — посмотреть и поправить, что уйдёт в модель'))+'"'
       +(d.busy?'':' data-view-doc="'+i+'"')+'>'+icon[d.kind]+' <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(d.name)+'</span>'
       +(st?'<span style="white-space:nowrap;color:var(--muted)">· '+esc(st)+'</span>':'')+'<button type="button" data-rm-doc="'+i+'" aria-label="Убрать">✕</button></span>';
   }).join('')
     +(aiFileNote?'<div class="ai-file-note" style="flex-basis:100%;font-size:12px;color:var(--orange)">'+esc(aiFileNote)+'</div>':'');
 }
 // Прочитанный текст документа — чтобы пользователь сверил суммы и коды расшифровки с оригиналом.
+let aiDocEditing=null;
 function aiShowDoc(d){
+  aiDocEditing=d;
   openModal('<h3 style="margin:0 0 6px">'+esc(d.name)+'</h3>'
-    +'<div class="det">Так документ прочитан и так его видит ассистент. Страницы-сканы и фото — расшифровка изображения: суммы и коды сверьте с оригиналом.'+(d.cut?' Текст обрезан.':'')+'</div>'
-    +'<pre class="ai-doc-text" style="white-space:pre-wrap;max-height:62vh;overflow:auto;font-size:12px;line-height:1.5;margin:10px 0">'+esc(d.text||'')+'</pre>'
-    +'<div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');
+    +'<div class="det">Это текст, который уйдёт в модель. Персональные данные из него уже вырезаны на сервере и заменены пометками вида [почта], [телефон], [сторона]. '
+    +(d.uncleaned?'<b>Проверить очистку сейчас не удалось — сервер вычистит текст при отправке.</b> ':'')
+    +'Лишнее можно убрать руками: исправьте текст и нажмите «Сохранить» — в модель уйдёт исправленное. Страницы-сканы и фото — расшифровка изображения; само изображение в модель не уходит.</div>'
+    +'<textarea id="aiDocEdit" class="ai-doc-text" spellcheck="false" style="width:100%;box-sizing:border-box;height:52vh;white-space:pre-wrap;overflow:auto;font-size:12px;line-height:1.5;margin:10px 0;font-family:inherit">'+esc(d.text||'')+'</textarea>'
+    +'<div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button>'
+    +'<button class="calc-btn" type="button" onclick="aiSaveDoc()">Сохранить</button></div>');
   const m=document.querySelector('#activeModal .modal');
   if(m)m.classList.add('modal-wide');
+}
+// Правка может только убрать данные: присланное сервер чистит ещё раз (ask → redactPersonal).
+function aiSaveDoc(){
+  const box=document.getElementById('aiDocEdit');
+  if(box&&aiDocEditing){
+    aiDocEditing.text=box.value;aiDocEditing.edited=true;aiDocEditing.uncleaned=false;
+    aiRenderThumbs();
+  }
+  aiDocEditing=null;closeModal();
 }
 function aiAppend(m){
   const log=document.getElementById('aiLog');
@@ -2759,7 +2782,7 @@ function aiAppend(m){
         const named=typeof x==='string',b=document.createElement(named?'span':'button');
         b.textContent='📄 '+(named?x:x.name+(x.pages?' · '+x.pages+' стр.':''));
         b.style.cssText='display:inline-block;margin:6px 6px 0 0;padding:2px 8px;border:1px solid rgba(255,255,255,.45);border-radius:8px;background:none;color:inherit;font:inherit;font-size:12px'+(named?'':';cursor:pointer');
-        if(!named){b.type='button';b.title='Посмотреть прочитанный текст';b.addEventListener('click',()=>aiShowDoc(x))}
+        if(!named){b.type='button';b.title='Посмотреть и поправить, что уйдёт в модель';b.addEventListener('click',()=>aiShowDoc(x))}
         box.appendChild(b);
       }
       d.appendChild(box);

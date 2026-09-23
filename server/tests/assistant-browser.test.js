@@ -169,9 +169,14 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
       assert.equal(await page.locator('.ai-thumb').count(), 0);
       assert.equal(r.over, false, 'horizontal overflow at ' + w);
       if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT + '/ai_' + w + '.png' });
-      // документ в пузыре открывает прочитанный текст
+      // документ в пузыре открывает то, что уйдёт в модель, — и это можно поправить руками
       await page.click('.ai-msg.u button');
-      assert.match(await page.locator('#activeModal pre').innerText(), /РАСШИФРОВКА \| 21/);
+      assert.match(await page.locator('#activeModal #aiDocEdit').inputValue(), /РАСШИФРОВКА \| 21/);
+      assert.match(await page.locator('#activeModal .det').innerText(), /уйдёт в модель/);
+      await page.fill('#activeModal #aiDocEdit', 'только это и уйдёт');
+      await page.click('#activeModal .modal-actions .calc-btn:not(.ghost)');
+      await page.click('.ai-msg.u button');
+      assert.equal(await page.locator('#activeModal #aiDocEdit').inputValue(), 'только это и уйдёт');
       await page.evaluate(() => closeModal());
 
       // 👎 с комментарием уходит на сервер и подсвечивается
@@ -362,10 +367,10 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
       got = await addFile('old.xls', 'application/vnd.ms-excel', Buffer.from('x'));
       assert.deepEqual([got.text, got.note], [null, '«old.xls»: старый формат — сохраните файл как .docx, .xlsx или PDF.']);
 
-      // окно с прочитанным текстом
+      // окно с текстом, который уйдёт в модель
       await addFile('scan2.pdf', 'application/pdf', scanPdf(jpg), true);
       await page.click('.ai-doc[data-view-doc]');
-      assert.match(await page.locator('#activeModal pre').innerText(), /^— страница 1 \(скан, расшифровка\) —\nРАСШИФРОВКА/);
+      assert.match(await page.locator('#activeModal #aiDocEdit').inputValue(), /^— страница 1 \(скан, расшифровка\) —\nРАСШИФРОВКА/);
       await page.evaluate(() => closeModal());
       await page.evaluate(() => { aiDocs = []; aiFileNote = ''; aiRenderThumbs(); });
 

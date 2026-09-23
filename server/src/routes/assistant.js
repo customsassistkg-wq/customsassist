@@ -1,6 +1,6 @@
 const express = require('express');
 const { pool } = require('../db');
-const { ask, readPage } = require('../services/assistant');
+const { ask, readPage, redactPersonal } = require('../services/assistant');
 const { sendEmail, renderEmail, BRAND } = require('../services/email');
 
 const router = express.Router();
@@ -239,7 +239,9 @@ router.post('/read', async (req, res) => {
         { checkOrientation: req.body.checked !== true, parts: parts.map((p) => ({ media_type: p.media_type, data: p.data })) });
       await logQuestion({ userId: uid, question: question + (r.rotate ? ' — перевёрнута' : ''), usage: r.usage, ms: Date.now() - started, kind: 'read' });
       res.set('Cache-Control', 'no-store');
-      res.json(r.rotate ? { rotate: r.rotate } : { text: r.text });
+      // Расшифровка возвращается уже очищенной от персональных данных: браузер держит ровно тот
+      // текст, который уйдёт в модель, и показывает его пользователю перед отправкой.
+      res.json(r.rotate ? { rotate: r.rotate } : { text: redactPersonal(r.text) });
     } catch (err) {
       console.error('assistant read:', err.message);
       await logQuestion({ userId: uid, question, error: err.message.slice(0, 500), usage: err.usage, ms: Date.now() - started, kind: 'read' });
@@ -249,6 +251,18 @@ router.post('/read', async (req, res) => {
     const n = (readsInFlight.get(uid) || 1) - 1;
     if (n) readsInFlight.set(uid, n); else readsInFlight.delete(uid);
   }
+});
+
+// Очистка текста, извлечённого браузером из PDF, таблицы или Word: браузер показывает
+// пользователю ровно то, что уйдёт в модель, и даёт убрать лишнее руками. Правила — одни и те же
+// (services/assistant.js), и ask() чистит присланное ещё раз: правка в браузере может только
+// убрать данные, но не вернуть их.
+router.post('/clean', (req, res) => {
+  if (!guard(req, res)) return;
+  const text = req.body?.text;
+  if (typeof text !== 'string' || text.length > 400000) return res.status(400).json({ error: 'bad_text' });
+  res.set('Cache-Control', 'no-store');
+  res.json({ text: redactPersonal(text) });
 });
 
 // Остаток вопросов по тарифу — для строки под полем ввода.
