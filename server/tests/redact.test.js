@@ -74,6 +74,42 @@ const { ask, redactPersonal } = require('../src/services/assistant');
   assert.ok(!/\](?=\S)/.test(redactPersonal('Seller: Shenzhen Co, 8517130000 — 12 500,00 USD')), 'пометка слиплась со следующим словом');
   console.log('PASS: в строке таблицы вырезана только сторона — код, сумма и разделители целы');
 
+  // ── целый документ: ни одна персональная строка не уходит, ни одна нужная не теряется ──
+  // Замер на кусках настоящих бумаг (инвойс, банковский блок, CMR, упаковочный лист) — именно он
+  // показал, что без меток «водитель», «перевозчик», «плательщик», «payer», «beneficiary»
+  // в модель уходило полное ФИО водителя и стороны платежа, а SWIFT и БИК проходили мимо.
+  const DOC = [
+    'INVOICE No INV-2026/0917 dated 17.09.2026',
+    'Seller: Shenzhen Tech Trading Co., Ltd.',
+    'Beneficiary bank: Bank of China, Shenzhen branch',
+    'Swift code: BKCHCNBJ45A',
+    'Account No 7654321098765432',
+    'Payer: ОсОО «Азия Импорт», ИНН 01234567890123',
+    'Адрес: г. Бишкек, ул. Киевская, 12, оф. 5',
+    'Тел/факс: +996 312 900 100',
+    'E-mail: sales@shenzhen-tech.example',
+    'Delivery terms: FOB Shanghai',
+    '| 1 | Smartphone Redmi Note 13, 8 GB | 8517130000 | 200 pcs | 62,50 USD | 12 500,00 USD |',
+    '| 2 | Headphones wireless | 8518300000 | 500 pcs | 3,00 USD | 1 500,00 USD |',
+    'Total: 14 000,00 USD, net weight 180,5 kg, gross 210 kg',
+    'Перевозчик: ИП Сыдыков А. Б.',
+    'Водитель: Сыдыков Азамат Бакытович, паспорт AN2345678',
+    'Госномер 01KG123ABC, прицеп 01KG456DEF',
+    'Контракт № 12/26 от 01.09.2026',
+    'Плательщик: ОсОО «Азия Импорт», р/с 1234567890123456 в ОАО «Банк», БИК 128009',
+    'Упаковочный лист: 20 коробок, 8517130000, 180,5 кг нетто',
+    'Подпись: Иванов И.И., менеджер по логистике',
+  ].join('\n');
+  const clean = redactPersonal(DOC);
+  for (const secret of ['Shenzhen Tech Trading', 'BKCHCNBJ45A', '7654321098765432', '01234567890123', 'Киевская',
+    '+996 312 900 100', 'sales@shenzhen-tech.example', 'Сыдыков', 'AN2345678', '01KG123ABC', '1234567890123456', '128009', 'Иванов'])
+    assert.ok(!clean.includes(secret), `ушло в модель: ${secret}\n${clean}`);
+  for (const must of ['8517130000', '8518300000', '12 500,00 USD', '14 000,00 USD', '180,5 kg', '180,5 кг',
+    'FOB Shanghai', 'INV-2026/0917', 'Smartphone Redmi Note 13', 'Headphones wireless', '200 pcs', '20 коробок', 'Контракт № 12/26'])
+    assert.ok(clean.includes(must), `потеряно нужное: ${must}\n${clean}`);
+  assert.ok(!/\](?=[0-9A-Za-zА-Яа-яЁё])/.test(clean), 'пометка слиплась со следующим словом');
+  console.log('PASS: целый документ — реквизиты, банк, водитель и номера вырезаны, товар, суммы и вес целы');
+
   // ── повторная очистка ничего не меняет: текст чистится в браузере (/clean) и ещё раз в ask() ──
   for (const line of [
     'Тел. +996700112233, ИНН 12345678901234', 'Seller: Shenzhen Co, 8517130000 — 12 500,00 USD',
