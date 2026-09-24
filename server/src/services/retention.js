@@ -23,9 +23,12 @@ async function purgeExpired(now = new Date()) {
   const inbox = await pool.query('delete from inbox where purge_after < $1', [now]);
   // Заказы на оплату по QR — 90 дней (миграция 0016): учёт денег остаётся в payments.
   const orders = await pool.query("delete from pay_orders where created_at < $1::timestamptz - interval '90 days'", [now]);
-  const counts = { audit: audit.rowCount || 0, payments: payments.rowCount || 0, inbox: inbox.rowCount || 0, orders: orders.rowCount || 0 };
-  if (counts.audit || counts.payments || counts.inbox || counts.orders) {
-    console.log(`retention: removed ${counts.audit} audit rows, ${counts.payments} payment records, ${counts.inbox} messages, ${counts.orders} pay orders`);
+  // Отметки об отправленных напоминаниях о подписке — год (миграция 0017).
+  const reminders = await pool.query("delete from subscription_reminders where sent_at < $1::timestamptz - interval '1 year'", [now]);
+  const counts = { audit: audit.rowCount || 0, payments: payments.rowCount || 0, inbox: inbox.rowCount || 0, orders: orders.rowCount || 0,
+    reminders: reminders.rowCount || 0 };
+  if (Object.values(counts).some(Boolean)) {
+    console.log(`retention: removed ${counts.audit} audit rows, ${counts.payments} payment records, ${counts.inbox} messages, ${counts.orders} pay orders, ${counts.reminders} reminder marks`);
   }
   return counts;
 }

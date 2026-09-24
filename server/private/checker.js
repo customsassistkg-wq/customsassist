@@ -785,7 +785,8 @@ function buildResultSummary(container,q){
   } else if(name||rq.length===10){
     head='<div class="vd-prod"><div class="vd-name">'+esc(name||('Код '+codeTxt))+'</div><div class="vd-sub"><span class="vd-code">'+esc(codeTxt)+'</span>'
       +(rateTxt?' · пошлина <b class="vd-rate">'+esc(rateTxt)+'</b>':'')+'<span id="vdPay"></span></div>'
-      +(rq.length===10?'<div class="vd-act"><button type="button" class="btn btn-primary" onclick="openCalcFor(\''+rq+'\')">Рассчитать платежи</button><button type="button" class="btn" onclick="copyCodeText(\''+rq+'\',this)">Копировать код</button></div>':'')+'</div>';
+      +(rq.length===10?'<div class="vd-act"><button type="button" class="btn btn-primary" onclick="openCalcFor(\''+rq+'\')">Рассчитать платежи</button><button type="button" class="btn" onclick="copyCodeText(\''+rq+'\',this)">Копировать код</button>'
+      +'<button type="button" class="btn vd-watch" data-watch="'+rq+'" aria-pressed="false" onclick="toggleWatch(this)">☆ Следить за изменениями</button></div>':'')+'</div>';
   }
   // Запрет: какой именно и относится ли к выбранному направлению.
   const bans=(groups.danger||[]).filter(c=>!c.dataset.partial);
@@ -829,7 +830,80 @@ function buildResultSummary(container,q){
     +(pay.length||ett?'<div class="vd-line"><span class="vd-l">Платежи</span><span class="vd-i">'+payHtml+'</span></div>\n':'')
     +(infoHtml?'<div class="vd-line vd-info">'+infoHtml+'</div>\n':'')
     +'</div>';
-  if(rq.length===10)fillVerdictPay(rq);
+  if(rq.length===10){fillVerdictPay(rq);syncWatchButtons();if(!watchSet)loadWatch();}
+}
+// «Мои коды» (24.09.2026): пользователь отмечает код кнопкой в шапке результата, сервер раз в сутки
+// сверяет отмеченные коды с базой и пишет на почту, если по существу что-то изменилось
+// (services/watch.js). Список держится в памяти страницы и сбрасывается при выходе (resetWatch).
+let watchSet=null,watchLoading=null;
+function resetWatch(){watchSet=null;watchLoading=null}
+function loadWatch(){
+  if(watchLoading)return watchLoading;
+  const viewer=currentUser;
+  watchLoading=(async()=>{
+    try{const r=await apiFetch('/api/watch');if(r.ok&&currentUser===viewer){const j=await r.json();watchSet=new Set(j.codes.map(x=>x.code))}}catch(e){}
+    syncWatchButtons();
+    return watchSet;
+  })();
+  return watchLoading;
+}
+function syncWatchButtons(){
+  document.querySelectorAll('.vd-watch').forEach(b=>{
+    const on=!!(watchSet&&watchSet.has(b.dataset.watch));
+    b.setAttribute('aria-pressed',String(on));b.classList.toggle('on',on);
+    b.textContent=on?'★ Отслеживается':'☆ Следить за изменениями';
+    b.title=on?'Код в «Моих кодах»: об изменениях придёт письмо. Нажмите, чтобы убрать.':'Добавить в «Мои коды»: если по коду изменится мера или ставка, придёт письмо';
+  });
+}
+async function watchChange(code,add){
+  const r=add?await apiFetch('/api/watch',{method:'POST',body:JSON.stringify({code})}):await apiFetch('/api/watch/'+encodeURIComponent(code),{method:'DELETE'});
+  const d=await r.json().catch(()=>({}));
+  if(r.ok){if(!watchSet)watchSet=new Set();if(add)watchSet.add(code);else watchSet.delete(code)}
+  return {ok:r.ok,status:r.status,d};
+}
+function watchErr(x){return x.status===409?'Можно следить не больше чем за '+(x.d.max||30)+' кодами — уберите ненужные.':x.status===404?'Такого кода нет в действующем ЕТТ.':x.status===400?'Нужен код из 10 цифр.':x.status===429?'Слишком много изменений за сутки — попробуйте завтра.':'Не удалось сохранить — попробуйте ещё раз.'}
+async function toggleWatch(btn){
+  const code=btn.dataset.watch;
+  btn.disabled=true;
+  try{
+    if(!watchSet)await loadWatch();
+    const x=await watchChange(code,!(watchSet&&watchSet.has(code)));
+    if(!x.ok&&x.status!==401)openModal('<h2>«Мои коды»</h2><div class="calc-warn w-red" style="display:block">'+esc(watchErr(x))+'</div><div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="openWatchList()">Мои коды</button><button class="calc-btn" type="button" onclick="closeModal()">Понятно</button></div>');
+  }catch(e){}
+  finally{btn.disabled=false;syncWatchButtons()}
+}
+async function openWatchList(){
+  openModal('<h2>Мои коды</h2>'
+    +'<p class="cp-note">Раз в сутки сервис сверяет эти коды с базой и пишет на почту, если по существу что-то изменилось: появилась или перестала действовать мера, изменилась ставка или требование.</p>'
+    +'<div id="wlBody" class="wl-body">Загрузка…</div>'
+    +'<div class="wl-add"><input id="wlCode" type="text" inputmode="numeric" autocomplete="off" placeholder="Код из 10 цифр, например 8517 13 000 0" aria-label="Код ТН ВЭД"><button class="btn" type="button" id="wlAdd">Добавить</button></div>'
+    +'<div id="wlErr" class="calc-warn w-red" style="display:none" role="alert"></div>'
+    +'<div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');
+  const g=id=>document.getElementById(id);
+  const draw=async()=>{
+    let j;try{const r=await apiFetch('/api/watch');if(!r.ok)throw 0;j=await r.json()}catch(e){if(g('wlBody'))g('wlBody').textContent='Не удалось загрузить список';return}
+    watchSet=new Set(j.codes.map(x=>x.code));syncWatchButtons();
+    const body=g('wlBody');if(!body)return;
+    body.innerHTML=j.codes.length?j.codes.map(x=>'<div class="wl-row" data-code="'+esc(x.code)+'"><button type="button" class="wl-open" title="Открыть карточки кода"><span class="wl-code">'+esc(fmtCode(x.code))+'</span><span class="wl-name">'+esc(x.name)+'</span></button>'
+      +'<span class="wl-when">'+(x.changed_at?'изменено '+esc(fmtDate(x.changed_at)):'с '+esc(fmtDate(x.created_at)))+'</span><button type="button" class="au-more wl-del" aria-label="Убрать '+esc(fmtCode(x.code))+'" title="Убрать из слежения">✕</button></div>').join('')
+      +'<div class="wl-count">'+j.codes.length+' из '+j.max+'</div>'
+      :'<div class="au-empty">Пока пусто. Отметьте код кнопкой «☆ Следить за изменениями» в результате поиска или добавьте его здесь.</div>';
+  };
+  g('wlBody').addEventListener('click',async e=>{
+    const row=e.target.closest('.wl-row');if(!row)return;
+    if(e.target.closest('.wl-del')){await watchChange(row.dataset.code,false);syncWatchButtons();draw();return}
+    if(e.target.closest('.wl-open')){closeModal();goToCode(row.dataset.code)}
+  });
+  const add=async()=>{
+    const code=g('wlCode').value.replace(/[\s.\-]/g,'');g('wlErr').style.display='none';
+    if(!/^\d{10}$/.test(code)){g('wlErr').textContent='Нужен код из 10 цифр.';g('wlErr').style.display='block';return}
+    const x=await watchChange(code,true);
+    if(!x.ok){if(x.status!==401){g('wlErr').textContent=watchErr(x);g('wlErr').style.display='block'}return}
+    g('wlCode').value='';syncWatchButtons();draw();
+  };
+  g('wlAdd').onclick=add;
+  g('wlCode').addEventListener('keydown',e=>{if(e.key==='Enter')add()});
+  draw();
 }
 // НДС и акциз для шапки — тем же ответом сервера, что и калькулятор (codeBundle): кэш общий.
 async function fillVerdictPay(code){

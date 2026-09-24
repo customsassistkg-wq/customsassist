@@ -105,7 +105,7 @@ const app = require('../src/index');
       await page.click('#accMenuBtn');
       await page.waitForFunction(() => !document.getElementById('accMailBadge').hidden);
       assert.deepEqual(await items(page), ['Администрирование', 'Пользователи', 'Журнал AI-ассистента', 'Оплаты и расходы', 'Обращения3', 'Дашборд',
-        'Аккаунт', 'Сменить пароль', 'Написать в поддержку', 'Выйти']);
+        'Аккаунт', 'Мои коды', 'Сменить пароль', 'Написать в поддержку', 'Выйти']);
       assert.equal(await page.getAttribute('#accMenu a[href="https://dash.test.local"]', 'target'), '_blank');
       await page.keyboard.press('Escape');
       assert.equal(await page.isVisible('#accMenu'), false, 'Escape закрывает меню');
@@ -139,7 +139,7 @@ const app = require('../src/index');
       // Пользователь: без раздела администрирования, смена пароля из меню; телефон — карточки.
       ({ ctx, page, errors } = await open(user.email, 'new-password', 390));
       await page.click('#accMenuBtn');
-      assert.deepEqual(await items(page), ['Аккаунт', 'AI-ассистент', 'Сменить пароль', 'Написать в поддержку', 'Выйти']);
+      assert.deepEqual(await items(page), ['Аккаунт', 'AI-ассистент', 'Мои коды', 'Сменить пароль', 'Написать в поддержку', 'Выйти']);
       const menuBox = await page.$eval('#accMenu', (m) => { const r = m.getBoundingClientRect(); return [r.left, r.right, innerWidth]; });
       assert.ok(menuBox[0] >= 0 && menuBox[1] <= menuBox[2], 'меню помещается на 390: ' + menuBox.join(','));
       await page.click('#accPwdBtn');

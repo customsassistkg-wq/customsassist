@@ -893,6 +893,19 @@
   .au-mi.danger{color:var(--red)}
   .au-sep{height:1px;margin:4px;background:var(--border)}
   .cp-note{margin:0 0 14px;font-size:var(--fs-sm);color:var(--muted)}
+  /* «Мои коды» (24.09.2026): кнопка в шапке результата и окно списка */
+  .btn.vd-watch.on{border-color:var(--indigo);color:var(--indigo)}
+  .wl-body{max-height:50vh;overflow-y:auto;margin:0 0 12px;border-top:1px solid var(--border)}
+  .wl-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)}
+  .wl-open{display:flex;flex-direction:column;align-items:flex-start;gap:1px;flex:1;min-width:0;padding:4px 6px;border:0;border-radius:var(--radius-sm);background:none;color:var(--text);font:inherit;text-align:left;cursor:pointer}
+  .wl-open:hover,.wl-open:focus-visible{background:rgba(127,127,127,.12);outline:none}
+  .wl-code{font-family:var(--mono);font-weight:600;font-size:var(--fs-md)}
+  .wl-name{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-sm);color:var(--muted)}
+  .wl-when{flex:none;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
+  .wl-count{padding:8px 0 0;font-size:var(--fs-sm);color:var(--muted)}
+  .wl-add{display:flex;gap:8px;margin:0 0 10px}
+  .wl-add input{flex:1;min-width:0;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg);color:var(--text);font:inherit;font-size:var(--fs-md);outline:none}
+  .wl-add input:focus{border-color:var(--indigo)}
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .t-admin{background:rgba(155,63,196,.22);color:var(--purple);border:1px solid rgba(155,63,196,.4)}
   .t-user{background:rgba(107,118,144,.16);color:var(--muted);border:1px solid rgba(107,118,144,.35)}
@@ -1777,6 +1790,7 @@ async function showApp(){
       +'<div class="acc-sec">Аккаунт</div>'
       +(!isAdmin?mi('accAiBtn','i-sparkles','AI-ассистент','<span class="acc-sub" id="accQuota"></span>'):'')
       +(!isAdmin&&currentUser.payEnabled?mi('accPayBtn','i-card','Продлить подписку'):'')
+      +mi('accWatchBtn','i-check','Мои коды')
       +mi('accPwdBtn','i-lock','Сменить пароль')
       +ml('mailto:info@customsassist.trade','i-mail','Написать в поддержку',false)
       +'<div class="acc-sep" role="separator"></div>'
@@ -1792,6 +1806,7 @@ async function showApp(){
   onItem('accMailBtn',()=>openMailPanel());
   onItem('accAiBtn',()=>setPage('ai'));
   onItem('accPayBtn',()=>openPay());
+  onItem('accWatchBtn',()=>openWatchList());
   onItem('accPwdBtn',()=>openChangePasswordModal());
   document.querySelectorAll('#accWrap a.acc-item').forEach(a=>a.addEventListener('click',closeAccMenu));
   // Счётчик новых обращений и остаток вопросов — при каждом открытии, меню их не ждёт.
@@ -2034,7 +2049,7 @@ async function doLogin(){
 // окне — и видел чужие адреса, роли и даты входа. Данные при этом сервер
 // заново не отдавал (он отвечает 403), но на экране они были.
 function resetAppView(){
-  if(typeof closePay==='function')closePay();if(typeof closeAdminRowMenu==='function')closeAdminRowMenu();
+  if(typeof closePay==='function')closePay();if(typeof closeAdminRowMenu==='function')closeAdminRowMenu();if(typeof resetWatch==='function')resetWatch();
   appViewVersion++;
   if(typeof adminUsers!=='undefined')adminUsers=[];
   const clear=(id)=>{const el=document.getElementById(id); if(el) el.innerHTML='';};

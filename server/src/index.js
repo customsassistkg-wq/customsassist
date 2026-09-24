@@ -137,6 +137,8 @@ app.use('/api/assistant', require('./routes/assistant'));
 app.use('/api/mail', require('./routes/mail'));
 // Оплата подписки по QR (xPay): вошедший пользователь или тот, у кого подписка истекла.
 app.use('/api/pay', require('./routes/pay'));
+// «Мои коды»: слежение за изменениями по кодам ТН ВЭД (services/watch.js).
+app.use('/api/watch', require('./routes/watch'));
 // Дашборд администраторов: код интерфейса и данные — только администратору (requireAdmin).
 const dash = require('./routes/dash');
 app.get('/api/dash.js', dash.script);
@@ -183,6 +185,8 @@ if (require.main === module) {
   nbkrRatesService.init();
   require('./services/retention').init();
   require('./routes/pay').init();
+  require('./services/reminders').init();
+  require('./services/watch').init();
   // База грузится до открытия порта: первый поиск пользователя не ждёт разбора 12 МБ.
   require('./services/base').load();
   const port = process.env.PORT || 3000;

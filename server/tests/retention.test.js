@@ -25,6 +25,7 @@ require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async 
   if (/^delete from payments where created_at/.test(sql)) return { rows: [], rowCount: 1 };
   if (/^delete from inbox where purge_after/.test(sql)) return { rows: [], rowCount: 1 };
   if (/^delete from pay_orders where created_at/.test(sql)) return { rows: [], rowCount: 3 };
+  if (/^delete from subscription_reminders where sent_at/.test(sql)) return { rows: [], rowCount: 4 };
   return { rows: [], rowCount: 0 };
 } } } };
 require.cache[require.resolve('connect-pg-simple')] = { exports: (session) => session.MemoryStore };
@@ -36,8 +37,11 @@ const app = require('../src/index');
   // Очистка: одно и то же время в обоих запросах, счётчики из rowCount.
   const now = new Date('2034-01-01T00:00:00Z');
   const counts = await purgeExpired(now);
-  assert.deepEqual(counts, { audit: 2, payments: 1, inbox: 1, orders: 3 });
-  const [a, p, m, o] = queries.slice(-4);
+  assert.deepEqual(counts, { audit: 2, payments: 1, inbox: 1, orders: 3, reminders: 4 });
+  const [a, p, m, o, rm] = queries.slice(-5);
+  // Отметки о напоминаниях о подписке — год (миграция 0017).
+  assert.match(rm[0], /^delete from subscription_reminders where sent_at < \$1::timestamptz - interval '1 year'$/);
+  assert.equal(rm[1][0], now);
   assert.match(a[0], /^delete from admin_audit_log where purge_after < \$1$/);
   assert.match(p[0], /date_trunc\('year', \$1::timestamptz at time zone 'Asia\/Bishkek'\) - interval '7 years'\) at time zone 'Asia\/Bishkek'/);
   // Переписка обращений — год с письма, срок стоит в самой строке (миграция 0015).
