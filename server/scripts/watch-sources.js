@@ -18,7 +18,14 @@
 //  5. Реестр мер защиты внутреннего рынка ЕЭК (remedies.eaeunion.org) — действующие
 //     антидемпинговые, специальные и компенсационные меры против ANTIDUMP_DB (remediesDiff).
 //
-// И шестое, без сети: датированные меры базы (запреты, льготы, антидемпинг),
+//  6. ЕТТ ЕАЭС на сайте ЕЭК — файлы глав против private/tnved-notes.json, примечания и список
+//     изменяющих решений против ETT_SEEN (ettChanges).
+//
+//  7. Кыргызские публикации против KG_SEEN: выпуск реестра ТРОИС ГТС, файл ветеринарных
+//     ограничений на ввоз (vet.gov.kg), темы ГНС (sti.gov.kg); и законопроекты Жогорку Кенеша
+//     по таможне и налогам за окно — как раннее предупреждение.
+//
+// И восьмое, без сети: датированные меры базы (запреты, льготы, антидемпинг),
 // срок которых истёк или истекает в ближайшие дни, возраст UNIMEAS_ASOF и записей
 // SOURCE_AUDIT.
 //
@@ -42,6 +49,29 @@ const GOV_LIST = 'https://www.gov.kg/ru/npa/c/provisions';
 const REG_SEARCH = 'https://cbd.minjust.gov.kg/api/v1/GetDocuments';
 const GTS_HOME = 'https://www.customs.gov.kg/site/ru/master/customskg';
 const NSI_LIST = 'https://nsi.eaeunion.org/portal/api/registries/get-list-data';
+const ETT_PAGE = 'https://eec.eaeunion.org/comission/department/catr/ett/';
+// ЕТТ на странице ЕЭК: файлы глав сравниваются с теми, по которым собрана база
+// (private/tnved-notes.json, chapters[NN].url); примечания и список «в ред. решений…» — с
+// датами, по которым база сверена. Сверил новую редакцию — подними даты здесь.
+const ETT_SEEN = { notesEtt: '2026-08-24', notesTnved: '2025-05-11', lastAmend: '2026-08-11' };
+// Кыргызские публикации, по которым сверена база. Сверил новый выпуск — подними отметку здесь.
+//  trois — имя PDF реестра ТРОИС на странице ГТС (Enonic отдаёт вложения ссылками …/attachment/inline/<id>:<hash>/<имя>.pdf);
+//          пусто — база ещё собрана по выпуску на 21.08.2026, а на сайте новее;
+//  vet   — дата последнего файла «Ограничения на ввоз» ветеринарной службы (WordPress media API);
+//  sti   — темы ГНС (открытый API sti.gov.kg): дата последнего документа, по которому сверена база.
+const KG_SEEN = {
+  trois: '',
+  vet: '2026-08-25',
+  sti: {
+    'fc8a71a8-13f5-4d35-9ef2-4403bd572759': { what: 'налоговая база НДС с признаками риска (приказ П-347) → карточка НДС-риска', seen: '2026-08-19' },
+    '6bd04495-c141-4e8a-be49-a8d384a2d273': { what: 'перечень товаров для прослеживаемости ЕАЭС', seen: '2026-08-28' },
+  },
+};
+const TROIS_PAGE = 'https://www.customs.gov.kg/site/ru/master/customskg/intellektualdyk-menchik-ukuktaryn-korgoo';
+const VET_MEDIA = 'https://vet.gov.kg/wp-json/wp/v2/media?search=%D0%BE%D0%B3%D1%80%D0%B0%D0%BD%D0%B8%D1%87%D0%B5%D0%BD&per_page=20&orderby=date&order=desc&_fields=date,source_url,title';
+const STI_DOCS = (theme) => `https://sti.gov.kg/api/Documents/get-documents-by-theme-id?themeId=${theme}&language=1&page=1`;
+const KENESH_DOCS = 'https://kenesh.kg/sed/docs?page=0&limit=100';
+const BILL_RE = /таможен|налог|акциз|лицензи|ЕАЭС|Евразийск|свободной торговл|нетарифн|технического регулирования|ветеринар|фитосанитар/i;
 const REMEDIES_FIND = 'https://remedies.eaeunion.org/spd2/find?collection=zvr.v_actionsregistry&limit=5000';
 const BASE_PATH = path.join(__dirname, '..', 'private', 'base.js');
 // Справочники ЕС НСИ, с которыми сверяется база: код → что в базе от него зависит и дата
@@ -187,6 +217,46 @@ function nsiChanges(list, watch) {
   return out;
 }
 
+// Страница ЕТТ ЕЭК против базы. Имя файла главы несёт дату вступления редакции в силу
+// (ЕЭК выкладывает файл за несколько дней), поэтому новая глава — это новое имя файла.
+function ettChanges(html, notesJson, seen, today) {
+  const dec = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
+  const hrefs = [...String(html).matchAll(/href="([^"]+)"/g)].map((m) => dec(m[1]));
+  const chapters = {};
+  for (const h of hrefs) {
+    const m = h.match(/\/ru\.(\d\d)_2022(?:_(\d\d\.\d\d\.\d{4}))?\.pdf$/);
+    if (m) chapters[m[1]] = { file: h.split('/').pop(), date: m[2] ? isoFromDmy(m[2]) : null };
+  }
+  const out = [];
+  for (const [c, { file, date }] of Object.entries(chapters)) {
+    const used = String(((notesJson.chapters || {})[c] || (notesJson.chapters || {})[+c] || {}).url || '').split('/').pop();
+    if (file !== used) out.push(`глава ${c}: ЕЭК публикует ${file}${date && date > today ? ` (вступает ${dmyFromIso(date)})` : ''}, база собрана по ${used || '—'} — сверить коды и ставки ETT_DB, пересобрать tnved-notes/ett-footnotes`);
+  }
+  const latest = (re) => hrefs.map((h) => (h.match(re) || [])[1]).filter(Boolean).map(isoFromDmy).sort().pop();
+  const nE = latest(/Примечания к ЕТТ_(\d\d\.\d\d\.\d{4})\.pdf$/), nT = latest(/Примечания к ТН ВЭД_(\d\d\.\d\d\.\d{4})\.pdf$/);
+  if (nE && nE > seen.notesEtt) out.push(`«Примечания к ЕТТ» — новая редакция от ${dmyFromIso(nE)} (база по ${dmyFromIso(seen.notesEtt)}) — пересобрать ett-footnotes.json`);
+  if (nT && nT > seen.notesTnved) out.push(`«Примечания к ТН ВЭД» — новая редакция от ${dmyFromIso(nT)} (база по ${dmyFromIso(seen.notesTnved)})`);
+  const text = String(html).replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ');
+  const i = text.indexOf('в ред.');
+  const pairs = i < 0 ? [] : [...text.slice(i, i + 40000).matchAll(/от (\d\d\.\d\d\.\d{4})\s*(?:г\.\s*)?№\s*(\d+)/g)];
+  for (const [, d, n] of pairs) if (isoFromDmy(d) > seen.lastAmend) out.push(`в редакцию ЕТТ внесено решение № ${n} от ${d} — сверить изменённые главы`);
+  return { chapters: Object.keys(chapters).length, amendments: pairs.length, changes: out };
+}
+
+// Имена PDF реестра ТРОИС на странице ГТС.
+function troisFiles(html) {
+  const dec = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
+  return [...new Set([...String(html).matchAll(/"([^"]*\/attachment\/inline\/[^"]+\.pdf)"/g)].map((m) => dec(m[1]).split('/').pop()))]
+    .filter((n) => /ТРОИС/i.test(n));
+}
+
+// Законопроекты Жогорку Кенеша, зарегистрированные с `since`, по таможне, налогам и торговле —
+// только раннее предупреждение: в базу закон попадает после принятия и опубликования.
+function freshBills(list, since) {
+  return (list || []).filter((b) => String(b.vh_dat || '').slice(0, 10) >= since && BILL_RE.test(b.zpNameRus || ''))
+    .map((b) => ({ n: b.vh_nom, d: String(b.vh_dat).slice(0, 10), title: String(b.zpNameRus || '').replace(/\s+/g, ' ').trim() }));
+}
+
 // Реестр мер защиты внутреннего рынка ЕЭК против ANTIDUMP_DB. Мера реестра и строка базы —
 // одно и то же, если у них есть общий код (префикс в любую сторону) и один последний день
 // действия: страны сравнивать не нужно, а у мер на один код (литые диски КНР и JP/TH/TR/MY,
@@ -242,8 +312,59 @@ function datedMeasures(base, today, horizon = 14, grace = 30) {
     add(`запрет вывоза: ${name}`, e.exUntil, e.exN && /продлен|истёк/.test(e.exN) ? '' : 'проверить продление');
     add(`льгота: ${name}`, e['льгUntil'], '');
   }
-  for (const r of base.ANTIDUMP_DB || []) add(`антидемпинг: ${String(r[1] || '').slice(0, 90)}`, r[6], '');
+  for (const r of base.ANTIDUMP_DB || []) add(`антидемпинг: ${String(r[2] || '').slice(0, 90)} (${r[1] || ''})`, r[6], '');
+  // Приостановленная преференция ЗСТ («с … по ДД.ММ.ГГГГ … временно не действует»).
+  for (const p of base.PREF_FTA || []) {
+    const m = String(p.w || '').match(/по (\d\d\.\d\d\.\d{4})/);
+    if (m) add(`преференция ЗСТ (${p.n}) приостановлена`, isoFromDmy(m[1]), 'проверить продление триггерной меры');
+  }
   return out.sort((a, b) => a.left - b.left);
+}
+
+// Слепые пятна датированных данных, которых нет в полях сроков:
+//  - запрет, в тексте которого срок «с ДД.ММ.ГГГГ до ДД.ММ.ГГГГ» есть, а поля imUntil/exUntil нет —
+//    карточка никогда не покажет его истёкшим, а datedMeasures его не видит;
+//  - тарифная квота, у которой с октября нет строки на следующий год.
+function dataGaps(base, today) {
+  const out = [];
+  for (const e of base.BAN_DB || []) {
+    for (const side of ['im', 'ex']) {
+      const m = e[side] && !e[side + 'Until'] && String(e[side + 'N'] || '').match(/с (\d\d\.\d\d\.\d{4}) до (\d\d\.\d\d\.\d{4})/);
+      if (m) out.push(`запрет ${side === 'im' ? 'ввоза' : 'вывоза'}: ${String(e.name || '').slice(0, 80)} — в тексте срок с ${m[1]} до ${m[2]}, а поля ${side}From/${side}Until нет`);
+    }
+  }
+  // Запрет в BAN_DB и запись реестра односторонних мер (UNIMEAS_DB) по одному постановлению
+  // с разным концом срока. Сравниваются только действующие записи реестра: у прежних актов на тот
+  // же товар (карточка упоминает их в истории) свой, уже прошедший срок. Если карточка или
+  // запись сверки называет дату реестра (разобранная ошибка реестра, как у гипсокартона № 230),
+  // расхождение считается известным.
+  const audits = JSON.stringify(base.SOURCE_AUDIT || {});
+  for (const u of base.UNIMEAS_DB || []) {
+    // номера постановлений повторяются из года в год — акт узнаётся по номеру и дате принятия
+    const [, adopted, num] = String(u[11] || '').match(/от (\d\d\.\d\d\.\d{4})\s*№\s*(\d+)/) || [];
+    const end = (String(u[10] || '').match(/(?:до|по) (\d\d\.\d\d\.\d{4})/) || [])[1];
+    if (!num || !end || /прекращ/.test(u[10]) || isoFromDmy(end) < today || audits.includes(end)) continue;
+    const side = /ввоз/i.test(u[3]) ? 'im' : /вывоз/i.test(u[3]) ? 'ex' : null;
+    if (!side) continue;
+    const re = new RegExp(`№\\s*${num}(?!\\d)`);
+    for (const e of base.BAN_DB || []) {
+      const until = e[side + 'Until'];
+      const txt = String(e[side + 'N'] || '');
+      if (!until || !re.test(txt) || !txt.includes(adopted) || until === isoFromDmy(end)) continue;
+      if (JSON.stringify(e).includes(end)) continue;
+      out.push(`${String(e.name || '').slice(0, 60)}: карточка — до ${dmyFromIso(until)}, реестр односторонних мер (№ ${num}) — до ${end}; сверить с текстом постановления`);
+    }
+  }
+  const year = Number(today.slice(0, 4));
+  if (today.slice(5) >= '10-01') {
+    const last = {};
+    for (const q of base.QUOTA_DB || []) {
+      const y = Math.max(...String(q[2]).match(/\d{4}/g).map(Number));
+      last[q[1]] = Math.max(last[q[1]] || 0, y);
+    }
+    for (const [name, y] of Object.entries(last)) if (y === year) out.push(`квота «${name.slice(0, 80)}» есть только по ${y} год — решения на ${year + 1} в базе нет`);
+  }
+  return out;
 }
 
 // --- сбор -------------------------------------------------------------------
@@ -338,11 +459,47 @@ async function collect({ days = 21, log = () => {} } = {}) {
     for (const r of stale) findings.push({ kind: 'remedy', src: 'база', text: `«${r.name}» (срок в базе ${r.end ? dmyFromIso(r.end) : '—'}) — среди действующих мер реестра ЕЭК нет меры с этим кодом и сроком` });
   } catch (err) { errors.push(`реестр мер защиты ЕЭК: ${err.message}`); }
 
+  // 7. ЕТТ ЕАЭС: главы, примечания, список изменяющих решений
+  try {
+    const r = ettChanges(await fetchText(ETT_PAGE, { headers: { Referer: ETT_PAGE, Origin: 'https://eec.eaeunion.org' } }), require('../private/tnved-notes.json'), ETT_SEEN, today);
+    log(`ЕТТ: глав ${r.chapters}, решений в «в ред.» ${r.amendments}, изменений ${r.changes.length}`);
+    if (r.chapters < 90 || !r.amendments) errors.push(`ЕТТ: на странице ЕЭК найдено глав ${r.chapters}, решений ${r.amendments} — разметка изменилась`);
+    for (const t of r.changes) findings.push({ kind: 'ett', src: 'ЕЭК', text: t });
+  } catch (err) { errors.push(`ЕТТ ЕЭК: ${err.message}`); }
+
+  // 8. кыргызские публикации: ТРОИС ГТС, ветеринарные ограничения, темы ГНС, законопроекты
+  try {
+    const files = troisFiles(await fetchText(TROIS_PAGE));
+    log(`ТРОИС: файлов реестра на странице ${files.length}`);
+    if (!files.length) errors.push('ТРОИС ГТС: ссылка на реестр на странице не найдена');
+    for (const f of files) if (f !== KG_SEEN.trois) findings.push({ kind: 'kg', src: 'ГТС', text: `реестр ТРОИС: на сайте выпуск «${f}», база сверена ${KG_SEEN.trois ? `по «${KG_SEEN.trois}»` : 'по выпуску на 21.08.2026'} — перенести новые и изменённые записи в TROIS_DB: ${TROIS_PAGE}` });
+  } catch (err) { errors.push(`ТРОИС ГТС: ${err.message}`); }
+  try {
+    const media = JSON.parse(await fetchText(VET_MEDIA));
+    const last = media.find((m) => /Ограничения на ввоз/i.test((m.title && m.title.rendered) || ''));
+    if (!last) errors.push('ветслужба: файл «Ограничения на ввоз» не найден');
+    else if (last.date.slice(0, 10) > KG_SEEN.vet) findings.push({ kind: 'kg', src: 'ветслужба', text: `новый файл «Ограничения на ввоз» от ${dmyFromIso(last.date.slice(0, 10))} (сверено по ${dmyFromIso(KG_SEEN.vet)}): ${last.source_url}` });
+  } catch (err) { errors.push(`ветслужба vet.gov.kg: ${err.message}`); }
+  for (const [theme, t] of Object.entries(KG_SEEN.sti)) {
+    try {
+      const v = JSON.parse(await fetchText(STI_DOCS(theme))).Value || {};
+      const top = (v.List || []).map((d) => ({ d: String(d.DocDate || '').slice(0, 10), n: d.DocNumber, h: String(d.Header || '').replace(/\s+/g, ' ') })).sort((a, b) => (a.d < b.d ? 1 : -1))[0];
+      if (!top) errors.push(`ГНС: тема «${t.what}» пуста`);
+      else if (top.d > t.seen) findings.push({ kind: 'kg', src: 'ГНС', text: `${t.what}: новый документ ${top.n ? `№ ${top.n} ` : ''}от ${dmyFromIso(top.d)} «${top.h.slice(0, 140)}» (сверено по ${dmyFromIso(t.seen)})` });
+    } catch (err) { errors.push(`ГНС sti.gov.kg: ${err.message}`); }
+  }
+  try {
+    const bills = freshBills((JSON.parse(await fetchText(KENESH_DOCS)).content), since);
+    log(`Жогорку Кенеш: законопроектов по теме за окно ${bills.length}`);
+    for (const b of bills) findings.push({ kind: 'bill', src: 'Кенеш', text: `${b.n} от ${dmyFromIso(b.d)}: ${b.title.slice(0, 200)}` });
+  } catch (err) { errors.push(`Жогорку Кенеш: ${err.message}`); }
+
   // 6. сроки в базе
   for (const m of datedMeasures(base, today)) {
     const when = m.left < 0 ? `истёк ${dmyFromIso(m.date)} (${-m.left} дн. назад)` : `истекает ${dmyFromIso(m.date)} (через ${m.left} дн.)`;
     findings.push({ kind: 'expiry', src: 'база', text: `${m.label} — ${when}${m.note ? ', ' + m.note : ''}` });
   }
+  for (const g of dataGaps(base, today)) findings.push({ kind: 'stale', src: 'база', text: g });
   const asof = (baseSrc.match(/UNIMEAS_ASOF='(\d\d\.\d\d\.\d{4})'/) || [])[1];
   if (asof && daysBetween(isoFromDmy(asof), today) > 21) {
     findings.push({ kind: 'stale', src: 'база', text: `реестр односторонних мер ЕЭК разобран по состоянию на ${asof} — ЕЭК обновляет файл раз в две недели` });
@@ -356,7 +513,7 @@ async function collect({ days = 21, log = () => {} } = {}) {
 
 function renderText({ today, since, findings, errors }) {
   const lines = [`Дозор источников ${dmyFromIso(today)} (окно с ${dmyFromIso(since)})`, ''];
-  const groups = [['new-act', 'Новые акты, которых нет в базе'], ['counter', 'Счётчики'], ['nsi', 'Справочники ЕАЭС обновлены'], ['remedy', 'Меры защиты рынка: реестр ЕЭК и база расходятся'], ['expiry', 'Сроки'], ['stale', 'Давно не сверялось']];
+  const groups = [['new-act', 'Новые акты, которых нет в базе'], ['counter', 'Счётчики'], ['nsi', 'Справочники ЕАЭС обновлены'], ['remedy', 'Меры защиты рынка: реестр ЕЭК и база расходятся'], ['ett', 'ЕТТ: новая редакция на сайте ЕЭК'], ['kg', 'Кыргызские публикации: новый выпуск'], ['bill', 'Законопроекты (раннее предупреждение, не норма)'], ['expiry', 'Сроки'], ['stale', 'Давно не сверялось']];
   for (const [kind, title] of groups) {
     const items = findings.filter((f) => f.kind === kind);
     if (!items.length) continue;
@@ -403,5 +560,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE };
+module.exports = { parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });
