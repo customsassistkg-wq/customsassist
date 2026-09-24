@@ -6,6 +6,30 @@
 API реестра и его WAF, устройство разделов портала, консолидированные тексты
 ЕЭК и ловушки разбора — каждая из них один раз уже дала неверный результат.
 
+### Where the information comes from (24.09.2026)
+
+**Toktom is a trusted source** (owner's decision, 24.09.2026: «поставишь доверенным источником»). `online.toktom.kg` is run by ИЦ «Токтом» (since 1992), a private publisher of Kyrgyz legislation; full texts open only after login, many only by subscription. Use it to confirm a provision, find the current edition or the chain of amending acts, and locate an act the registry search misses. Then: link the card to `cbd.minjust.gov.kg` whenever the act is there (a user cannot open a Toktom link without an account), and when Toktom was the only text read, say so in the `SOURCE_AUDIT` note («сверено по Токтом»). No automated download from Toktom — the login and subscription terms rule it out, and the watcher already reads the primary sites.
+
+Other sources, by what they are good for (reachability checked 24.09.2026):
+
+| Source | Use for | Status |
+|---|---|---|
+| `cbd.minjust.gov.kg` | Kyrgyz acts of record, editions, amending acts | primary, API documented below |
+| `gov.kg/ru/npa/c/provisions` | fresh Cabinet постановления, publication date | primary, read daily by the watcher |
+| `online.toktom.kg` | second text of Kyrgyz acts, amendment chains | trusted (owner), manual only |
+| `customs.gov.kg` | ГТС orders, quota counter, classification decisions | primary, quota counter read by the watcher |
+| `sti.gov.kg` | tax authority lists (VAT, excise) | primary |
+| `docs.eaeunion.org`, `eec.eaeunion.org` | EAEU acts, ЕТТ per chapter, consolidated lists, unilateral-measures register | primary |
+| `opendata.eaeunion.org` (was `portal.eaeunion.org`) | catalogue of every EAEU register and service (117 resources, 47 services) | official; open JSON without auth: `POST /spd2/find?collection=opendata.pod_resources&limit=2000`, body `{"lang":"ru"}` (also `pod_services`, `pod_registries`) |
+| `nsi.eaeunion.org` (ЕС НСИ) | 207 official dictionaries and registers; the base already reads № 1999 (classification decisions) | official; open JSON: `POST /portal/api/registries/get-list-data` `{"date":"YYYY-MM-DD","filter":[],"fullTextSearchPhrase":"","offset":0,"limit":2000,"sort":[]}` lists them all with `updateDateTime`; rows of one: `POST /portal/api/dictionaries/<code>/get-list-data` (see `services/classDecisions.js`). Of interest: 1022 перечень ТР, 1067 временные санитарные меры, 1992 РЭС/ВЧУ без лицензии, 1994 нотификации шифровальных средств, 1995 СГР, 2008 льготы по платежам, 2010 виды платежей |
+| `tech.eaeunion.org`, `sps.eaeunion.org`, `remedies.eaeunion.org`, `barriers.eaeunion.org`, `customs.eaeunion.org` | certificates/declarations and conformity bodies; temporary vet/phyto/sanitary measures; trade remedies (antidumping) and investigations; exemptions and barriers; customs registers (brokers, warehouses, AEO) | official; not yet explored |
+| `nism.gov.kg` | Центр по стандартизации и метрологии: technical regulations, standards lists | official; not yet explored |
+| `kenesh.kg` | draft laws before adoption — early warning only, never a card | official; not yet explored |
+| `vet.gov.kg` | veterinary/phytosanitary service | answers 200 with an empty page to a script; identity not confirmed |
+| `mineconom.gov.kg`, `legalacts.eaeunion.org` | ministry of economy (licensing, non-tariff measures); EAEU legal portal | did not answer from outside KG on 24.09.2026 |
+
+**`erkintoo.kg` is not the official gazette any more** — on 24.09.2026 the domain served an online casino. Never cite it; take the official publication date from `gov.kg` or the registry.
+
 ### Verifying a code list against a Kyrgyz act, in practice
 
 The exemption lists (`ART297_PERECHEN_LISTS`, `ART298_LISTS`, `ART299_CODES`, `LS_CODES`, `MED_CODES`, `MAT_CODES`, …) are transcriptions of annexes to ПКМ КР, and the 05.09.2026 sweep found the same three failure modes in all of them, worth checking for first:

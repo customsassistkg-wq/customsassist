@@ -71,6 +71,24 @@ const gts = `{"type":"customskg:chart","data":{"values":[{"name":"Импорт",
 assert.deepEqual(w.parseGtsCounter(gts), { total: 25000, used: 24970, left: 30 });
 assert.equal(w.parseGtsCounter('<html>нет счётчика</html>'), null);
 
+// ── ЕС НСИ: несколько версий одного справочника, сверенный, несверенный, пропавший ──
+const nsiList = [
+  { code: '1994', updateDateTime: '2026-09-14T00:00:00.000Z', data: { TitleName: 'Единый реестр нотификаций' } },
+  { code: '1994', updateDateTime: '2026-09-23T00:00:00.000Z', data: { TitleName: 'Единый реестр нотификаций' } },
+  { code: '1022', updateDateTime: '2023-09-16T00:00:00.000Z', data: { TitleName: 'Перечень ТР' } },
+  { code: '2008', updateDateTime: '2025-12-28T00:00:00.000Z', dateTimeFrom: '2026-01-29T00:00:00.000Z', data: { TitleName: 'Льготы' } },
+  { code: '1067', updateDateTime: '2025-02-10T00:00:00.000Z', data: { TitleName: 'Перечень санитарных мер' } },
+  { code: '1995', updateDateTime: '2026-09-23T00:00:00.000Z', data: { TitleName: 'СГР' } },
+];
+const nsiWatch = { 1994: { what: 'a', seen: '2026-09-14' }, 1022: { what: 'b', seen: '2023-09-16' }, 1067: { what: 'c', seen: null }, 2008: { what: 'e', seen: '2025-12-28' }, 2010: { what: 'd', seen: null } };
+assert.deepEqual(w.nsiChanges(nsiList, nsiWatch), [
+  { code: '1067', date: '2025-02-10', seen: null, title: 'Перечень санитарных мер', what: 'c' },
+  { code: '1994', date: '2026-09-23', seen: '2026-09-14', title: 'Единый реестр нотификаций', what: 'a' },
+  { code: '2008', date: '2026-01-29', seen: '2025-12-28', title: 'Льготы', what: 'e' },
+  { code: '2010', missing: true, what: 'd' },
+], 'поздняя версия побеждает; сверенный по той же дате молчит; не в NSI_WATCH — не смотрится');
+assert.ok(Object.values(w.NSI_WATCH).every((x) => x.what && (x.seen === null || /^\d{4}-\d\d-\d\d$/.test(x.seen))), 'seen — ISO-дата или null');
+
 // ── база: известные акты и цифры счётчика ──
 const baseSrc = "imN:'Запрет · Пост. КМ КР №230 от 08.04.2026',x:'ПКМ КР № 614 от 14.09.2026 «О введении…»',"
   + "y:'Постановление Кабинета Министров КР от 09.09.2026 № 606 «О введении…», Решение от 05.12.2025 года № 111',"
@@ -118,4 +136,4 @@ assert.match(report, /## Источники, которые не ответил�
 assert.doesNotMatch(report, /## Счётчики/);
 assert.match(w.renderText({ today: '2026-09-23', since: '2026-09-02', findings: [], errors: [] }), /Находок нет\./);
 
-console.log('PASS: gov.kg — таблица и карточка; реестр — только ПКМ; счётчик ГТС среди виджетов; известные акты и цифры базы; сроки с горизонтом и льготным окном; текст отчёта');
+console.log('PASS: gov.kg — таблица и карточка; реестр — только ПКМ; счётчик ГТС среди виджетов; справочники НСИ; известные акты и цифры базы; сроки с горизонтом и льготным окном; текст отчёта');

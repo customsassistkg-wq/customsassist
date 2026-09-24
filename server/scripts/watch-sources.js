@@ -11,7 +11,11 @@
 //  3. Счётчик квоты ГТС на customs.gov.kg (беспошлинные электромобили) — цифры в
 //     карточке льготы статичны; если счётчик ушёл от них, карточку пора править.
 //
-// И четвёртое, без сети: датированные меры базы (запреты, льготы, антидемпинг),
+//  4. ЕС НСИ ЕАЭС (nsi.eaeunion.org) — справочники, по которым сверяется база
+//     (NSI_WATCH): если дата обновления справочника новее той, по которой его сверяли,
+//     это находка до тех пор, пока после сверки дату в NSI_WATCH не поднимут.
+//
+// И пятое, без сети: датированные меры базы (запреты, льготы, антидемпинг),
 // срок которых истёк или истекает в ближайшие дни, возраст UNIMEAS_ASOF и записей
 // SOURCE_AUDIT.
 //
@@ -34,7 +38,21 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/
 const GOV_LIST = 'https://www.gov.kg/ru/npa/c/provisions';
 const REG_SEARCH = 'https://cbd.minjust.gov.kg/api/v1/GetDocuments';
 const GTS_HOME = 'https://www.customs.gov.kg/site/ru/master/customskg';
+const NSI_LIST = 'https://nsi.eaeunion.org/portal/api/registries/get-list-data';
 const BASE_PATH = path.join(__dirname, '..', 'private', 'base.js');
+// Справочники ЕС НСИ, с которыми сверяется база: код → что в базе от него зависит и дата
+// обновления справочника, по которой база последний раз сверена (null — ещё не сверялась).
+// Сверил — поставь сюда дату updateDateTime, которую видел, в том же коммите, что и
+// SOURCE_AUDIT. № 1999 (классификационные решения) не здесь: его сама забирает
+// services/classDecisions.js; № 1995 (СГР) — поиск по товару, меняется ежедневно.
+const NSI_WATCH = {
+  1022: { what: 'перечень техрегламентов ЕАЭС → списки ТР в базе', seen: null },
+  1067: { what: 'временные санитарные меры → меры с участием Кыргызстана', seen: null },
+  1992: { what: 'РЭС и ВЧУ, ввозимые без лицензии → карточка радиоэлектроники', seen: null },
+  1994: { what: 'нотификации шифровальных средств → карточка шифровальных средств', seen: null },
+  2008: { what: 'классификатор льгот по уплате платежей → коды льгот у помощника', seen: null },
+  2010: { what: 'классификатор видов платежей → коды видов платежей у помощника', seen: null },
+};
 // gov.kg отдаёт только листовой сертификат без промежуточного RapidSSL TLS RSA CA G1,
 // и Node отказывает («unable to verify the first certificate»); промежуточный взят с
 // cacerts.digicert.com и лежит рядом — добавляется к системным корням, ничего не отключая.
@@ -144,6 +162,26 @@ function counterOf(vals) {
   return { total: pick(/^квот/i), used: pick(/использован/i), left: pick(/остав|остат/i) };
 }
 
+// Список справочников ЕС НСИ: у справочника может быть несколько версий — берётся самая
+// поздняя из двух дат, updateDateTime и dateTimeFrom (начало действия версии): у № 1022
+// обновление 2023 года, а версия действует с 08.12.2024. Возвращает те из `watch`, что
+// обновлены после `seen`.
+function nsiChanges(list, watch) {
+  const latest = {};
+  for (const x of list || []) {
+    const d = [x.updateDateTime, x.dateTimeFrom].map((v) => String(v || '').slice(0, 10)).sort().pop();
+    if (!(String(x.code) in watch) || !d) continue;
+    if (!latest[x.code] || d > latest[x.code].date) latest[x.code] = { date: d, title: (x.data && x.data.TitleName) || '' };
+  }
+  const out = [];
+  for (const [code, w] of Object.entries(watch)) {
+    const l = latest[code];
+    if (!l) out.push({ code, missing: true, what: w.what });
+    else if (!w.seen || l.date > w.seen) out.push({ code, date: l.date, seen: w.seen, title: l.title, what: w.what });
+  }
+  return out;
+}
+
 // Пары «№ N от ДД.ММ.ГГГГ» и «от ДД.ММ.ГГГГ № N», которые база уже знает: карточки пишут
 // и так («Пост. КМ КР №230 от 08.04.2026»), и так («ПКМ КР от 09.09.2026 № 606»).
 function knownActs(baseSrc) {
@@ -251,7 +289,18 @@ async function collect({ days = 21, log = () => {} } = {}) {
     }
   } catch (err) { errors.push(`ГТС: ${err.message}`); }
 
-  // 4. сроки в базе
+  // 4. ЕС НСИ ЕАЭС
+  try {
+    const body = JSON.stringify({ date: today, filter: [], fullTextSearchPhrase: '', offset: 0, limit: 2000, sort: [] });
+    const list = JSON.parse(await fetchText(NSI_LIST, { method: 'POST', body, headers: { 'Content-Type': 'application/json', Referer: 'https://nsi.eaeunion.org/portal', Origin: 'https://nsi.eaeunion.org' } }));
+    log(`НСИ: справочников ${list.length}`);
+    for (const c of nsiChanges(list, NSI_WATCH)) {
+      if (c.missing) errors.push(`НСИ: справочника № ${c.code} нет в списке (${c.what})`);
+      else findings.push({ kind: 'nsi', src: 'НСИ ЕАЭС', text: `№ ${c.code} «${c.title.slice(0, 120)}» обновлён ${dmyFromIso(c.date)}, база ${c.seen ? `сверена по ${dmyFromIso(c.seen)}` : 'с ним ещё не сверялась'} — ${c.what}: https://nsi.eaeunion.org/portal/${c.code}` });
+    }
+  } catch (err) { errors.push(`НСИ ЕАЭС: ${err.message}`); }
+
+  // 5. сроки в базе
   const base = require('../src/services/base').load();
   for (const m of datedMeasures(base, today)) {
     const when = m.left < 0 ? `истёк ${dmyFromIso(m.date)} (${-m.left} дн. назад)` : `истекает ${dmyFromIso(m.date)} (через ${m.left} дн.)`;
@@ -270,7 +319,7 @@ async function collect({ days = 21, log = () => {} } = {}) {
 
 function renderText({ today, since, findings, errors }) {
   const lines = [`Дозор источников ${dmyFromIso(today)} (окно с ${dmyFromIso(since)})`, ''];
-  const groups = [['new-act', 'Новые акты, которых нет в базе'], ['counter', 'Счётчики'], ['expiry', 'Сроки'], ['stale', 'Давно не сверялось']];
+  const groups = [['new-act', 'Новые акты, которых нет в базе'], ['counter', 'Счётчики'], ['nsi', 'Справочники ЕАЭС обновлены'], ['expiry', 'Сроки'], ['stale', 'Давно не сверялось']];
   for (const [kind, title] of groups) {
     const items = findings.filter((f) => f.kind === kind);
     if (!items.length) continue;
@@ -291,7 +340,7 @@ async function mail(report, subject) {
   await pool.end();
   const html = renderEmail({
     title: 'Дозор источников',
-    intro: 'Ежедневная сверка базы с сайтом Кабинета Министров, реестром НПА и счётчиком ГТС.',
+    intro: 'Ежедневная сверка базы с сайтом Кабинета Министров, реестром НПА, счётчиком ГТС и справочниками ЕАЭС.',
     outro: '<span style="display:block;font-family:Consolas,Menlo,monospace;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;background:#F4F6FA;border-radius:8px;padding:10px">' + esc(report) + '</span>',
     footNote: 'Письмо отправлено автоматически: tnved-watch-sources.timer → scripts/watch-sources.js --mail.',
   });
@@ -317,5 +366,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { parseGovList, parseGovItem, parseRegistry, parseGtsCounter, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE };
+module.exports = { parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });
