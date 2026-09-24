@@ -3484,26 +3484,60 @@ function subscriptionTagHtml(u){
   return '<span class="tag '+(expired?'t-off':'t-sub-ok')+'">'+(expired?'Истекла ':'До ')+fmtCalDate(u.subscription_expires_at)+'</span>';
 }
 
+// Таблица пользователей (24.09.2026): одна строка на человека. Онлайн — точка у адреса, тариф —
+// короткий выбор (цены и лимиты — в подсказке заголовка), пять кнопок действий свёрнуты в меню «⋯».
+const ADMIN_PLAN_SHORT={base:'Базовый',pro:'Pro',max:'Max'};
 function adminUserRowHtml(u){
-  const subCell=u.role==='admin'?'—':(subscriptionTagHtml(u)||'—');
-  const onlineCell=u.online?'<span class="tag t-sub-ok">🟢 Онлайн</span>':'<span class="tag t-user">⚪ Оффлайн</span>';
-  return '<tr class="admin-tr'+(u.active?'':' disabled')+'" data-user-id="'+esc(u.id)+'">'
-    +'<td class="au-email">'+esc(u.email)+'</td>'
-    +'<td><span class="tag '+(u.role==='admin'?'t-admin':'t-user')+'">'+(u.role==='admin'?'Админ':'Пользователь')+'</span></td>'
+  const adm=u.role==='admin';
+  return '<tr class="admin-tr'+(u.active?'':' disabled')+'" data-user-id="'+esc(u.id)+'" data-q="'+esc(String(u.email).toLowerCase())+'">'
+    +'<td class="au-user"><span class="au-dot'+(u.online?' on':'')+'" title="'+(u.online?'В сети — активность за последние 5 минут':'Не в сети')+'"></span><span class="au-email" title="'+esc(u.email)+'">'+esc(u.email)+'</span></td>'
+    +'<td><span class="tag '+(adm?'t-admin':'t-user')+'">'+(adm?'Админ':'Пользователь')+'</span></td>'
     +'<td>'+(u.active?'<span class="tag t-sub-ok">Активен</span>':'<span class="tag t-off">Отключён</span>')+'</td>'
-    +'<td title="Активность в последние 5 минут">'+onlineCell+'</td>'
-    +'<td>'+subCell+'</td>'
-    +'<td>'+(u.role==='admin'?'без лимита':'<select class="admin-plan-sel" aria-label="AI-тариф">'
-      +[['base','Базовый · 490 сом · 3/день · 90/мес · 30 стр.'],['pro','Pro · 990 сом · 20/день · 300/мес · 150 стр.'],['max','Max · 1 990 сом · 100/день · 1 500/мес · 500 стр.']].map(([v,t])=>'<option value="'+v+'"'+((u.ai_plan||'base')===v?' selected':'')+'>'+t+'</option>').join('')+'</select>')+'</td>'
-    +'<td>'+(u.created_at?fmtDate(u.created_at):'—')+'</td>'
-    +'<td>'+(u.last_login_at?fmtDateTime(u.last_login_at):'—')+'</td>'
-    +'<td class="au-actions no-print">'
-      +'<button class="btn admin-role-btn" type="button">'+(u.role==='admin'?'Сделать пользователем':'Сделать админом')+'</button>'
-      +'<button class="btn admin-active-btn" type="button">'+(u.active?'Отключить':'Включить')+'</button>'
-      +(u.role==='admin'?'':'<button class="btn admin-sub-btn" type="button">Подписка</button><button class="btn admin-pay-btn" type="button">Оплата</button>')
-      +'<button class="btn danger admin-delete-btn" type="button">Удалить</button>'
-    +'</td></tr>';
+    +'<td>'+(adm?'<span class="au-muted">—</span>':subscriptionTagHtml(u))+'</td>'
+    +'<td>'+(adm?'<span class="au-muted">без лимита</span>':'<select class="admin-plan-sel" aria-label="AI-тариф: '+esc(u.email)+'">'
+      +Object.entries(ADMIN_PLAN_SHORT).map(([v,t])=>'<option value="'+v+'"'+((u.ai_plan||'base')===v?' selected':'')+'>'+t+'</option>').join('')+'</select>')+'</td>'
+    +'<td class="au-date">'+(u.created_at?fmtDate(u.created_at):'—')+'</td>'
+    +'<td class="au-date">'+(u.last_login_at?fmtDateTime(u.last_login_at):'—')+'</td>'
+    +'<td class="au-act no-print"><button class="au-more" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Действия: '+esc(u.email)+'" title="Действия">⋯</button></td>'
+    +'</tr>';
 }
+
+// Меню действий строки — один на страницу, в body, чтобы не резалось прокруткой таблицы.
+let auMenuState=null;
+function closeAdminRowMenu(){
+  if(!auMenuState)return;
+  auMenuState.m.remove();auMenuState.btn.setAttribute('aria-expanded','false');auMenuState=null;
+}
+function openAdminRowMenu(btn,u){
+  const same=auMenuState&&auMenuState.btn===btn;
+  closeAdminRowMenu();
+  if(same)return;
+  const it=(act,label,cls)=>'<button type="button" role="menuitem" class="au-mi'+(cls?' '+cls:'')+'" data-act="'+act+'">'+label+'</button>';
+  const m=document.createElement('div');
+  m.className='au-menu';m.setAttribute('role','menu');
+  m.innerHTML='<div class="au-mh">'+esc(u.email)+'</div>'
+    +(u.role==='admin'?'':it('sub','Срок подписки…')+it('pay','Записать оплату…')+'<div class="au-sep"></div>')
+    +it('role',u.role==='admin'?'Сделать пользователем':'Сделать администратором')
+    +it('active',u.active?'Отключить доступ':'Включить доступ')
+    +'<div class="au-sep"></div>'+it('delete','Удалить…','danger');
+  document.body.appendChild(m);
+  const r=btn.getBoundingClientRect();
+  const below=r.bottom+6+m.offsetHeight<=window.innerHeight;
+  m.style.top=(window.scrollY+(below?r.bottom+6:r.top-6-m.offsetHeight))+'px';
+  m.style.left=(window.scrollX+Math.max(8,Math.min(r.right-m.offsetWidth,window.innerWidth-m.offsetWidth-8)))+'px';
+  btn.setAttribute('aria-expanded','true');
+  m.addEventListener('click',e=>{
+    const b=e.target.closest('.au-mi');if(!b)return;
+    closeAdminRowMenu();
+    ({sub:openSubscriptionModal,pay:openPaymentModal,role:confirmSetRole,active:confirmSetActive,delete:confirmDeleteUser})[b.dataset.act](u);
+  });
+  auMenuState={btn,m};
+  m.querySelector('.au-mi').focus();
+}
+document.addEventListener('click',e=>{if(auMenuState&&!auMenuState.m.contains(e.target)&&!auMenuState.btn.contains(e.target))closeAdminRowMenu()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&auMenuState){const b=auMenuState.btn;closeAdminRowMenu();b.focus()}});
+document.addEventListener('scroll',e=>{if(auMenuState&&!auMenuState.m.contains(e.target))closeAdminRowMenu()},true);
+window.addEventListener('resize',closeAdminRowMenu);
 
 // Экспорт таблицы пользователей в CSV с BOM и разделителем ";" — именно
 // точка с запятой, а не запятая: Excel в русской локали трактует запятую
@@ -3558,21 +3592,25 @@ async function renderAdminPanel(){
   if(!stillCurrent()) return;
   adminUsers=users;
   const rows=adminUsers.map(adminUserRowHtml).join('');
-  box.innerHTML='<div class="calc-card">'
-    +'<div class="admin-toolbar"><div class="rc">Пользователи ('+adminUsers.length+')</div>'
-      +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
-        +'<button class="qa-btn no-print" id="adminBackBtn" type="button">← На главную</button>'
-        +'<button class="qa-btn no-print" id="adminPrintBtn" type="button">🖨️ Печать</button>'
-        +'<button class="qa-btn no-print" id="adminExportBtn" type="button">⬇️ Экспорт CSV</button>'
-        +'<button class="qa-btn no-print" id="adminAiLogBtn" type="button">✨ Журнал AI-ассистента</button>'
-        +'<button class="qa-btn no-print" id="adminMoneyBtn" type="button">💰 Оплаты и расходы</button>'
-        +'<button class="qa-btn no-print" id="adminMailBtn" type="button">📬 Обращения</button>'
-        +'<button class="calc-btn" id="adminCreateBtn" style="width:auto;padding:10px 18px" type="button">+ Новый пользователь</button>'
+  const now=new Date();
+  const cnt={online:adminUsers.filter(u=>u.online).length,off:adminUsers.filter(u=>!u.active).length,
+    expired:adminUsers.filter(u=>u.role!=='admin'&&u.subscription_expires_at&&new Date(u.subscription_expires_at)<now).length};
+  const planHint=Object.entries(ADMIN_PLAN_SHORT).map(([k,n])=>({base:'Базовый — 490 сом, 3 вопроса в день, 90 в месяц, 30 стр.',pro:'Pro — 990 сом, 20 в день, 300 в месяц, 150 стр.',max:'Max — 1 990 сом, 100 в день, 1 500 в месяц, 500 стр.'})[k]).join('\n');
+  box.innerHTML='<div class="calc-card au-card">'
+    +'<div class="admin-toolbar">'
+      +'<div class="au-title"><h2 class="au-h">Пользователи</h2><div class="au-stats">'+adminUsers.length+' всего · '+cnt.online+' в сети'
+        +(cnt.expired?' · <span class="au-warn">'+cnt.expired+' с истёкшей подпиской</span>':'')+(cnt.off?' · '+cnt.off+' отключено':'')+'</div></div>'
+      +'<div class="au-tools">'
+        +'<input class="au-search no-print" id="adminSearch" type="search" placeholder="Поиск по адресу" aria-label="Поиск пользователя по адресу" autocomplete="off">'
+        +'<button class="btn no-print" id="adminExportBtn" type="button">Экспорт CSV</button>'
+        +'<button class="btn no-print" id="adminPrintBtn" type="button">Печать</button>'
+        +'<button class="calc-btn au-create no-print" id="adminCreateBtn" type="button">+ Новый пользователь</button>'
       +'</div>'
     +'</div>'
     +(rows
-      ?'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Email (логин)</th><th>Роль</th><th>Статус</th><th>Онлайн</th><th>Подписка</th><th>AI-тариф</th><th>Регистрация</th><th>Последний вход</th><th class="no-print">Действия</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-      :'<div style="color:var(--muted);font-size:12px">Пользователей нет</div>')
+      ?'<div class="admin-table-wrap"><table class="admin-table au-table"><thead><tr><th>Пользователь</th><th>Роль</th><th>Доступ</th><th>Подписка</th><th title="'+esc(planHint)+'">AI-тариф</th><th>Регистрация</th><th>Последний вход</th><th class="no-print"><span class="sr-only">Действия</span></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+        +'<div class="au-empty" id="adminEmpty" hidden>Никого не найдено</div>'
+      :'<div class="au-empty">Пользователей нет</div>')
     +'</div>';
 }
 
@@ -3593,26 +3631,59 @@ document.getElementById('adminResult').addEventListener('change',async function(
   }catch(err){sel.value=prev;openModal('<h2>Тариф не изменён</h2><div class="calc-warn w-red">Не удалось сохранить AI-тариф для '+esc(u.email)+'</div><div class="modal-actions"><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>')}
   finally{sel.disabled=false}
 });
+document.getElementById('adminResult').addEventListener('input',function(e){
+  if(e.target.id!=='adminSearch')return;
+  const q=e.target.value.trim().toLowerCase();
+  let shown=0;
+  this.querySelectorAll('.admin-tr').forEach(tr=>{const hit=!q||tr.dataset.q.includes(q);tr.hidden=!hit;if(hit)shown++;});
+  const empty=document.getElementById('adminEmpty');if(empty)empty.hidden=shown>0;
+});
 document.getElementById('adminResult').addEventListener('click',function(e){
-  if(e.target.closest('#adminBackBtn')){setSearchMode('code');return;}
   if(e.target.closest('#adminCreateBtn')){openCreateUserModal();return;}
   if(e.target.closest('#adminPrintBtn')){window.print();return;}
   if(e.target.closest('#adminExportBtn')){exportAdminUsersCSV();return;}
-  if(e.target.closest('#adminAiLogBtn')){openAssistantLog(false);return;}
-  if(e.target.closest('#adminMoneyBtn')){openMoneyPanel();return;}
-  if(e.target.closest('#adminMailBtn')){openMailPanel();return;}
   const row=e.target.closest('.admin-tr');
   if(!row)return;
   const u=adminUserById(row.dataset.userId);
   if(!u)return;
-  if(e.target.closest('.admin-role-btn')){confirmSetRole(u);}
-  else if(e.target.closest('.admin-active-btn')){confirmSetActive(u);}
-  else if(e.target.closest('.admin-sub-btn')){openSubscriptionModal(u);}
-  else if(e.target.closest('.admin-pay-btn')){openPaymentModal(u);}
-  else if(e.target.closest('.admin-delete-btn')){confirmDeleteUser(u);}
+  const more=e.target.closest('.au-more');
+  if(more)openAdminRowMenu(more,u);
 });
 
 const EMAIL_RE=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Смена пароля из меню аккаунта (24.09.2026): текущий пароль обязателен; другие сессии
+// сервер завершает, эта остаётся (routes/auth.js, /change-password).
+function openChangePasswordModal(){
+  openModal('<h2>Сменить пароль</h2>'
+    +'<div id="cpError" class="calc-warn w-red" style="display:none" role="alert"></div>'
+    +'<div id="cpForm">'
+    +'<div class="calc-field"><label for="cpCurrent">Текущий пароль</label><input id="cpCurrent" type="password" autocomplete="current-password"></div>'
+    +'<div class="calc-field"><label for="cpNew">Новый пароль</label><input id="cpNew" type="password" autocomplete="new-password" placeholder="не менее 8 символов"></div>'
+    +'<div class="calc-field"><label for="cpNew2">Новый пароль ещё раз</label><input id="cpNew2" type="password" autocomplete="new-password"></div>'
+    +'<p class="cp-note">На других устройствах после смены нужно будет войти заново.</p>'
+    +'<div class="modal-actions"><button class="calc-btn ghost" type="button" id="cpCancel">Отмена</button><button class="calc-btn" type="button" id="cpSubmit">Сменить пароль</button></div>'
+    +'</div>');
+  const g=id=>document.getElementById(id),err=g('cpError');
+  const fail=t=>{err.textContent=t;err.style.display='block';};
+  g('cpCancel').onclick=closeModal;
+  g('cpCurrent').focus();
+  g('cpSubmit').onclick=async()=>{
+    err.style.display='none';
+    const current=g('cpCurrent').value,password=g('cpNew').value;
+    if(!current||!password){fail('Заполните текущий и новый пароль');return;}
+    if(password.length<8){fail('Новый пароль должен быть не короче 8 символов');return;}
+    if(password!==g('cpNew2').value){fail('Новые пароли не совпадают');return;}
+    const btn=g('cpSubmit');btn.disabled=true;
+    try{
+      const res=await apiFetch('/api/auth/change-password',{method:'POST',body:JSON.stringify({current,password})});
+      if(res.status===401)return;
+      const d=await res.json().catch(()=>({}));
+      if(!res.ok){fail(d.error==='wrong current password'?'Текущий пароль указан неверно':d.error==='same password'?'Новый пароль совпадает с текущим':res.status===429?'Слишком много попыток — попробуйте через час':'Не удалось сменить пароль');btn.disabled=false;return;}
+      g('cpForm').innerHTML='<div class="calc-warn auth-ok" style="display:block">Пароль изменён. На других устройствах нужно войти заново.</div><div class="modal-actions"><button class="calc-btn" type="button" onclick="closeModal()">Готово</button></div>';
+    }catch(e){fail('Нет связи с сервером');btn.disabled=false;}
+  };
+}
 
 function openCreateUserModal(){
   openModal(

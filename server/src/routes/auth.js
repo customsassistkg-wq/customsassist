@@ -222,8 +222,47 @@ router.post('/login', async (req, res, next) => {
         subscriptionExpiresAt: user.subscription_expires_at,
         termsAccepted: user.terms_version === TERMS_VERSION,
         payEnabled: xpay.enabled(),
+        dashUrl: dashUrlFor(user),
       });
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Ссылка на дашборд в меню аккаунта — только администратору и только если дашборд опубликован.
+function dashUrlFor(user) {
+  if (user.role !== 'admin') return null;
+  const raw = String(process.env.DASH_ORIGIN || '').split(',')[0].trim().replace(/\/+$/, '');
+  return /^https?:\/\//.test(raw) ? raw : null;
+}
+
+// Смена пароля из меню аккаунта (24.09.2026): текущий пароль обязателен — открытая вкладка
+// на чужом компьютере не должна позволять увести учётную запись. Остальные сессии этого
+// пользователя (и дашборда) завершаются с причиной password_reset («Пароль был изменён —
+// войдите заново»), текущая остаётся: её userId пишется в хранилище заново.
+const checkChangePasswordLimit = makeRateLimiter(10, 60 * 60 * 1000);
+const PASSWORD_MAX = 200;
+router.post('/change-password', async (req, res, next) => {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'not authenticated' });
+    const { current, password } = req.body || {};
+    if (typeof current !== 'string' || typeof password !== 'string' || !current || !password) {
+      return res.status(400).json({ error: 'current and password required' });
+    }
+    if (password.length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
+    if (password.length > PASSWORD_MAX) return res.status(400).json({ error: 'password too long' });
+    if (!checkChangePasswordLimit(req.user.id)) return res.status(429).json({ error: 'too many attempts, try again later' });
+    const { rows: [u] } = await pool.query('select password_hash from users where id = $1', [req.user.id]);
+    if (!u || !(await bcrypt.compare(current, u.password_hash))) return res.status(403).json({ error: 'wrong current password' });
+    if (await bcrypt.compare(password, u.password_hash)) return res.status(400).json({ error: 'same password' });
+    const hash = await bcrypt.hash(password, 12);
+    await pool.query('update users set password_hash = $1 where id = $2', [hash, req.user.id]);
+    await pool.query('update password_reset_tokens set used_at = now() where user_id = $1 and used_at is null', [req.user.id]);
+    await endUserSessions(req.user.id, 'password_reset');
+    req.session.userId = req.user.id;
+    req.session.passwordChangedAt = Date.now();
+    req.session.save((err) => (err ? next(err) : res.json({ ok: true })));
   } catch (err) {
     next(err);
   }
@@ -517,6 +556,7 @@ router.get('/me', (req, res) => {
     emailVerified: !!req.user.email_verified_at,
     termsAccepted: req.user.terms_version === TERMS_VERSION,
     payEnabled: xpay.enabled(),
+    dashUrl: dashUrlFor(req.user),
   });
 });
 

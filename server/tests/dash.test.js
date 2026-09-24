@@ -189,12 +189,16 @@ const pageHtml = fs.readFileSync(path.join(root, 'server/dash/index.html'), 'utf
       });
       const noOverflow = async (what) => { const o = await overflow(); assert.equal(o, 0, `горизонтальная прокрутка ${what}: +${o}px; ` + (await offenders()).join(' | ')); };
       await noOverflow('на 1280');
-      // Один тумблер темы (role=switch): нажатие переключает, aria-checked — светлая.
-      await page.click('#themeToggle');
+      // Один тумблер темы (role=switch), aria-checked — светлая. С 24.09.2026 светлая — по умолчанию,
+      // нажатие ведёт в тёмную.
       assert.equal(await page.getAttribute('html', 'data-theme'), 'light');
       assert.equal(await page.getAttribute('#themeToggle', 'aria-checked'), 'true');
       assert.equal(await page.locator('#themeToggle .tt-txt').innerText(), 'Светлая');
-      await noOverflow('в светлой теме');
+      await page.click('#themeToggle');
+      assert.equal(await page.getAttribute('html', 'data-theme'), null);
+      assert.equal(await page.getAttribute('#themeToggle', 'aria-checked'), 'false');
+      assert.equal(await page.locator('#themeToggle .tt-txt').innerText(), 'Тёмная');
+      await noOverflow('в тёмной теме');
       await page.setViewportSize({ width: 420, height: 800 });
       await page.waitForTimeout(300);
       await noOverflow('на 420');
