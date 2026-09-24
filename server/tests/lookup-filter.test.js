@@ -227,6 +227,21 @@ app.get('/', (req,res)=>res.type('html').send(html));
     assert.equal(await vis('.card[data-cty]'),0, 'для Германии страновые карточки убраны');
     assert.match(r.head,/Германия/);
 
+    // Временные ветеринарные ограничения (ветслужба КР): карточки по болезням сливаются в одну, вердикт —
+    // «возможно», страна прячет чужие подблоки, а страна без ограничений — всю карточку.
+    const vet=()=>page.evaluate(()=>{const c=document.querySelector('#result .res-sec > .card[data-merged="vettemp"], #result > .card[data-merged="vettemp"]');
+      return c?{subs:c.querySelectorAll('.sub').length,shown:c.querySelectorAll('.sub:not(.sub-hidden)').length,partial:c.dataset.partial||''}:null;});
+    await run('im','','0207141000');
+    let v=await vet();
+    assert.ok(v&&v.subs===4&&v.shown===4&&v.partial==='1', 'грипп птиц, АЧС, тиф, Ньюкасл — одна карточка, «возможно»: '+JSON.stringify(v));
+    await run('im','Польша','0207141000');
+    v=await vet();
+    assert.ok(v&&v.shown===3, 'для Польши — грипп птиц (воеводства), АЧС и болезнь Ньюкасла: '+JSON.stringify(v));
+    await run('im','Египет','0207141000');
+    assert.equal(await vet(),null,'для страны без ограничений карточки нет');
+    await run('ex','','0207141000');
+    assert.equal(await vet(),null,'ограничения ввоза не показываются при вывозе');
+
     // Страна ЗСТ СНГ и Азербайджан: плашка 0% на карточке ЕТТ появляется после ответа lkRates — до 22.09.2026
     // lkApplyRates выходил на «нет pref», и для них показывалась только синяя подсказка.
     const plaque=async(cty,text)=>{
