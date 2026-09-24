@@ -7,6 +7,7 @@ const { verifyTurnstile, isEnabled: turnstileEnabled, siteKey: turnstileSiteKey 
 const { endUserSessions } = require('../services/sessions');
 const { issueVerification } = require('../services/verification');
 const xpay = require('../services/xpay');
+const telegram = require('../services/telegram');
 const PAY_SESSION_MS = 3600e3;
 
 const router = express.Router();
@@ -340,6 +341,7 @@ router.post('/register', async (req, res, next) => {
       'insert into admin_audit_log (actor_id, action, target_user_id, detail) values ($1,$2,$3,$4)',
       [user.id, 'self_register', user.id, JSON.stringify({ email: user.email, trial_days: TRIAL_DAYS })]
     );
+    telegram.notify(`👤 <b>Новая регистрация</b>\n${telegram.esc(user.email)} — пробный доступ на ${TRIAL_DAYS} дн.`);
     // Регистрация и есть заключение соглашения: кнопка «Создать аккаунт» стоит
     // под ссылками на правила. Запись в журнале переживёт удаление аккаунта.
     await logTermsAccepted(user);

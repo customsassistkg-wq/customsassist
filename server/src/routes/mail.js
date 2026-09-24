@@ -12,6 +12,7 @@ const crypto = require('node:crypto');
 const express = require('express');
 const { pool } = require('../db');
 const { parseMessage } = require('../services/mailparse');
+const telegram = require('../services/telegram');
 
 const router = express.Router();
 
@@ -86,6 +87,14 @@ router.post('/inbound', express.raw({ type: () => true, limit: LIMIT }), async (
         msg.autoSubmitted ? 'done' : 'new']
     );
     console.log(`mail: stored #${rows[0].id} from ${from}, ${raw.length} bytes, ${(msg.attachments || []).length} attachments`);
+    // Только новое обращение: автоответ и рассылка — не повод будить администратора. Текста письма
+    // в сообщении нет — только кто и о чём; читать и отвечать — в админке.
+    if (!msg.autoSubmitted) {
+      const att = (msg.attachments || []).length;
+      telegram.notify(`📬 <b>Новое обращение</b>\nОт: ${telegram.esc(msg.fromName ? msg.fromName + ' <' + from + '>' : from)}`
+        + (owner[0] ? ' (есть учётная запись)' : '')
+        + `\nТема: ${telegram.esc(msg.subject ? msg.subject.slice(0, 200) : '(без темы)')}` + (att ? `\nВложений: ${att}` : ''));
+    }
     res.json({ ok: true, id: rows[0].id });
   } catch (err) {
     console.error('mail: store failed:', err.message);

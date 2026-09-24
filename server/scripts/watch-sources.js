@@ -516,9 +516,11 @@ async function collect({ days = 21, log = () => {} } = {}) {
   return { today, since, findings, errors };
 }
 
+const WATCH_GROUPS = [['new-act', 'Новые акты, которых нет в базе'], ['counter', 'Счётчики'], ['nsi', 'Справочники ЕАЭС обновлены'], ['remedy', 'Меры защиты рынка: реестр ЕЭК и база расходятся'], ['ett', 'ЕТТ: новая редакция на сайте ЕЭК'], ['kg', 'Кыргызские публикации: новый выпуск'], ['bill', 'Законопроекты (раннее предупреждение, не норма)'], ['expiry', 'Сроки'], ['stale', 'Давно не сверялось']];
+
 function renderText({ today, since, findings, errors }) {
   const lines = [`Дозор источников ${dmyFromIso(today)} (окно с ${dmyFromIso(since)})`, ''];
-  const groups = [['new-act', 'Новые акты, которых нет в базе'], ['counter', 'Счётчики'], ['nsi', 'Справочники ЕАЭС обновлены'], ['remedy', 'Меры защиты рынка: реестр ЕЭК и база расходятся'], ['ett', 'ЕТТ: новая редакция на сайте ЕЭК'], ['kg', 'Кыргызские публикации: новый выпуск'], ['bill', 'Законопроекты (раннее предупреждение, не норма)'], ['expiry', 'Сроки'], ['stale', 'Давно не сверялось']];
+  const groups = WATCH_GROUPS;
   for (const [kind, title] of groups) {
     const items = findings.filter((f) => f.kind === kind);
     if (!items.length) continue;
@@ -529,6 +531,24 @@ function renderText({ today, since, findings, errors }) {
   if (!findings.length) lines.push('Находок нет.');
   if (errors.length) { lines.push('', '## Источники, которые не ответили'); for (const e of errors) lines.push(`- ${e}`); }
   return lines.join('\n');
+}
+
+// Сводка в Telegram администраторам (services/telegram.js): по группам — сколько и первые две
+// находки; полный отчёт остаётся в письме. Без TELEGRAM_* в .env — ничего не делает.
+async function telegramSummary({ findings, errors }) {
+  const telegram = require('../src/services/telegram');
+  if (!telegram.enabled()) return;
+  const lines = [`📋 <b>Дозор источников: ${findings.length} находок</b>`];
+  for (const [kind, title] of WATCH_GROUPS) {
+    const items = findings.filter((x) => x.kind === kind);
+    if (!items.length) continue;
+    lines.push('', `<b>${telegram.esc(title)}</b> — ${items.length}`);
+    for (const x of items.slice(0, 2)) lines.push('• ' + telegram.esc(String(x.text).slice(0, 180)));
+  }
+  if (errors.length) lines.push('', `Не ответили источников: ${errors.length}`);
+  lines.push('', 'Полный отчёт — в письме.');
+  const n = await telegram.notifyAdmins(lines.join('\n'));
+  console.error(`telegram: ${n} адресатов`);
 }
 
 async function mail(report, subject) {
@@ -557,6 +577,7 @@ async function main() {
     // Под таймером находки — не сбой службы: они ушли письмом, код выхода 0, иначе
     // OnFailure слал бы второе письмо о том же.
     if (res.findings.length || res.errors.length) {
+      await telegramSummary(res);
       const n = await mail(report, `Дозор источников: ${res.findings.length} находок${res.errors.length ? `, ${res.errors.length} источника без ответа` : ''}`);
       console.error(`письмо отправлено: ${n} адресатов`);
     }

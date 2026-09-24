@@ -8,6 +8,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const xpay = require('../services/xpay');
+const telegram = require('../services/telegram');
 const { PLANS } = require('./assistant');
 const { extendedUntil } = require('./admin');
 
@@ -60,6 +61,7 @@ async function settle(orderId) {
   const expected = Math.round(Number(o.amount) * 100);
   if (paidTyiyn !== expected) {
     console.error(`pay: order ${o.id} completed with amount ${st.amount}, expected ${expected}`);
+    telegram.notify(`⚠️ <b>Оплата с другой суммой</b>\nЗаказ ${o.id}, ${telegram.esc(o.email)}: ждали ${expected / 100} сом, xPay сообщает ${Number(st.amount) / 100}. Подписка не продлена — разберитесь вручную.`);
     const { rows: [u] } = await pool.query(
       "update pay_orders set xpay_status = $2, status = 'mismatch' where id = $1 and status = 'waiting' returning *", [o.id, ps]);
     return u || o;
@@ -87,6 +89,8 @@ async function settle(orderId) {
       [user.id, paidUntil + 'T23:59:59.999Z', claimed.plan]);
   }
   const { rows: [done] } = await pool.query('update pay_orders set payment_id = $2 where id = $1 returning *', [claimed.id, pay.id]);
+  telegram.notify(`💰 <b>Оплата получена</b>\n${telegram.esc(claimed.email)} — ${Number(claimed.amount)} сом, ${telegram.esc((PLANS[claimed.plan] || {}).name || claimed.plan)} × ${claimed.months} мес.`
+    + (payable != null ? `, зачислено ${payable.toFixed(2)}` : '') + (paidUntil ? `\nПодписка до ${paidUntil.split('-').reverse().join('.')}` : ''));
   return { ...done, paid_until: paidUntil };
 }
 

@@ -18,6 +18,7 @@ require('node:dns').setDefaultResultOrder('ipv4first');
 const { execFileSync } = require('node:child_process');
 const { pool } = require('../src/db');
 const { sendEmail, renderEmail, BRAND } = require('../src/services/email');
+const telegram = require('../src/services/telegram');
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -32,6 +33,14 @@ async function main() {
     log = execFileSync('journalctl', ['-u', unit, '-n', '25', '--no-pager', '-o', 'short-iso'], { encoding: 'utf8' });
   } catch (err) {
     log = 'journalctl не выполнился: ' + err.message;
+  }
+  // Telegram — до базы: его адресаты в .env, поэтому сообщение уходит и при лежащем PostgreSQL.
+  if (flag !== '--dry-run') {
+    const tail = log.trim().split('\n').slice(-12).join('\n');
+    const n = await telegram.notifyAdmins(`🔴 <b>Сбой службы ${telegram.esc(unit)}</b>\n`
+      + `${telegram.esc(new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Bishkek' }))} по Бишкеку. systemctl status ${telegram.esc(unit)}\n`
+      + `<pre>${telegram.esc(tail || '(журнал пуст)')}</pre>`);
+    if (n) console.log(`telegram alert sent: ${n}`);
   }
   const { rows } = await pool.query("select email from users where role = 'admin' and active = true order by created_at");
   await pool.end();

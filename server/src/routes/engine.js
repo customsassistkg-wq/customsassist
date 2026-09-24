@@ -8,6 +8,7 @@ const express = require('express');
 const { pool } = require('../db');
 const base = require('../services/base');
 const { sendEmail, renderEmail, BRAND } = require('../services/email');
+const telegram = require('../services/telegram');
 
 const router = express.Router();
 
@@ -93,6 +94,9 @@ function alert(user, u, kind) {
   if (u.alerted.has(kind)) return;
   u.alerted.add(kind);
   console.warn(`engine: user ${user.id} ${kind}: ${u.keys.size} positions, ${u.calls} calls today`);
+  telegram.notify((kind === 'limit' ? '⛔ <b>Суточный лимит базы исчерпан</b>' : '⚠️ <b>Необычно много запросов к базе</b>')
+    + `\n${telegram.esc(user.email)}: ${u.keys.size} позиций, ${u.calls} запросов за сегодня.`
+    + (kind === 'limit' ? ' Запросы до конца суток отклоняются.' : ` Предел — ${LIMITS.keysLimit}.`));
   if (!process.env.RESEND_API_KEY) return;
   (async () => {
     const { rows } = await pool.query("select email from users where role = 'admin' and active = true order by created_at");

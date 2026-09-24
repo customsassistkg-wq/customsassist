@@ -2,6 +2,7 @@ const express = require('express');
 const { pool } = require('../db');
 const { ask, readPage, redactPersonal } = require('../services/assistant');
 const { sendEmail, renderEmail, BRAND } = require('../services/email');
+const telegram = require('../services/telegram');
 
 const router = express.Router();
 
@@ -39,6 +40,7 @@ function budgetAlert(spent) {
   if (budgetAlertDay === day) return;
   budgetAlertDay = day;
   console.error(`assistant: daily budget reached: $${spent.toFixed(2)} of $${DAILY_BUDGET_USD}`);
+  telegram.notify(`🛑 <b>AI-ассистент остановлен до полуночи</b>\nРасход за сегодня $${spent.toFixed(2)} при потолке $${DAILY_BUDGET_USD}. Пользователи получают отказ, администраторы работают.`);
   if (!process.env.RESEND_API_KEY) return;
   (async () => {
     const { rows } = await pool.query("select email from users where role = 'admin' and active = true order by created_at");
