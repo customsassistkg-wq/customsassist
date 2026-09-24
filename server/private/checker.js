@@ -1678,8 +1678,8 @@ function itemDutyETT(it,cvSom){
 }
 // Подпись к строке партии: 0% по коду, условное освобождение или ничего.
 function vatBadge(r){
-  if(r.vatFree)return r.it.auto?' · НДС 0% (включён в единую ставку)':' · НДС 0% (ЛС/медизделия)';
-  if(r.vatCond)return ' · НДС начислен: освобождение по перечню № 596 условно';
+  if(r.vatFree)return r.it.auto?' · НДС 0% (включён в единую ставку)':' · НДС 0% ('+(r.vfSrc||'по перечню')+')';
+  if(r.vatCond)return ' · НДС начислен: льгота условна ('+(r.vfCondSrc||'перечень')+')';
   return '';
 }
 
@@ -1711,7 +1711,7 @@ function runCalc(){
   }
   out+='<div class="calc-line"><span>Пошлина <span style="color:var(--muted);font-size:11px">('+dutyNote+')</span></span><b>'+duty.toFixed(2)+' сом</b></div>';
   if(exc.sum)out+='<div class="calc-line"><span>Акциз <span style="color:var(--muted);font-size:11px">('+esc(exc.note)+')</span></span><b>'+exc.sum.toFixed(2)+' сом</b></div>';
-  out+='<div class="calc-line"><span>НДС ('+vatRate+'%'+(it.auto?' — включён в единую ставку':(isVatFree?' — освобождение ЛС/медизделия':(vatCond?' — условное освобождение по перечню № 596 не применено, см. предупреждение':'')))+')</span><b>'+vat.toFixed(2)+' сом</b></div>';
+  out+='<div class="calc-line"><span>НДС ('+vatRate+'%'+(it.auto?' — включён в единую ставку':(isVatFree?' — '+esc(vf.firm[0].src):(vatCond?' — условная льгота ('+esc(vf.cond[0].src)+') не применена, см. предупреждение':'')))+')</span><b>'+vat.toFixed(2)+' сом</b></div>';
   out+='<div class="calc-line"><span>Сбор за таможенные операции <span style="color:var(--muted);font-size:11px">('+feeNote+')</span></span><b>'+fee.toFixed(2)+' сом</b></div>';
   out+='<div class="calc-total"><span>Итого таможенных платежей</span><span>'+total.toFixed(2)+' сом</span></div>';
   out+='<details class="calc-foot"><summary>Как считается и что не включено</summary><div>Сбор — по '+docLink('Закон КР №52 от 24.04.2019, ст.41,44',DOC_SOURCES.law52)+' и '+docLink('Инструкции к Пост. КМ КР №79 от 13.02.2020 (ред. от 29.06.2026)',DOC_SOURCES.instr79)+'. Для товаров электронной торговли, приобретённых одним физическим лицом для личного пользования, сбор считается иначе — 6 сомов за 1 кг брутто (п.38² той же Инструкции), и показанные здесь 0,4 % к ним не относятся; пошлина и налоги по таким отправлениям тоже считаются не по ЕТТ, а по единым ставкам таблицы 1 приложения № 2 к Решению Совета ЕЭК от 20.12.2017 № 107. Акциз считается по базовым ставкам ст.336 НК КР и только если выбран пункт и введён объём; по ч.2 ст.336 фактическая ставка может быть ниже базовой. Не включает сбор за таможенное сопровождение (актуален только при физическом конвое/транзите) и антидемпинговые меры (см. примечания по коду ниже).</div></details>';
@@ -1817,7 +1817,7 @@ function computeBatch(){
     const vatCond=!vatFree&&vf.cond.length>0;
     const exc=itemExcise(it);
     const vat=(cv+d.duty+exc.sum)*(vatFree?0:12)/100;
-    return {i:i,it:it,share:share,cv:cv,duty:d.duty,dutyNote:d.note,vatFree:vatFree,vatCond:vatCond,vat:vat,exc:exc.sum,excNote:exc.note};
+    return {i:i,it:it,share:share,cv:cv,duty:d.duty,dutyNote:d.note,vatFree:vatFree,vatCond:vatCond,vfSrc:vf.firm.length?vf.firm[0].src:'',vfCondSrc:vf.cond.length?vf.cond[0].src:'',vat:vat,exc:exc.sum,excNote:exc.note};
   });
   const sum=(f)=>rows.reduce((s,r)=>s+f(r),0);
   const cvTotal=sum(r=>r.cv);

@@ -27,8 +27,8 @@ const sandbox = {console, setTimeout, clearTimeout, addEventListener:noop, local
 sandbox.window = sandbox;
 vm.createContext(sandbox);
 new vm.Script(code).runInContext(sandbox);
-new vm.Script(baseCode + '\nthis.__lk={renderHtml,lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded,adActive,ANTIDUMP_DB};').runInContext(sandbox);
-const {lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB, banOn, BAN_DB, umTermEnded, adActive, ANTIDUMP_DB} = sandbox.__lk;
+new vm.Script(baseCode + '\nthis.__lk={vatFreeHits,renderHtml,lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded,adActive,ANTIDUMP_DB};').runInContext(sandbox);
+const {vatFreeHits, lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB, banOn, BAN_DB, umTermEnded, adActive, ANTIDUMP_DB} = sandbox.__lk;
 
 // ── Антидемпинговые меры и тарифные льготы: машинная дата окончания у каждой ──
 for (const r of ANTIDUMP_DB) {
@@ -71,6 +71,15 @@ assert.equal(umTermEnded('с 01.01.2026 по 31.12.2026', '2026-12-31'), false);
   console.log('PASS: сроки запретов — последний день включительно, дата начала, у датированных запретов есть срок');
 }
 
+// Ставка НДС 0% по решениям КМ (ПКМ № 816, прил. 1 — по коду до 31.12.2027; прил. 2 и № 249 — по условию).
+if (new Date().toISOString().slice(0, 10) <= '2027-12-31') {
+  assert.match(vatFreeHits('0201100001').firm.map((e) => e.src).join(), /ставка НДС 0% — ПКМ КР № 816/, 'говядина — 0% по коду');
+  assert.equal(vatFreeHits('1001190000').firm.length, 0, 'пшеница — 0% только по условию');
+  assert.ok(vatFreeHits('1001190000').cond.length >= 2, 'условия ПКМ № 816 прил. 2 и № 249');
+  assert.equal(vatFreeHits('0201').firm.length, 0, 'по позиции целиком 0% не утверждается');
+  console.log('PASS: ставка НДС 0% — безусловная по коду, условная по субъекту и цели');
+}
+
 assert.equal(lkCountry(''), null);
 assert.equal(lkCountry('Ки'), null);              // слишком коротко — не гадаем
 assert.equal(lkCountry('Казахстан').eaeu, true);
@@ -99,8 +108,8 @@ console.log('PASS: разбор страны и сопоставление с м
 // которые при вывозе не применяются: тарифными и налоговыми.
 assert.ok(baseCode.includes('data-dir="im" data-kind="tariff" data-cty="оаэ эмираты"'));
 assert.ok(baseCode.includes('data-cty="estp"'));
-assert.equal(baseCode.split('data-dir="im"').length - 1, 35); // +5 (18.09.2026): три карточки СЭН, опасные отходы, льгота BAN_DB; −1 (22.09.2026): УСИР убран, коэффициент КНР возвращён; +1 (24.09.2026): обязательная маркировка при ввозе
-console.log('PASS: признаки направления проставлены 35 карточкам');
+assert.equal(baseCode.split('data-dir="im"').length - 1, 36); // +5 (18.09.2026): три карточки СЭН, опасные отходы, льгота BAN_DB; −1 (22.09.2026): УСИР убран, коэффициент КНР возвращён; +1 (24.09.2026): обязательная маркировка при ввозе; +1: ставка НДС 0% по решениям КМ
+console.log('PASS: признаки направления проставлены 36 карточкам');
 
 // ── Ставка для страны происхождения (правила — по текстам решений ЕЭК) ──
 const ettOf = c => (ETT_DB.find(r => r[0] === c) || [])[3];

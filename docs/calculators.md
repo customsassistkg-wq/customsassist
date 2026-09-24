@@ -32,6 +32,10 @@ Moved out of `CLAUDE.md` on 20.09.2026 without changing the text of the paragrap
 
 A preference scales the duty, not the base, and lives in one line of `itemDuty` (0.75 of the rate is 0.75 of the duty for every rate shape, including combined ones; it must not apply to `it.auto`) — the paragraph is under «ЕСТП» in [base-architecture.md](base-architecture.md).
 
+## VAT 0% by Cabinet decision is a rate, not an exemption — but it rides the same firm/cond switch
+
+Since 24.09.2026 `vatFreeHits(code)` also reads `VAT0_DB`: Cabinet decisions under п.2 ст.34¹ НК КР (not «ст.341» — the registry drops the superscript) that set a 0% VAT rate on taxable imports — ПКМ № 816 (annex 1 by code, annex 2 raw materials for vegetable oil and feed), № 249 (grain, crude oil by importer and purpose), № 264 (oilseed). A row without a condition and inside one of its date windows (today, Bishkek time) is **firm** — the calculator charges 0%; a row with a condition (who imports, for what) or outside its seasonal window is **cond** — 12% is charged and the blue warning names the condition. The key matches one way (the query code starts with it), so a heading-level query never claims 0%. The card and the VAT line say «ставка НДС 0%», never «освобождение»; the VAT line and batch badge now name the actual source of any firm or conditional hit instead of the old fixed «ЛС/медизделия» / «№ 596». On imports from EAEU states VAT goes to the tax authority, not customs — the card says so.
+
 ## Reading a spec file: .xlsx is parsed in-page, with no library
 
 `onSpecFile` → `readXlsx`/`readCsv` → `specRowsToItems` → preview modal → `specImport`. The xlsx path uses the browser's own `DecompressionStream('deflate-raw')` plus a ~60-line ZIP central-directory reader; adding SheetJS would cost about a megabyte inside a file that is deliberately self-contained. Four traps, all covered by fixtures in the 09.09.2026 session:
