@@ -118,6 +118,7 @@ No task is in progress. Everything deployed on 22.09.2026 (dashboard, tariffs an
 
 ## Next steps
 
+- Cloudflare moved to the owner's account on `customsassistkg@gmail.com` (24.09.2026, `docs/backend-ops.md` «Contact address»): zone, 14 DNS records, Email Routing and the Email Worker rebuilt, letter to info@ reached «Обращения» at 20:58 UTC. Left: rotate `MAIL_INBOUND_SECRET` (it appeared in the chat) in `.env` and the Worker together; recreate Turnstile in the new account and swap the keys; change the domain registrant (WHOIS) to the ИП; keep the old Cloudflare account untouched until 26.09 (cached old nameservers); change the Resend login address.
 - Owner: turn on two-factor login in the Hetzner account; decide whether the database backups are encrypted (and where the key lives — without it no copy can be restored); decide on DeepSeek (no DPA) and the Gmail mailbox; if the Hetzner form allows, add back the line «вопросы и ответы AI-ассистента» to Appendix 1 of the DPA. Provider requisites — received 24.09.2026 (ИП Ким Г. В.).
 - Owner: decide on the 15 grandfathered accounts (set expiry dates or leave), record the first real payments through «Оплата», refine the expenses (server and domain amounts by invoice) in «Оплаты и расходы».
 - Get from the owner the publication of the КНР (and other countries') coefficients — the `KEF1606_MAP` card was restored on 22.09.2026 at the owner's word with the «первоисточник не подтверждён» caveat; cite the source in `DOC_SOURCES`/`kef` and add the other countries once it is known.
