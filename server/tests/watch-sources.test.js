@@ -89,6 +89,22 @@ assert.deepEqual(w.nsiChanges(nsiList, nsiWatch), [
 ], 'поздняя версия побеждает; сверенный по той же дате молчит; не в NSI_WATCH — не смотрится');
 assert.ok(Object.values(w.NSI_WATCH).every((x) => x.what && (x.seen === null || /^\d{4}-\d\d-\d\d$/.test(x.seen))), 'seen — ISO-дата или null');
 
+// ── реестр мер защиты ЕЭК: пара по общему коду и сроку, страны не нужны ──
+const remReg = [
+  { actual: true, investigationnumber: 'AD-37', shortname: 'Литые диски', enddate: '2030-03-21T23:59:59Z', tnved: ['8708 70 500 9'], exportingcountrycode: ['JP', 'TH'] },
+  { actual: true, investigationnumber: 'AD-24', shortname: 'Литые диски', enddate: '2029-11-18T23:59:59Z', tnved: ['8708 70 500 9'], exportingcountrycode: ['CN'] },
+  { actual: true, investigationnumber: 'AD-29', shortname: 'Рессоры', enddate: '2031-08-24T23:59:59Z', tnved: ['7320 10'], exportingcountrycode: ['CN'] },
+  { actual: false, investigationnumber: 'AD-2', shortname: 'Старая мера', enddate: '2020-01-01T23:59:59Z', tnved: ['7208'], exportingcountrycode: ['UA'] },
+];
+const remBase = [
+  [['8708705009'], 'Япония, Таиланд', 'Литые диски', '', '', null, '2030-03-21'],
+  [['7320101100'], 'КНР', 'Рессоры', '', '', null, '2031-08-24'],
+  [['2933610000'], 'КНР', 'Меламин', '', '', null, '2027-05-08'],
+];
+const rd = w.remediesDiff(remReg, remBase);
+assert.deepEqual(rd.missing.map((m) => m.id), ['AD-24'], 'тот же код, другой срок — другая мера');
+assert.deepEqual(rd.stale.map((r) => r.name), ['Меламин'], 'строка базы без действующей меры; недействующие меры реестра не считаются');
+
 // ── база: известные акты и цифры счётчика ──
 const baseSrc = "imN:'Запрет · Пост. КМ КР №230 от 08.04.2026',x:'ПКМ КР № 614 от 14.09.2026 «О введении…»',"
   + "y:'Постановление Кабинета Министров КР от 09.09.2026 № 606 «О введении…», Решение от 05.12.2025 года № 111',"
@@ -136,4 +152,4 @@ assert.match(report, /## Источники, которые не ответил�
 assert.doesNotMatch(report, /## Счётчики/);
 assert.match(w.renderText({ today: '2026-09-23', since: '2026-09-02', findings: [], errors: [] }), /Находок нет\./);
 
-console.log('PASS: gov.kg — таблица и карточка; реестр — только ПКМ; счётчик ГТС среди виджетов; справочники НСИ; известные акты и цифры базы; сроки с горизонтом и льготным окном; текст отчёта');
+console.log('PASS: gov.kg — таблица и карточка; реестр — только ПКМ; счётчик ГТС среди виджетов; справочники НСИ; реестр мер защиты ЕЭК; известные акты и цифры базы; сроки с горизонтом и льготным окном; текст отчёта');

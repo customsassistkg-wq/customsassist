@@ -15,7 +15,10 @@
 //     (NSI_WATCH): если дата обновления справочника новее той, по которой его сверяли,
 //     это находка до тех пор, пока после сверки дату в NSI_WATCH не поднимут.
 //
-// И пятое, без сети: датированные меры базы (запреты, льготы, антидемпинг),
+//  5. Реестр мер защиты внутреннего рынка ЕЭК (remedies.eaeunion.org) — действующие
+//     антидемпинговые, специальные и компенсационные меры против ANTIDUMP_DB (remediesDiff).
+//
+// И шестое, без сети: датированные меры базы (запреты, льготы, антидемпинг),
 // срок которых истёк или истекает в ближайшие дни, возраст UNIMEAS_ASOF и записей
 // SOURCE_AUDIT.
 //
@@ -39,6 +42,7 @@ const GOV_LIST = 'https://www.gov.kg/ru/npa/c/provisions';
 const REG_SEARCH = 'https://cbd.minjust.gov.kg/api/v1/GetDocuments';
 const GTS_HOME = 'https://www.customs.gov.kg/site/ru/master/customskg';
 const NSI_LIST = 'https://nsi.eaeunion.org/portal/api/registries/get-list-data';
+const REMEDIES_FIND = 'https://remedies.eaeunion.org/spd2/find?collection=zvr.v_actionsregistry&limit=5000';
 const BASE_PATH = path.join(__dirname, '..', 'private', 'base.js');
 // Справочники ЕС НСИ, с которыми сверяется база: код → что в базе от него зависит и дата
 // обновления справочника, по которой база последний раз сверена (null — ещё не сверялась).
@@ -183,6 +187,26 @@ function nsiChanges(list, watch) {
   return out;
 }
 
+// Реестр мер защиты внутреннего рынка ЕЭК против ANTIDUMP_DB. Мера реестра и строка базы —
+// одно и то же, если у них есть общий код (префикс в любую сторону) и один последний день
+// действия: страны сравнивать не нужно, а у мер на один код (литые диски КНР и JP/TH/TR/MY,
+// электроды КНР и Индии) сроки разные. Возвращает меры реестра без пары в базе и строки
+// базы без пары среди действующих мер реестра.
+function remediesDiff(register, antidump) {
+  const digits = (c) => String(c).replace(/\D/g, '');
+  const share = (a, b) => a.some((x) => b.some((y) => x && y && (x.startsWith(y) || y.startsWith(x))));
+  const live = (register || []).filter((m) => m.actual).map((m) => ({
+    id: m.investigationnumber, name: m.shortname || '', end: String(m.enddate || '').slice(0, 10),
+    codes: (m.tnved || []).map(digits), countries: (m.exportingcountrycode || []).join(', '),
+  }));
+  const rows = (antidump || []).map((r) => ({ codes: (r[0] || []).map(digits), name: r[2], end: r[6] }));
+  const pair = (m, r) => m.end === r.end && share(m.codes, r.codes);
+  return {
+    missing: live.filter((m) => !rows.some((r) => pair(m, r))),
+    stale: rows.filter((r) => !live.some((m) => pair(m, r))),
+  };
+}
+
 // Пары «№ N от ДД.ММ.ГГГГ» и «от ДД.ММ.ГГГГ № N», которые база уже знает: карточки пишут
 // и так («Пост. КМ КР №230 от 08.04.2026»), и так («ПКМ КР от 09.09.2026 № 606»).
 function knownActs(baseSrc) {
@@ -301,8 +325,20 @@ async function collect({ days = 21, log = () => {} } = {}) {
     }
   } catch (err) { errors.push(`НСИ ЕАЭС: ${err.message}`); }
 
-  // 5. сроки в базе
   const base = require('../src/services/base').load();
+
+  // 5. реестр мер защиты внутреннего рынка ЕЭК (remedies.eaeunion.org, тот же бэкенд spd2,
+  // что у портала открытых данных)
+  try {
+    const reg = JSON.parse(await fetchText(REMEDIES_FIND, { method: 'POST', body: '{}', headers: { 'Content-Type': 'text/plain', Referer: 'https://remedies.eaeunion.org/dimd/ru/security/actions', Origin: 'https://remedies.eaeunion.org' } }));
+    const list = reg.result || reg;
+    const { missing, stale } = remediesDiff(list, base.ANTIDUMP_DB);
+    log(`реестр мер защиты: действующих ${list.filter((m) => m.actual).length}, без пары в базе ${missing.length}, в базе без пары ${stale.length}`);
+    for (const m of missing) findings.push({ kind: 'remedy', src: 'ЕЭК', text: `${m.id} «${m.name}» (${m.countries}, коды ${m.codes.join(' ')}) действует по ${dmyFromIso(m.end)} — в базе нет строки с этим кодом и сроком` });
+    for (const r of stale) findings.push({ kind: 'remedy', src: 'база', text: `«${r.name}» (срок в базе ${r.end ? dmyFromIso(r.end) : '—'}) — среди действующих мер реестра ЕЭК нет меры с этим кодом и сроком` });
+  } catch (err) { errors.push(`реестр мер защиты ЕЭК: ${err.message}`); }
+
+  // 6. сроки в базе
   for (const m of datedMeasures(base, today)) {
     const when = m.left < 0 ? `истёк ${dmyFromIso(m.date)} (${-m.left} дн. назад)` : `истекает ${dmyFromIso(m.date)} (через ${m.left} дн.)`;
     findings.push({ kind: 'expiry', src: 'база', text: `${m.label} — ${when}${m.note ? ', ' + m.note : ''}` });
@@ -320,7 +356,7 @@ async function collect({ days = 21, log = () => {} } = {}) {
 
 function renderText({ today, since, findings, errors }) {
   const lines = [`Дозор источников ${dmyFromIso(today)} (окно с ${dmyFromIso(since)})`, ''];
-  const groups = [['new-act', 'Новые акты, которых нет в базе'], ['counter', 'Счётчики'], ['nsi', 'Справочники ЕАЭС обновлены'], ['expiry', 'Сроки'], ['stale', 'Давно не сверялось']];
+  const groups = [['new-act', 'Новые акты, которых нет в базе'], ['counter', 'Счётчики'], ['nsi', 'Справочники ЕАЭС обновлены'], ['remedy', 'Меры защиты рынка: реестр ЕЭК и база расходятся'], ['expiry', 'Сроки'], ['stale', 'Давно не сверялось']];
   for (const [kind, title] of groups) {
     const items = findings.filter((f) => f.kind === kind);
     if (!items.length) continue;
@@ -367,5 +403,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE };
+module.exports = { parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });
