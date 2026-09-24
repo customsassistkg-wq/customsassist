@@ -44,6 +44,7 @@ const ASSISTANT_PATH = /^\/api\/assistant(?:\/read)?\/?$/;
 // Входящее письмо приходит целиком как message/rfc822: разбирает его сам маршрут
 // (routes/mail.js), поэтому разбор JSON на этом пути не нужен и только мешал бы.
 const MAIL_INBOUND_PATH = /^\/api\/mail\/inbound\/?$/;
+const PAY_CALLBACK_PATH = /^\/api\/pay\/(callback|check)\/?$/;
 const jsonDefault = express.json();
 const jsonAssistant = express.json({ limit: '15mb' });
 app.use((req, res, next) => (ASSISTANT_PATH.test(req.path) || MAIL_INBOUND_PATH.test(req.path) ? next() : jsonDefault(req, res, next)));
@@ -96,6 +97,10 @@ app.use((req, res, next) => {
   // Origin не шлётся и cookie не участвует, поэтому подделывать межсайтовым запросом нечего;
   // маршрут проверяет общий секрет и сессию не трогает (routes/mail.js).
   if (MAIL_INBOUND_PATH.test(req.path)) return next();
+  // Webhook и check_url xPay: тоже без браузера и cookie; тело не читается, номер заказа — только
+  // повод спросить xPay о статусе самим или ответить «можно платить / нельзя» (routes/pay.js),
+  // так что межсайтовый запрос ничего не даёт.
+  if (PAY_CALLBACK_PATH.test(req.path)) return next();
 
   const allowed = ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : null;
   if (!allowed) {
@@ -130,6 +135,8 @@ app.use('/api/engine', require('./routes/engine'));
 app.use('/api/assistant', require('./routes/assistant'));
 // Приём входящей почты от Cloudflare Email Worker: вход не нужен, проверяется общий секрет.
 app.use('/api/mail', require('./routes/mail'));
+// Оплата подписки по QR (xPay): вошедший пользователь или тот, у кого подписка истекла.
+app.use('/api/pay', require('./routes/pay'));
 // Дашборд администраторов: код интерфейса и данные — только администратору (requireAdmin).
 const dash = require('./routes/dash');
 app.get('/api/dash.js', dash.script);
@@ -175,6 +182,7 @@ if (require.main === module) {
   classDecisionsService.init();
   nbkrRatesService.init();
   require('./services/retention').init();
+  require('./routes/pay').init();
   // База грузится до открытия порта: первый поиск пользователя не ждёт разбора 12 МБ.
   require('./services/base').load();
   const port = process.env.PORT || 3000;

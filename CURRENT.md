@@ -26,6 +26,8 @@ Short, current, replaceable. Long-term rules go to `CLAUDE.md`/`docs/`, history 
 
 ## Current task
 
+**Оплата подписки по QR через xPay (24.09.2026) — код готов и проверен в тестовой среде xPay, не закоммичен и не выложен.** Файлы: `server/src/routes/pay.js`, `server/src/services/xpay.js`, `server/migrations/0016_pay_orders.sql`, `server/tests/pay.test.js`, правки `index.js`, `routes/auth.js`, `services/retention.js`, `tests/retention.test.js`, `tnved_checker.html` (окно `#payGate`), `privacy.html`, `server/.env.example`; описание — [docs/backend-ops.md](docs/backend-ops.md), «Оплата подписки по QR». Без `XPAY_CLIENT_ID` в `.env` всё выключено, поэтому выкладка безопасна и до договора. xPay ответил 24.09.2026: webhook ждёт 201 и повторяет сутки, QR бессрочен — оплату пускает только наш `check_url` (последний заказ пользователя, не старше часа). До запуска: проверить `check_url` и webhook на первом боевом платеже; юридическое название xPay — в `privacy.html`; пункт о тарифах, оплате и возврате в `terms.html` (решение владельца, объявление за месяц); фискальный чек — у бухгалтера; договор и боевые ключи.
+
 No task is in progress. Everything deployed on 22.09.2026 (dashboard, tariffs and payments, theme toggle, «Ещё» menu, EU Vision, cross-border table, logs, retention) is committed; production equals HEAD for all application files.
 
 ## Recently completed

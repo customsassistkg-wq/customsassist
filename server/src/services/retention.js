@@ -21,9 +21,11 @@ async function purgeExpired(now = new Date()) {
     [now]);
   // Переписка обращений — год с письма (миграция 0015), срок стоит в самой строке.
   const inbox = await pool.query('delete from inbox where purge_after < $1', [now]);
-  const counts = { audit: audit.rowCount || 0, payments: payments.rowCount || 0, inbox: inbox.rowCount || 0 };
-  if (counts.audit || counts.payments || counts.inbox) {
-    console.log(`retention: removed ${counts.audit} audit rows, ${counts.payments} payment records, ${counts.inbox} messages`);
+  // Заказы на оплату по QR — 90 дней (миграция 0016): учёт денег остаётся в payments.
+  const orders = await pool.query("delete from pay_orders where created_at < $1::timestamptz - interval '90 days'", [now]);
+  const counts = { audit: audit.rowCount || 0, payments: payments.rowCount || 0, inbox: inbox.rowCount || 0, orders: orders.rowCount || 0 };
+  if (counts.audit || counts.payments || counts.inbox || counts.orders) {
+    console.log(`retention: removed ${counts.audit} audit rows, ${counts.payments} payment records, ${counts.inbox} messages, ${counts.orders} pay orders`);
   }
   return counts;
 }

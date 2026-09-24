@@ -266,6 +266,9 @@
   .terms-box a{color:var(--ink-link)}
   .terms-box .terms-err{color:var(--red)}
   .terms-actions{display:flex;gap:10px;flex-wrap:wrap}
+  /* Окно оплаты по QR (xPay): поля тарифа и срока, картинка QR; живёт вне #appWrap — нужно и на экране входа */
+  .terms-box .pay-total{font-weight:600;font-size:var(--fs-xl)}.terms-box .pay-note{font-size:var(--fs-md);color:var(--muted)}
+  #payQr{display:flex;flex-direction:column;align-items:center;gap:12px;margin:0 0 14px}#payQrLink{text-decoration:none}#payQrImg{width:240px;height:240px;max-width:100%;background:#fff;border-radius:var(--radius-md)}
   .tab-bar{display:none}
   @media (max-width:640px){
     .tab-bar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--surface);border-top:1px solid var(--border);padding:6px 8px calc(6px + env(safe-area-inset-bottom));box-shadow:var(--shadow-up)}
@@ -795,6 +798,8 @@
     border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:acspin .7s linear infinite}
   @keyframes acspin{to{transform:rotate(360deg)}}
   .auth-btn.is-ok{background:linear-gradient(135deg,#1FA34D,#17864A);box-shadow:0 12px 30px rgba(31,163,77,.4)}
+  /* «Оплатить подписку» стоит над «Войти» (истёкшая подписка) — без отступа кнопки слипались */
+  #authPayBtn{margin-bottom:12px}
 
   .auth-or{display:flex;align-items:center;gap:14px;margin:18px 0;color:var(--ac-dim);font-size:var(--fs-md)}
   .auth-or::before,.auth-or::after{content:'';height:1px;flex:1;background:var(--ac-line)}
@@ -961,8 +966,8 @@
   }
 </style>
 <script data-boot>
-  // Читаем выбор темы до отрисовки. Значение по умолчанию — тёмная.
-  try{ if(localStorage.getItem("ca-theme")==="light") document.documentElement.setAttribute("data-theme","light"); }catch(e){}
+  // Читаем выбор темы до отрисовки. По умолчанию — светлая (с 24.09.2026); тёмная — только если выбрана.
+  (function(){ var t=null; try{ t=localStorage.getItem("ca-theme"); }catch(e){} if(t!=="dark") document.documentElement.setAttribute("data-theme","light"); })();
 </script>
 </head>
 <body>
@@ -1019,6 +1024,7 @@
       <div id="turnstileLogin" class="cf-box"></div>
       <div id="authError" class="calc-warn w-red" style="display:none"></div>
       <div id="authInfo" class="calc-warn auth-ok" style="display:none"></div>
+      <button id="authPayBtn" class="auth-btn" type="button" style="display:none"><span class="ab-label">Оплатить подписку</span></button>
       <button id="authSubmit" class="auth-btn" type="button"><span class="ab-label">Войти</span></button>
       <div class="auth-or"><span>или</span></div>
       <button id="authRegisterLink" class="auth-btn ghost" type="button"><span class="ab-label">Создать аккаунт</span></button>
@@ -1270,6 +1276,24 @@
   </div>
 </div>
 
+<div id="payGate" class="terms-gate" role="dialog" aria-modal="true" aria-labelledby="payTitle" style="display:none">
+  <div class="terms-box">
+    <h2 id="payTitle">Оплата подписки</h2>
+    <div id="payForm">
+      <div class="calc-field"><label for="payPlanSel">Тариф</label><select id="payPlanSel"></select></div>
+      <div class="calc-field"><label for="payMonthsSel">Срок</label><select id="payMonthsSel"></select></div>
+      <p class="pay-total" id="payTotal"></p>
+      <p class="pay-note">Оплата по QR из приложения любого банка Кыргызстана через платёжную организацию xPay. Подписка продлевается сразу после оплаты.</p>
+    </div>
+    <div id="payQr" style="display:none">
+      <img id="payQrImg" alt="QR-код для оплаты">
+      <a id="payQrLink" class="btn btn-primary btn-lg" target="_blank" rel="noopener">Оплатить в приложении банка</a>
+    </div>
+    <p id="payMsg" role="status"></p>
+    <div class="terms-actions"><button type="button" class="btn btn-primary btn-lg" id="payGoBtn">Получить QR</button><button type="button" class="btn btn-lg" id="payCloseBtn">Закрыть</button></div>
+  </div>
+</div>
+
 <div id="calcPrintArea"></div>
 
 <button id="toTopBtn" type="button" title="Наверх" aria-label="Наверх" onclick="window.scrollTo({top:0,behavior:'smooth'})">⬆</button>
@@ -1487,6 +1511,7 @@ function showAuthScreen(msg){
   const errEl=document.getElementById('authError');
   if(msg){errEl.textContent=msg;errEl.style.display='block';}
   else{errEl.style.display='none';}
+  document.getElementById('authPayBtn').style.display='none';document.getElementById('authSubmit').classList.remove('ghost');
   if(pendingVerifyMsg){
     const box=document.getElementById(pendingVerifyMsg.ok?'authInfo':'authError');
     box.textContent=pendingVerifyMsg.text;box.style.display='block';
@@ -1674,11 +1699,13 @@ async function showApp(){
   bar.innerHTML='<div class="acc-wrap" id="accWrap"><button class="btn acc-btn" id="accMenuBtn" type="button" aria-haspopup="true" aria-expanded="false" title="Аккаунт"><b>'+esc(currentUser.email)+'</b> ▾</button>'
     +'<div class="acc-menu" id="accMenu"><div class="acc-email">'+esc(currentUser.email)+'</div><div id="accMenuStatus"></div>'
     +(isAdmin?'<button class="btn admin-link-btn" id="adminLinkBtn" type="button">🛡️ Администрирование</button>':'')
+    +(!isAdmin&&currentUser.payEnabled?'<button class="btn" id="accPayBtn" type="button">💳 Продлить подписку</button>':'')
     +'<button class="btn" id="logoutBtn" type="button">Выйти</button></div></div>';
   const accWrap=document.getElementById('accWrap');
   const closeAccMenu=()=>{accWrap.classList.remove('open');document.getElementById('accMenuBtn').setAttribute('aria-expanded','false')};
   document.getElementById('logoutBtn').onclick=()=>{closeAccMenu();doLogout()};
   if(isAdmin) document.getElementById('adminLinkBtn').onclick=()=>{closeAccMenu();setPage('search');setSearchMode(searchMode==='admin'?'code':'admin');};
+  if(document.getElementById('accPayBtn'))document.getElementById('accPayBtn').onclick=()=>{closeAccMenu();openPay();};
   document.getElementById('accMenuBtn').onclick=(e)=>{e.stopPropagation();const open=!accWrap.classList.contains('open');accWrap.classList.toggle('open',open);document.getElementById('accMenuBtn').setAttribute('aria-expanded',String(open));
     if(open&&!window.__accMenuBound){window.__accMenuBound=true;document.addEventListener('click',(ev)=>{const w=document.getElementById('accWrap');if(w&&!w.contains(ev.target))w.classList.remove('open')})}};
   renderAccountPanel();
@@ -1777,6 +1804,85 @@ function renderAccountPanel(){
   panel.innerHTML=`<span class="acc-label">Ваш доступ:</span><span class="acc-status ${cls}">${label}</span>`;
 }
 
+// Оплата подписки по QR (xPay, server/src/routes/pay.js). Открывается из меню аккаунта и с экрана
+// входа, когда подписка истекла: тогда у браузера есть только сессия оплаты, checker.js не загружен.
+// Засчитывает оплату сервер, спросив xPay сам; окно лишь раз в 3 с спрашивает наш сервер о заказе.
+let payPoll=null,payOrder=null;
+function closePay(){if(payPoll)clearTimeout(payPoll);payPoll=null;payOrder=null;const g=document.getElementById('payGate');if(g)g.style.display='none';}
+async function openPay(){
+  closePay();
+  const g=document.getElementById('payGate'),msg=document.getElementById('payMsg'),go=document.getElementById('payGoBtn');
+  const ps=document.getElementById('payPlanSel'),ms=document.getElementById('payMonthsSel'),img=document.getElementById('payQrImg');
+  document.getElementById('payForm').style.display='none';document.getElementById('payQr').style.display='none';
+  img.removeAttribute('src');img.style.visibility='';go.style.display='';go.disabled=true;
+  msg.textContent='Загрузка тарифов…';g.style.display='flex';
+  document.getElementById('payCloseBtn').onclick=closePay;
+  let data;
+  try{
+    const r=await fetch('/api/pay/plans',{credentials:'include'});
+    if(r.status===401){msg.textContent='Сессия оплаты истекла — войдите ещё раз.';return;}
+    if(!r.ok){msg.textContent='Оплата онлайн сейчас недоступна — напишите нам для продления.';return;}
+    data=await r.json();
+  }catch(e){msg.textContent='Нет связи с сервером.';return;}
+  ps.innerHTML='';ms.innerHTML='';
+  data.plans.forEach(p=>ps.add(new Option(p.name+' · '+p.price+' сом/мес',p.key)));
+  data.months.forEach(m=>ms.add(new Option(m+' мес.',String(m))));
+  const total=()=>{const p=data.plans.find(x=>x.key===ps.value);document.getElementById('payTotal').textContent='К оплате: '+(p.price*Number(ms.value)).toLocaleString('ru-RU')+' сом';};
+  ps.onchange=total;ms.onchange=total;total();
+  document.getElementById('payForm').style.display='';msg.textContent='';go.disabled=false;
+  go.onclick=async()=>{
+    go.disabled=true;msg.textContent='Создаём QR…';
+    try{
+      const r=await fetch('/api/pay/create',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:ps.value,months:Number(ms.value)})});
+      const o=await r.json().catch(()=>({}));
+      if(!r.ok){msg.textContent=r.status===429?'Слишком много заказов за час — попробуйте позже.':r.status===401?'Сессия оплаты истекла — войдите ещё раз.':'Не удалось создать QR — попробуйте ещё раз.';go.disabled=false;return;}
+      showPayQr(o);
+    }catch(e){msg.textContent='Нет связи с сервером.';go.disabled=false;}
+  };
+}
+function showPayQr(o){
+  payOrder=o.id;
+  document.getElementById('payForm').style.display='none';document.getElementById('payGoBtn').style.display='none';
+  document.getElementById('payQr').style.display='';
+  document.getElementById('payQrImg').src='/api/pay/qr/'+o.id;
+  const link=document.getElementById('payQrLink');if(/^https:\/\//.test(o.qr_code))link.href=o.qr_code;else link.removeAttribute('href');
+  document.getElementById('payMsg').textContent='Отсканируйте QR в приложении банка, а на телефоне нажмите кнопку. К оплате: '+Number(o.amount).toLocaleString('ru-RU')+' сом.';
+  pollPay(o.id,Date.now());
+}
+async function pollPay(id,started){
+  if(payOrder!==id)return;
+  let o=null;
+  try{const r=await fetch('/api/pay/status/'+id,{credentials:'include'});if(r.ok)o=await r.json();}catch(e){}
+  if(payOrder!==id)return;
+  const msg=document.getElementById('payMsg');
+  if(o&&o.status==='paid'){payDone(o);return;}
+  if(o&&(o.status==='failed'||o.status==='mismatch')){
+    payOrder=null;document.getElementById('payQr').style.display='none';
+    msg.textContent=o.status==='failed'?'Оплата отменена или не прошла. Закройте окно и попробуйте снова.':'Сумма оплаты не совпала с заказом. Мы разберёмся и свяжемся с вами.';
+    return;
+  }
+  // Отсканирован или оплачивается: второй банк QR не примет, картинку прячем, как советует xPay.
+  if(o){const busy=o.xpay_status==='SCANNED'||o.xpay_status==='PROCESSING';document.getElementById('payQrImg').style.visibility=busy?'hidden':'';if(busy)msg.textContent='Ожидаем подтверждения оплаты в приложении банка…';}
+  if(Date.now()-started>30*60e3){msg.textContent='Если вы оплатили, подписка продлится автоматически в течение нескольких минут.';return;}
+  payPoll=setTimeout(()=>pollPay(id,started),3000);
+}
+function payDone(o){
+  payOrder=null;
+  document.getElementById('payQr').style.display='none';
+  const d=o.paid_until?o.paid_until.split('-').reverse().join('.'):'';
+  const text='Оплата получена, подписка продлена'+(d?' до '+d:'')+'.';
+  if(currentUser){
+    if(o.paid_until)currentUser.subscriptionExpiresAt=o.paid_until+'T23:59:59.999Z';
+    renderAccountPanel();
+    const st=document.getElementById('accMenuStatus');if(st)st.innerHTML=document.getElementById('accountPanel').innerHTML;
+    document.getElementById('payMsg').textContent=text;
+  }else{
+    // Сессия оплаты входом не является: человек входит снова — пароль остался в поле.
+    showAuthScreen();
+    const info=document.getElementById('authInfo');info.textContent=text+' Нажмите «Войти».';info.style.display='block';
+  }
+}
+
 async function doLogin(){
   if(authBusy)return;
   const email=document.getElementById('authEmail').value.trim();
@@ -1803,9 +1909,10 @@ async function doLogin(){
       const msg=data.error==='invalid credentials'?'Неверный email или пароль'
         :data.error==='captcha_required'?'Слишком много неудачных попыток входа. Пройдите проверку и нажмите «Войти» ещё раз.'
         :res.status===429?'Слишком много попыток. Попробуйте позже.'
-        :data.error==='subscription_expired'?'Подписка истекла. Свяжитесь с администратором для продления.'
+        :data.error==='subscription_expired'?(data.canPay?'Подписка истекла. Оплатите продление — доступ откроется сразу после оплаты.':'Подписка истекла. Свяжитесь с администратором для продления.')
         :'Ошибка входа';
       showAuthScreen(msg);
+      if(data.canPay){const pb=document.getElementById('authPayBtn');pb.style.display='';pb.onclick=openPay;document.getElementById('authSubmit').classList.add('ghost');}
       return;
     }
     currentUser=await res.json();
@@ -1828,6 +1935,7 @@ async function doLogin(){
 // окне — и видел чужие адреса, роли и даты входа. Данные при этом сервер
 // заново не отдавал (он отвечает 403), но на экране они были.
 function resetAppView(){
+  if(typeof closePay==='function')closePay();
   appViewVersion++;
   if(typeof adminUsers!=='undefined')adminUsers=[];
   const clear=(id)=>{const el=document.getElementById(id); if(el) el.innerHTML='';};

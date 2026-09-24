@@ -6,6 +6,8 @@ const { sendEmail, renderEmail } = require('../services/email');
 const { verifyTurnstile, isEnabled: turnstileEnabled, siteKey: turnstileSiteKey } = require('../services/turnstile');
 const { endUserSessions } = require('../services/sessions');
 const { issueVerification } = require('../services/verification');
+const xpay = require('../services/xpay');
+const PAY_SESSION_MS = 3600e3;
 
 const router = express.Router();
 
@@ -182,8 +184,16 @@ router.post('/login', async (req, res, next) => {
 
     // Checked only after the password is verified, so a failed-login probe
     // can't be used to tell an expired account apart from a wrong password.
+    // Пароль верен, поэтому оставляем в новой сессии payUserId на час: с ним открыты только
+    // маршруты оплаты (routes/pay.js), userId нет — остальной сайт видит гостя.
     if (user.role !== 'admin' && user.subscription_expires_at && new Date(user.subscription_expires_at) < new Date()) {
-      return res.status(403).json({ error: 'subscription_expired' });
+      if (!xpay.enabled()) return res.status(403).json({ error: 'subscription_expired' });
+      return req.session.regenerate((err) => {
+        if (err) return next(err);
+        req.session.payUserId = user.id;
+        req.session.payUntil = Date.now() + PAY_SESSION_MS;
+        res.status(403).json({ error: 'subscription_expired', canPay: true });
+      });
     }
 
     // Дашборд администраторов: не администратору — отказ уже после проверки пароля
@@ -211,6 +221,7 @@ router.post('/login', async (req, res, next) => {
         role: user.role,
         subscriptionExpiresAt: user.subscription_expires_at,
         termsAccepted: user.terms_version === TERMS_VERSION,
+        payEnabled: xpay.enabled(),
       });
     });
   } catch (err) {
@@ -505,6 +516,7 @@ router.get('/me', (req, res) => {
     subscriptionExpiresAt: req.user.subscription_expires_at,
     emailVerified: !!req.user.email_verified_at,
     termsAccepted: req.user.terms_version === TERMS_VERSION,
+    payEnabled: xpay.enabled(),
   });
 });
 

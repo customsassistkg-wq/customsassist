@@ -344,7 +344,7 @@
 </style>
 <script>
   // Тема до первой отрисовки, как на сайте: иначе светлая тема мигала бы тёмным кадром.
-  try{ if(localStorage.getItem("ca-theme")==="light") document.documentElement.setAttribute("data-theme","light"); }catch(e){}
+  (function(){ var t=null; try{ t=localStorage.getItem("ca-theme"); }catch(e){} if(t!=="dark") document.documentElement.setAttribute("data-theme","light"); })();
 </script>
 </head>
 <body>

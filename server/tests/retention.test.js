@@ -24,6 +24,7 @@ require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async 
   if (/^delete from admin_audit_log/.test(sql)) return { rows: [], rowCount: 2 };
   if (/^delete from payments where created_at/.test(sql)) return { rows: [], rowCount: 1 };
   if (/^delete from inbox where purge_after/.test(sql)) return { rows: [], rowCount: 1 };
+  if (/^delete from pay_orders where created_at/.test(sql)) return { rows: [], rowCount: 3 };
   return { rows: [], rowCount: 0 };
 } } } };
 require.cache[require.resolve('connect-pg-simple')] = { exports: (session) => session.MemoryStore };
@@ -35,14 +36,16 @@ const app = require('../src/index');
   // Очистка: одно и то же время в обоих запросах, счётчики из rowCount.
   const now = new Date('2034-01-01T00:00:00Z');
   const counts = await purgeExpired(now);
-  assert.deepEqual(counts, { audit: 2, payments: 1, inbox: 1 });
-  const [a, p, m] = queries.slice(-3);
+  assert.deepEqual(counts, { audit: 2, payments: 1, inbox: 1, orders: 3 });
+  const [a, p, m, o] = queries.slice(-4);
   assert.match(a[0], /^delete from admin_audit_log where purge_after < \$1$/);
   assert.match(p[0], /date_trunc\('year', \$1::timestamptz at time zone 'Asia\/Bishkek'\) - interval '7 years'\) at time zone 'Asia\/Bishkek'/);
   // Переписка обращений — год с письма, срок стоит в самой строке (миграция 0015).
   assert.match(m[0], /^delete from inbox where purge_after < \$1$/);
-  assert.deepEqual([a[1][0], p[1][0], m[1][0]], [now, now, now]);
-  console.log('PASS: очистка — журнал по purge_after, оплаты с 1 января восьмого года, переписка по purge_after, время одно');
+  // Заказы на оплату по QR — 90 дней (миграция 0016).
+  assert.match(o[0], /^delete from pay_orders where created_at < \$1::timestamptz - interval '90 days'$/);
+  assert.deepEqual([a[1][0], p[1][0], m[1][0], o[1][0]], [now, now, now, now]);
+  console.log('PASS: очистка — журнал по purge_after, оплаты с 1 января восьмого года, переписка по purge_after, заказы QR 90 дней, время одно');
 
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
