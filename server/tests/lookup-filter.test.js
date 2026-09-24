@@ -99,8 +99,8 @@ console.log('PASS: разбор страны и сопоставление с м
 // которые при вывозе не применяются: тарифными и налоговыми.
 assert.ok(baseCode.includes('data-dir="im" data-kind="tariff" data-cty="оаэ эмираты"'));
 assert.ok(baseCode.includes('data-cty="estp"'));
-assert.equal(baseCode.split('data-dir="im"').length - 1, 34); // +5 (18.09.2026): три карточки СЭН, опасные отходы, льгота BAN_DB; −1 (22.09.2026): УСИР убран, коэффициент КНР возвращён
-console.log('PASS: признаки направления проставлены 34 карточкам');
+assert.equal(baseCode.split('data-dir="im"').length - 1, 35); // +5 (18.09.2026): три карточки СЭН, опасные отходы, льгота BAN_DB; −1 (22.09.2026): УСИР убран, коэффициент КНР возвращён; +1 (24.09.2026): обязательная маркировка при ввозе
+console.log('PASS: признаки направления проставлены 35 карточкам');
 
 // ── Ставка для страны происхождения (правила — по текстам решений ЕЭК) ──
 const ettOf = c => (ETT_DB.find(r => r[0] === c) || [])[3];
@@ -241,6 +241,13 @@ app.get('/', (req,res)=>res.type('html').send(html));
     assert.equal(await vet(),null,'для страны без ограничений карточки нет');
     await run('ex','','0207141000');
     assert.equal(await vet(),null,'ограничения ввоза не показываются при вывозе');
+
+    // Обязательная маркировка: требование при ввозе — видна при ввозе, скрыта при транзите.
+    const mark=()=>page.evaluate(()=>Array.from(document.querySelectorAll('#result .res-sec > .card, #result > .card')).some(c=>/Обязательная маркировка при ввозе/.test(c.textContent)));
+    await run('im','','2402200000');
+    assert.equal(await mark(),true,'сигареты: карточка маркировки при ввозе');
+    await run('tr','','2402200000');
+    assert.equal(await mark(),false,'при транзите маркировка не требуется');
 
     // Страна ЗСТ СНГ и Азербайджан: плашка 0% на карточке ЕТТ появляется после ответа lkRates — до 22.09.2026
     // lkApplyRates выходил на «нет pref», и для них показывалась только синяя подсказка.
