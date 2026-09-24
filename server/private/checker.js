@@ -197,7 +197,7 @@ const DOC_SOURCES={
   krTariffLaw:'https://cbd.minjust.gov.kg/4-5161/edition/1193087/ru',
   krLaw212:'https://cbd.minjust.gov.kg/4-4964/edition/482462/ru',
   krLaw37:'https://cbd.minjust.gov.kg/4-2356/edition/782858/ru',
-  trois:'https://customs.gov.kg/site/ru/master/customskg/_/attachment/inline/253d6317-97a6-46df-ba64-1f48134ae572:74dabc7b819147c0861cc132cd894ee32d21492a/21%20%D0%B0%D0%B2%D0%B3%D1%83%D1%81%D1%82%D0%B0%202026%20%D0%B3%D0%BE%D0%B4%D0%B0%20%D0%A2%D0%A0%D0%9E%D0%98%D0%A1%20%D0%93%D0%A2%D0%A1.pdf',
+  trois:'https://www.customs.gov.kg/site/ru/master/customskg/_/attachment/inline/7648beeb-1d90-4de1-b537-7d005281d0a7:8b80e286f837a822a112c584cea015a8d288a93e/11%20-16%20%D1%81%D0%B5%D0%BD%D1%82%D1%8F%D0%B1%D1%80%D1%8F%20%20%202026%20%D0%B3%D0%BE%D0%B4%D0%B0%20%D0%A2%D0%A0%D0%9E%D0%98%D0%A1%20%D0%93%D0%A2%D0%A1.pdf',
   troisPage:'https://customs.gov.kg/site/ru/master/customskg/intellektualdyk-menchik-ukuktaryn-korgoo',
   trois694:'https://cbd.minjust.gov.kg/7-1580/edition/641478/ru',
   troisPol:'https://cbd.minjust.gov.kg/46-413/edition/641468/ru',

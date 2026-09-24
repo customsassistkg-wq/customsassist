@@ -1,5 +1,5 @@
 // Дозор источников: что появилось у государства, чего ещё нет в базе, и что в базе
-// вот-вот истечёт. Три вопроса, три официальных места:
+// вот-вот истечёт. Семь официальных источников и проверка самой базы:
 //
 //  1. Сайт Кабинета Министров (gov.kg/ru/npa/c/provisions) — постановления с датой
 //     официального опубликования появляются там через день-два после подписания,
@@ -43,6 +43,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const https = require('node:https');
 const tls = require('node:tls');
+const zlib = require('node:zlib');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128 Safari/537.36';
 const GOV_LIST = 'https://www.gov.kg/ru/npa/c/provisions';
@@ -56,11 +57,10 @@ const ETT_PAGE = 'https://eec.eaeunion.org/comission/department/catr/ett/';
 const ETT_SEEN = { notesEtt: '2026-08-24', notesTnved: '2025-05-11', lastAmend: '2026-08-11' };
 // Кыргызские публикации, по которым сверена база. Сверил новый выпуск — подними отметку здесь.
 //  trois — имя PDF реестра ТРОИС на странице ГТС (Enonic отдаёт вложения ссылками …/attachment/inline/<id>:<hash>/<имя>.pdf);
-//          пусто — база ещё собрана по выпуску на 21.08.2026, а на сайте новее;
 //  vet   — дата последнего файла «Ограничения на ввоз» ветеринарной службы (WordPress media API);
 //  sti   — темы ГНС (открытый API sti.gov.kg): дата последнего документа, по которому сверена база.
 const KG_SEEN = {
-  trois: '',
+  trois: '11 -16 сентября   2026 года ТРОИС ГТС.pdf',
   vet: '2026-08-25',
   sti: {
     'fc8a71a8-13f5-4d35-9ef2-4403bd572759': { what: 'налоговая база НДС с признаками риска (приказ П-347) → карточка НДС-риска', seen: '2026-08-19' },
@@ -125,13 +125,18 @@ function fetchOnce(url, { method = 'GET', body, headers = {} } = {}) {
   return new Promise((resolve, reject) => {
     const req = https.request(url, {
       method, family: 4, timeout: 40000, ca: tls.rootCertificates.concat(EXTRA_CA),
-      headers: { 'User-Agent': UA, Referer: 'https://cbd.minjust.gov.kg/', Origin: 'https://cbd.minjust.gov.kg', ...headers },
+      // gzip обязательно: eec.eaeunion.org отдаёт серверу несжатую страницу ЕТТ по ~250 байт/с
+      // (16 КБ за минуту), сжатую — за полсекунды (проверено с VPS 24.09.2026).
+      headers: { 'User-Agent': UA, Referer: 'https://cbd.minjust.gov.kg/', Origin: 'https://cbd.minjust.gov.kg', 'Accept-Encoding': 'gzip, deflate', ...headers },
     }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => {
         if (res.statusCode !== 200) return reject(new Error(`${url} → HTTP ${res.statusCode}`));
-        resolve(Buffer.concat(chunks).toString('utf8'));
+        const raw = Buffer.concat(chunks), enc = String(res.headers['content-encoding'] || '');
+        try {
+          resolve((enc.includes('gzip') ? zlib.gunzipSync(raw) : enc.includes('deflate') ? zlib.inflateSync(raw) : raw).toString('utf8'));
+        } catch (err) { reject(new Error(`${url} → ${err.message}`)); }
       });
     });
     req.on('timeout', () => req.destroy(new Error(`${url} → таймаут`)));
