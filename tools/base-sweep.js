@@ -45,7 +45,7 @@ const KNOWN = {
   deadDb: new Set(['TROIS_DB']),
   dupDb: new Set(['TROIS_DB', 'EEC_DECISIONS']),
   // повторы ключей с одинаковым значением; NKS_ITCAT — приём переименования (поздний ключ побеждает)
-  dupKeys: { NKS_MAP: 2, TNVED_MAP: 2, SEARCH_SYNONYMS: 1 },
+  dupKeys: { NKS_MAP: 0, TNVED_MAP: 2, SEARCH_SYNONYMS: 1 }, // NKS_MAP: повторы 391000000 и 84622 схлопнуты 24.09.2026 (побеждало то же последнее значение)
 };
 
 const ETT = g('ETT_DB'), TN = g('TNVED_MAP');
