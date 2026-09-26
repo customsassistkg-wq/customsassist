@@ -193,8 +193,9 @@ cd android
 
 ## iOS
 
-Сборка идёт в Codemagic по workflow `ios-capacitor` (`mobile/codemagic.yaml`),
-который запускается по push в ветку `main`. С 12.09.2026 это работает: репозиторий
+Сборка идёт в Codemagic по workflow `ios-capacitor` (`codemagic.yaml` в корне
+репозитория — Codemagic читает его только оттуда; с 26.09.2026 запускается
+вручную кнопкой Start new build, а не каждым push в `main`). С 12.09.2026 это работает: репозиторий
 `git@github.com:tshalabaev/customsassist.git` (приватный) существует, push в него
 идёт. С 26.09.2026 репозиторий — `customsassistkg-wq/customsassist` (аккаунт
 владельца); в Codemagic его нужно подключить заново из этого аккаунта GitHub. Разовая настройка — в комментариях внутри самого `codemagic.yaml`:

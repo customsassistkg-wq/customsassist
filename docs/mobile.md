@@ -13,7 +13,7 @@ A thin Capacitor shell (`kg.tnved.checker`) for Android and iOS. It ships no cop
 - **The origin change logs every updating user out once.** Session cookies belong to an origin, so a WebView that starts loading a different one arrives with no cookie. This is expected and needs no fix, but it is worth knowing before the release notes are written.
 - Native projects keep their own generated copy of `capacitor.config.json` (`android/app/src/main/assets/`, `ios/App/App/`). Both are gitignored and rebuilt by `npx cap sync`, which the iOS workflow runs; after editing the root config run `npx cap sync` locally too, or a local Android build silently keeps the old origin.
 
-Builds run in Codemagic (`mobile/codemagic.yaml`); `mobile/android/local.properties` and both `node_modules` are gitignored.
+Builds run in Codemagic (`codemagic.yaml` at the repository root — Codemagic reads it only from there; started by hand, no push trigger); `mobile/android/local.properties` and both `node_modules` are gitignored.
 
 ## The site installs to a home screen without either store
 

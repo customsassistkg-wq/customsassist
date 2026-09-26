@@ -16,6 +16,11 @@
 #      kg.tnved.checker (must match capacitor.config.json / ios/App project).
 #   4. Codemagic can then auto-manage signing certificates/profiles via the
 #      API key — no manual certificate wrangling needed.
+# Lives at the repository root because Codemagic reads codemagic.yaml only
+# from there (moved from mobile/ on 26.09.2026). No `triggering`: builds are
+# started by hand in Codemagic (Start new build), not by every push to main —
+# pushes here are mostly docs, and each macOS build spends paid minutes.
+#
 # Until that setup is done, this workflow will fail at the signing step;
 # everything before that (npm install, pod install, web asset sync) will
 # still run and can be used to catch build breakage early.
@@ -32,12 +37,6 @@ workflows:
       node: latest
       xcode: latest
       cocoapods: default
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
     scripts:
       - name: Install npm dependencies
         script: |
@@ -89,12 +88,6 @@ workflows:
       android_signing:
         - customsassist_upload
       node: latest
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
     scripts:
       - name: Install npm dependencies
         script: |
