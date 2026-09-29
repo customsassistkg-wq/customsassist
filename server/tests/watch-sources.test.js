@@ -64,6 +64,14 @@ assert.equal(acts[0].pub, '2026-09-15');
 assert.equal(acts[0].url, 'https://cbd.minjust.gov.kg/7-58169/edition/58961/ru');
 assert.match(acts[0].title, /№ 615 "О некоторых вопросах/);
 assert.equal(w.parseRegistry(JSON.stringify(registry)).length, 1, 'строка JSON тоже принимается');
+const lawReg = { totalResultsCount: 3, data: [
+  { documentCode: '4-1', nameRu: 'Закон КР от 25 сентября 2026 года № 150 "О внесении изменений в Налоговый кодекс Кыргызской Республики"', vid: 'Закон', organ: 'Жогорку Кенеш Кыргызской Республики', dateAdopted: '2026-09-25T00:00:00', lastEdition: '9' },
+  { documentCode: '4-2', nameRu: 'Конституционный Закон КР от 25 сентября 2026 года № 151 "О референдуме"', vid: 'Конституционный Закон', organ: 'Жогорку Кенеш Кыргызской Республики', dateAdopted: '2026-09-25T00:00:00', lastEdition: '1' },
+  registry.data[0],
+] };
+const laws = w.parseRegistry(lawReg, 'law');
+assert.deepEqual(laws.map((l) => l.num), ['150', '151'], 'законы, с конституционными, без постановлений');
+assert.deepEqual(laws.filter((l) => w.TRADE_RE.test(l.title) || w.BILL_RE.test(l.title)).map((l) => l.num), ['150'], 'в отчёт — только налоговый');
 
 // ── ГТС: счётчик квоты среди других виджетов ──
 const gts = `{"type":"customskg:chart","data":{"values":[{"name":"Импорт","value":10},{"name":"Экспорт","value":5}]}}

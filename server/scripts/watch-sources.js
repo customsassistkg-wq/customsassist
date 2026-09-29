@@ -7,7 +7,9 @@
 //     проверяется на таможенные слова, и если пары «№ N от ДД.ММ.ГГГГ» нет в base.js —
 //     это находка.
 //  2. Реестр НПА (cbd.minjust.gov.kg, GetDocuments по дате принятия) — те же
-//     постановления Кабмина, когда реестр их проиндексирует, плюс ссылка-карточка.
+//     постановления Кабмина, когда реестр их проиндексирует, плюс ссылка-карточка; и
+//     подписанные законы (в том числе об изменении Налогового и Таможенного кодексов,
+//     о ратификации торговых соглашений) — законопроект Кенеша становится нормой только так.
 //  3. Счётчик квоты ГТС на customs.gov.kg (беспошлинные электромобили) — цифры в
 //     карточке льготы статичны; если счётчик ушёл от них, карточку пора править.
 //
@@ -168,11 +170,12 @@ function parseGovItem(html) {
   return strip(html.slice(i, j > i ? j : undefined));
 }
 
-// Ответ GetDocuments: только постановления Кабинета Министров.
-function parseRegistry(json) {
+// Ответ GetDocuments: постановления Кабинета Министров или (kind 'law') законы, включая
+// конституционные.
+function parseRegistry(json, kind = 'pkm') {
   const d = typeof json === 'string' ? JSON.parse(json) : json;
   return (d.data || [])
-    .filter((x) => /^Постановление/.test(x.vid || '') && /Кабинет/.test(x.organ || ''))
+    .filter((x) => kind === 'law' ? /Закон/.test(x.vid || '') : /^Постановление/.test(x.vid || '') && /Кабинет/.test(x.organ || ''))
     .map((x) => {
       const name = strip(x.nameRu || '');
       const num = (name.match(/№\s*(\d+)/) || [])[1] || null;
@@ -411,22 +414,35 @@ async function collect({ days = 21, log = () => {} } = {}) {
   // 2. реестр НПА — GetDocuments отдаёт не больше 12 записей на запрос, сколько бы их ни
   // было (docs/legal-sources.md), поэтому по одному дню за запрос.
   try {
-    const acts = [];
+    const acts = [], laws = [];
+    const day = async (d, filter, kind) => {
+      const body = JSON.stringify({ dateAdoptedFrom: d, dateAdoptedTo: d, ...filter });
+      const parsed = JSON.parse(await fetchText(REG_SEARCH, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } }));
+      if ((parsed.data || []).length < (parsed.totalResultsCount || 0)) errors.push(`реестр НПА: за ${dmyFromIso(d)} ${kind === 'law' ? 'законов' : 'актов'} ${parsed.totalResultsCount}, получено ${parsed.data.length} — день просмотрен не целиком`);
+      return parseRegistry(parsed, kind);
+    };
     for (let d = since; d <= today; d = new Date(Date.parse(d) + 864e5).toISOString().slice(0, 10)) {
       // refTypeId 0050 = «Постановление», authoritiesId 0040.0011 = Кабинет Министров КР —
       // коды классификатора реестра, видны в карточке любого ПКМ (GetDocument); без них в
       // 12 записей дня попадают законы и приказы, а постановления остаются за бортом.
-      const body = JSON.stringify({ dateAdoptedFrom: d, dateAdoptedTo: d, refTypeId: '0050', authoritiesId: '0040.0011' });
+      // refTypeId 0020 = «Закон» (с конституционными; орган не задаём — у части законов о
+      // ратификации в реестре стоит Кабмин).
       if (d !== since) await sleep(1500);
-      const parsed = JSON.parse(await fetchText(REG_SEARCH, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } }));
-      if ((parsed.data || []).length < (parsed.totalResultsCount || 0)) errors.push(`реестр НПА: за ${dmyFromIso(d)} актов ${parsed.totalResultsCount}, получено ${parsed.data.length} — день просмотрен не целиком`);
-      acts.push(...parseRegistry(parsed));
+      acts.push(...await day(d, { refTypeId: '0050', authoritiesId: '0040.0011' }, 'pkm'));
+      await sleep(1500);
+      laws.push(...await day(d, { refTypeId: '0020' }, 'law'));
     }
-    log(`реестр: постановлений Кабмина за окно ${acts.length}`);
+    log(`реестр: постановлений Кабмина за окно ${acts.length}, законов ${laws.length}`);
     for (const a of acts) {
       if (!TRADE_RE.test(a.title)) continue;
       if (a.num && known.has(`${a.num}@${a.adopted}`)) continue;
       findings.push({ kind: 'new-act', src: 'реестр', text: `${a.title.slice(0, 200)} — в базе не упомянуто: ${a.url}` });
+    }
+    // Закон — шире: налоговые и таможенные слова законопроектов (BILL_RE) плюс торговые.
+    for (const a of laws) {
+      if (!TRADE_RE.test(a.title) && !BILL_RE.test(a.title)) continue;
+      if (a.num && known.has(`${a.num}@${a.adopted}`)) continue;
+      findings.push({ kind: 'new-act', src: 'реестр, закон', text: `${a.title.slice(0, 220)} — подписан; проверить, меняет ли ставки, льготы, запреты или порядок ввоза: ${a.url}` });
     }
   } catch (err) { errors.push(`реестр НПА: ${err.message}`); }
 
@@ -590,5 +606,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE };
+module.exports = { parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });
