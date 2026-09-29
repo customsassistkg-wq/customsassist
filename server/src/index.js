@@ -45,6 +45,8 @@ const ASSISTANT_PATH = /^\/api\/assistant(?:\/read)?\/?$/;
 // (routes/mail.js), поэтому разбор JSON на этом пути не нужен и только мешал бы.
 const MAIL_INBOUND_PATH = /^\/api\/mail\/inbound\/?$/;
 const PAY_CALLBACK_PATH = /^\/api\/pay\/(callback|check)\/?$/;
+// Команды боту от Telegram и отчёт рутины Claude Code (routes/ops.js): без браузера и cookie.
+const OPS_PATH = /^\/api\/ops\/(telegram|report)\/?$/;
 const jsonDefault = express.json();
 const jsonAssistant = express.json({ limit: '15mb' });
 app.use((req, res, next) => (ASSISTANT_PATH.test(req.path) || MAIL_INBOUND_PATH.test(req.path) ? next() : jsonDefault(req, res, next)));
@@ -101,6 +103,8 @@ app.use((req, res, next) => {
   // повод спросить xPay о статусе самим или ответить «можно платить / нельзя» (routes/pay.js),
   // так что межсайтовый запрос ничего не даёт.
   if (PAY_CALLBACK_PATH.test(req.path)) return next();
+  // Webhook бота и отчёт рутины: у каждого свой секрет в заголовке, сессия не участвует (routes/ops.js).
+  if (OPS_PATH.test(req.path)) return next();
 
   const allowed = ALLOWED_ORIGINS.length ? ALLOWED_ORIGINS : null;
   if (!allowed) {
@@ -139,6 +143,8 @@ app.use('/api/mail', require('./routes/mail'));
 app.use('/api/pay', require('./routes/pay'));
 // «Мои коды»: слежение за изменениями по кодам ТН ВЭД (services/watch.js).
 app.use('/api/watch', require('./routes/watch'));
+// Разбор находок дозора из Telegram: команды боту и отчёт рутины Claude Code, каждый по своему секрету.
+app.use('/api/ops', require('./routes/ops'));
 // Дашборд администраторов: код интерфейса и данные — только администратору (requireAdmin).
 const dash = require('./routes/dash');
 app.get('/api/dash.js', dash.script);

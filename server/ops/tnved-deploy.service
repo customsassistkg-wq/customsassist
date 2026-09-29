@@ -1,0 +1,13 @@
+# Выкладка ветки claude/… по команде «выложи» из Telegram (server/ops/deploy-branch.js).
+# От root: меняет файлы /opt/tnved и перезапускает tnved. Скрипт — копия в
+# /usr/local/lib/tnved-deploy/ (root:root 755), не из /opt/tnved, который пишет пользователь tnved.
+# Установлен как /etc/systemd/system/tnved-deploy.service; журнал: journalctl -u tnved-deploy -n 60
+[Unit]
+Description=Customs Assist KG: deploy a claude/ branch approved in Telegram
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/node /usr/local/lib/tnved-deploy/deploy-branch.js
+TimeoutStartSec=20min

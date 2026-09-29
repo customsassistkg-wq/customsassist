@@ -58,4 +58,22 @@ function notify(html) {
   if (enabled()) notifyAdmins(html).catch(() => {});
 }
 
-module.exports = { enabled, notify, notifyAdmins, esc, clip, chatIds };
+// Ответ в один чат — на команду администратора боту (routes/ops.js). Тоже не бросает.
+async function sendTo(chatId, html) {
+  if (!process.env.TELEGRAM_BOT_TOKEN || !chatIds().includes(String(chatId))) return false;
+  try {
+    const res = await fetch(API + '/bot' + process.env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: String(chatId), text: clip(String(html)), parse_mode: 'HTML', disable_web_page_preview: true }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) console.error(`telegram: HTTP ${res.status}`);
+    return res.ok;
+  } catch (err) {
+    console.error('telegram: ' + (err.name === 'TimeoutError' ? 'timeout' : err.message));
+    return false;
+  }
+}
+
+module.exports = { enabled, notify, notifyAdmins, sendTo, esc, clip, chatIds };

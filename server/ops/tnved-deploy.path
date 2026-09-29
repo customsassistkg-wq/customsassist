@@ -1,0 +1,12 @@
+# Заявка «выложи» из Telegram: API (routes/ops.js, пользователь tnved) кладёт
+# /opt/tnved/server/var/deploy-request.json — systemd запускает tnved-deploy.service (root).
+# Установлен как /etc/systemd/system/tnved-deploy.path; включить: systemctl enable --now tnved-deploy.path
+[Unit]
+Description=Customs Assist KG: deploy request from Telegram
+
+[Path]
+PathExists=/opt/tnved/server/var/deploy-request.json
+Unit=tnved-deploy.service
+
+[Install]
+WantedBy=multi-user.target

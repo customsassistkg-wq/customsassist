@@ -567,6 +567,7 @@ async function telegramSummary({ findings, errors }) {
   }
   if (errors.length) lines.push('', `Не ответили источников: ${errors.length}`);
   lines.push('', 'Полный отчёт — в письме.');
+  if (require('../src/services/ops').routineEnabled()) lines.push('Ответьте на это сообщение «разобрать» — Claude разберёт находки и пришлёт, что меняет.');
   const n = await telegram.notifyAdmins(lines.join('\n'));
   console.error(`telegram: ${n} адресатов`);
 }
@@ -597,6 +598,8 @@ async function main() {
     // Под таймером находки — не сбой службы: они ушли письмом, код выхода 0, иначе
     // OnFailure слал бы второе письмо о том же.
     if (res.findings.length || res.errors.length) {
+      // Полный отчёт — для «разобрать» из Telegram без ответа на сводку (routes/ops.js).
+      try { require('../src/services/ops').saveWatchReport(report); } catch (err) { console.error('ops: ' + err.message); }
       await telegramSummary(res);
       const n = await mail(report, `Дозор источников: ${res.findings.length} находок${res.errors.length ? `, ${res.errors.length} источника без ответа` : ''}`);
       console.error(`письмо отправлено: ${n} адресатов`);
