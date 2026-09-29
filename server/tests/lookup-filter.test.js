@@ -98,7 +98,21 @@ if (new Date().toISOString().slice(0, 10) <= '2027-12-31') {
   assert.doesNotMatch(H('8528721000'), /Прослеживаемость — учёт, не запрет/);
   // Отменённый Закон КР «О таможенном тарифе» № 173 не называется основанием.
   assert.doesNotMatch(H('Азербайджан').replace(/<div class="audit[\s\S]*$/, ''), /DOC_SOURCES|4-5161\/edition/);
+  // Строка пошлины по коду прежней редакции не уводит карточку в «Справочно»: слово «устарел» — информационное.
+  assert.match(H('8112610000'), /в акте — код прежней редакции ТН ВЭД/);
+  assert.doesNotMatch(H('8112610000'), /код акта устарел/);
   console.log('PASS: НДС 0% на дату, закон КР в калькуляторе и партии, вывозная пошлина по TNVED_MAP, маркировка без пометок');
+}
+{
+  // Единый перечень ЕАЭС: код с «из» в акте — возможный запрет, не красный; точный код — красный.
+  const { renderHtml } = sandbox.__lk;
+  const eecBan = (q) => { const h = renderHtml(q).html; const i = h.indexOf('Единые меры нетарифного регулирования ЕАЭС'); const k = h.lastIndexOf('<div class="card', i); return i < 0 ? null : h.slice(k, k + 200); };
+  for (const q of ['4909000000', '5608118000', '4303101090', '8543200000', '9307000000']) assert.match(eecBan(q), /data-partial="1"/, `${q}: «из» в Едином перечне — возможный запрет`);
+  assert.doesNotMatch(eecBan('2903820000'), /data-partial/, 'альдрин 2903 82 000 0 — точный код, запрет');
+  // 9304 00 000 0: в пп.10 и 14 раздела 1.6 код напечатан без «из» — точный запрет рядом с «из» кистеней не занижается.
+  assert.doesNotMatch(eecBan('9304000000'), /data-partial/, '9304 00 000 0: точные позиции пп.10 и 14 — запрет');
+  assert.match(renderHtml('9304000000').html, /с пометкой «из» у категори[иймя]+ «Кистени/, 'пояснение называет категорию с «из»');
+  console.log('PASS: Единый перечень ЕАЭС — «из» в акте даёт возможный запрет, точный код — запрет');
 }
 
 assert.equal(lkCountry(''), null);
@@ -282,9 +296,20 @@ app.get('/', (req,res)=>res.type('html').send(html));
 
     // Запрет законом КР, где коды — толкование слов акта: в «Запретах», но вердикт — «возможный», не красный.
     await run('im','','8543400000');
-    const vape=await page.evaluate(()=>({card:Array.from(document.querySelectorAll('#result .card')).some(c=>/Запрет по законодательству КР: Электронные сигареты/.test(c.textContent)&&c.dataset.partial==='1'),red:!!document.querySelector('#result .vd-danger')}));
+    // Вердикт рисуется в #resultSummary, а не в #result: до 29.09.2026 проверка искала его в #result и проходила всегда.
+    const verdict=()=>page.evaluate(()=>{const t=document.querySelector('#resultSummary .vd-title');return t?{cls:t.className,text:t.textContent}:null;});
+    const vape=await page.evaluate(()=>({card:Array.from(document.querySelectorAll('#result .card')).some(c=>/Запрет по законодательству КР: Электронные сигареты/.test(c.textContent)&&c.dataset.partial==='1')}));
     assert.ok(vape.card,'электронные сигареты: карточка запрета законом с пометкой «проверьте по наименованию»');
-    assert.equal(vape.red,false,'вердикт не красный — коды сопоставлены по смыслу');
+    let vd=await verdict();
+    assert.ok(vd&&/vd-soft/.test(vd.cls)&&!/vd-danger/.test(vd.cls)&&/Возможный запрет/.test(vd.text),'вердикт «возможный запрет», не красный — коды сопоставлены по смыслу: '+JSON.stringify(vd));
+    // Сети 5608 11 800 0: и Единый перечень («из», раздел 1.7), и закон КР (коды — толкование) — только возможный запрет.
+    await run('im','','5608118000');
+    vd=await verdict();
+    assert.ok(vd&&/vd-soft/.test(vd.cls)&&!/vd-danger/.test(vd.cls),'синтетические сети: вердикт «возможный запрет»: '+JSON.stringify(vd));
+    // Контроль самой проверки: точный код запрета (альдрин, раздел 1.4 Единого перечня, в акте без «из») — красный.
+    await run('im','','2903820000');
+    vd=await verdict();
+    assert.ok(vd&&/vd-danger/.test(vd.cls),'альдрин: красный вердикт «⛔ Запрет»: '+JSON.stringify(vd));
 
     // Вывозная пошлина КР (data-dir="ex"): видна при вывозе, скрыта при транзите. При ввозе без страны
     // фильтр не применяется вовсе (показывается всё — как и запреты вывоза), поэтому ввоз здесь не проверяется.
@@ -300,9 +325,10 @@ app.get('/', (req,res)=>res.type('html').send(html));
 
     // Прослеживаемость — учёт, не запрет: карточка не в «Запретах», вердикт не красный (до 29.09.2026 был красным).
     await run('im','','8528721000');
-    const trace=await page.evaluate(()=>{const c=Array.from(document.querySelectorAll('#result .card')).find(c=>/Прослеживаемость ЕАЭС/.test(c.textContent));return {sec:c&&c.closest('.res-sec')?c.closest('.res-sec').id:'',red:!!document.querySelector('#result .vd-danger')};});
+    const trace=await page.evaluate(()=>{const c=Array.from(document.querySelectorAll('#result .card')).find(c=>/Прослеживаемость ЕАЭС/.test(c.textContent));return {sec:c&&c.closest('.res-sec')?c.closest('.res-sec').id:''};});
     assert.notEqual(trace.sec,'res-sec-danger','прослеживаемость не в «Запретах»');
-    assert.equal(trace.red,false,'телевизор: вердикт не красный');
+    vd=await verdict();
+    assert.ok(vd&&!/vd-danger/.test(vd.cls)&&/Запретов при ввозе нет/.test(vd.text),'телевизор: вердикт не красный: '+JSON.stringify(vd));
 
     // Страна ЕАЭС тоже прячет чужие подблоки объединённой карточки (до 29.09.2026 — только третьи страны).
     await run('im','Россия','0207141000');
