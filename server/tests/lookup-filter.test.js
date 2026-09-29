@@ -264,6 +264,14 @@ app.get('/', (req,res)=>res.type('html').send(html));
     assert.ok(vape.card,'электронные сигареты: карточка запрета законом с пометкой «проверьте по наименованию»');
     assert.equal(vape.red,false,'вердикт не красный — коды сопоставлены по смыслу');
 
+    // Вывозная пошлина КР (data-dir="ex"): видна при вывозе, скрыта при транзите. При ввозе без страны
+    // фильтр не применяется вовсе (показывается всё — как и запреты вывоза), поэтому ввоз здесь не проверяется.
+    const expDuty=()=>page.evaluate(()=>Array.from(document.querySelectorAll('#result .res-sec > .card, #result > .card')).some(c=>/Вывозная таможенная пошлина Кыргызской Республики/.test(c.textContent)));
+    await run('ex','','4101200000');
+    assert.equal(await expDuty(),true,'шкуры: вывозная пошлина при вывозе');
+    await run('tr','','4101200000');
+    assert.equal(await expDuty(),false,'при транзите вывозной пошлины нет');
+
     // Страна ЗСТ СНГ и Азербайджан: плашка 0% на карточке ЕТТ появляется после ответа lkRates — до 22.09.2026
     // lkApplyRates выходил на «нет pref», и для них показывалась только синяя подсказка.
     const plaque=async(cty,text)=>{
