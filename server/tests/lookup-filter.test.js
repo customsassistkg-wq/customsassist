@@ -27,7 +27,7 @@ const sandbox = {console, setTimeout, clearTimeout, addEventListener:noop, local
 sandbox.window = sandbox;
 vm.createContext(sandbox);
 new vm.Script(code).runInContext(sandbox);
-new vm.Script(baseCode + '\nthis.__lk={vatFreeHits,renderHtml,lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded,adActive,ANTIDUMP_DB};').runInContext(sandbox);
+new vm.Script(baseCode + '\nthis.__lk={vatFreeHits,calcWarnings,BATCH_REQS,renderHtml,lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded,adActive,ANTIDUMP_DB};').runInContext(sandbox);
 const {vatFreeHits, lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB, banOn, BAN_DB, umTermEnded, adActive, ANTIDUMP_DB} = sandbox.__lk;
 
 // ── Антидемпинговые меры и тарифные льготы: машинная дата окончания у каждой ──
@@ -78,6 +78,27 @@ if (new Date().toISOString().slice(0, 10) <= '2027-12-31') {
   assert.ok(vatFreeHits('1001190000').cond.length >= 2, 'условия ПКМ № 816 прил. 2 и № 249');
   assert.equal(vatFreeHits('0201').firm.length, 0, 'по позиции целиком 0% не утверждается');
   console.log('PASS: ставка НДС 0% — безусловная по коду, условная по субъекту и цели');
+}
+{
+  const { calcWarnings, BATCH_REQS, renderHtml } = sandbox.__lk;
+  const H = (q, d) => renderHtml(q, d).html;
+  // Период НДС 0% — на дату проверки: солома 1213 — с 1 ноября по 1 апреля.
+  assert.doesNotMatch(H('1213000000', '2026-12-01'), /на дату проверки не действует/);
+  assert.match(H('1213000000', '2026-07-01'), /на дату проверки не действует/);
+  // Запрет законом КР виден калькулятору и сводке партии, не только карточке.
+  assert.ok(calcWarnings('8543400000').some((w) => /Законодательство КР: Электронные сигареты/.test(w.text)), 'калькулятор: электронные сигареты');
+  assert.ok(BATCH_REQS.find((r) => r.k === 'natreq').f('5608118000'), 'партия: синтетические сети');
+  // Вывозная пошлина по коду ПП № 479 прежней номенклатуры доходит до действующего через TNVED_MAP.
+  assert.match(H('8112610000'), /Отходы и лом кадмиевые \[в перечне — код 8107 30 000 0, в действующем ЕТТ — 8112 61 000 0\]/);
+  assert.match(H('8112610000'), /data-except-cty="армения беларусь казахстан россия/);
+  // Маркировка: служебных пометок на карточке нет, воды общепита к ввозу не относятся, масло 3403 — по ПКМ № 179.
+  assert.doesNotMatch(H('2202100000'), /banFrom|не выводить|общественного питания/);
+  assert.match(H('3403199000'), /в ред\. ПКМ № 179 от 04\.04\.2025/);
+  // Прослеживаемость — учёт, а не запрет: слово «запрет» в тегах увело бы карточку в «Запреты».
+  assert.doesNotMatch(H('8528721000'), /Прослеживаемость — учёт, не запрет/);
+  // Отменённый Закон КР «О таможенном тарифе» № 173 не называется основанием.
+  assert.doesNotMatch(H('Азербайджан').replace(/<div class="audit[\s\S]*$/, ''), /DOC_SOURCES|4-5161\/edition/);
+  console.log('PASS: НДС 0% на дату, закон КР в калькуляторе и партии, вывозная пошлина по TNVED_MAP, маркировка без пометок');
 }
 
 assert.equal(lkCountry(''), null);
@@ -159,7 +180,8 @@ assert.equal(rate('3307900008', 'Казахстан', '2026-09-18').length, 0); 
 r = rate('8517130000', 'Азербайджан', '2026-09-22');
 assert.equal(r.length, 1);
 assert.deepEqual([r[0].rate, r[0].who], ['0%', 'Соглашение о свободной торговле КР–Азербайджан']);
-assert.match(r[0].basis, /от 12\.01\.2004, ст\.1 .*п\.1 ст\.102 Договора о ЕАЭС и подп\.1 п\.1 ст\.8 Закона КР «О таможенном тарифе»/);
+assert.match(r[0].basis, /от 12\.01\.2004, ст\.1 .*п\.1 ст\.102 Договора о ЕАЭС$/);
+assert.doesNotMatch(r[0].basis, /О таможенном тарифе/); // Закон КР № 173 утратил силу 01.11.2022 (Закон КР № 100)
 assert.match(r[0].note, /СТ-1/);
 assert.equal(rate('8517130000', 'Азербайджан', '2003-12-31')[0].pending, '12.01.2004'); // временное применение со дня подписания
 const az = sandbox.__lk.renderHtml('Азербайджан', '').html;
@@ -271,6 +293,21 @@ app.get('/', (req,res)=>res.type('html').send(html));
     assert.equal(await expDuty(),true,'шкуры: вывозная пошлина при вывозе');
     await run('tr','','4101200000');
     assert.equal(await expDuty(),false,'при транзите вывозной пошлины нет');
+    // Вывоз в ЕАЭС: п.2 акта — пошлина не применяется; карточка остаётся «возможной» с текстом исключения.
+    await run('ex','Казахстан','4101200000');
+    const expEaeu=await page.evaluate(()=>{const c=Array.from(document.querySelectorAll('#result .card')).find(c=>/Вывозная таможенная пошлина Кыргызской Республики/.test(c.textContent));return c?{partial:c.dataset.partial||'',why:/акт содержит исключение/.test(c.textContent)}:null;});
+    assert.ok(expEaeu&&expEaeu.partial==='1'&&expEaeu.why,'вывоз в Казахстан: исключение п.2 акта '+JSON.stringify(expEaeu));
+
+    // Прослеживаемость — учёт, не запрет: карточка не в «Запретах», вердикт не красный (до 29.09.2026 был красным).
+    await run('im','','8528721000');
+    const trace=await page.evaluate(()=>{const c=Array.from(document.querySelectorAll('#result .card')).find(c=>/Прослеживаемость ЕАЭС/.test(c.textContent));return {sec:c&&c.closest('.res-sec')?c.closest('.res-sec').id:'',red:!!document.querySelector('#result .vd-danger')};});
+    assert.notEqual(trace.sec,'res-sec-danger','прослеживаемость не в «Запретах»');
+    assert.equal(trace.red,false,'телевизор: вердикт не красный');
+
+    // Страна ЕАЭС тоже прячет чужие подблоки объединённой карточки (до 29.09.2026 — только третьи страны).
+    await run('im','Россия','0207141000');
+    v=await vet();
+    assert.ok(v===null||v.shown<v.subs,'для России — только её ветограничения: '+JSON.stringify(v));
 
     // Страна ЗСТ СНГ и Азербайджан: плашка 0% на карточке ЕТТ появляется после ответа lkRates — до 22.09.2026
     // lkApplyRates выходил на «нет pref», и для них показывалась только синяя подсказка.

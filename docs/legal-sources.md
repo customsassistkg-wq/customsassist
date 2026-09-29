@@ -35,6 +35,10 @@ Other sources, by what they are good for (reachability checked 24.09.2026):
 | `vet.gov.kg` | veterinary/phytosanitary service | answers 200 with an empty page to a script; identity not confirmed |
 | `mineconom.gov.kg`, `legalacts.eaeunion.org` | ministry of economy (licensing, non-tariff measures); EAEU legal portal | did not answer from outside KG on 24.09.2026 |
 
+**CITES Species+ (`speciesplus.net`, the CITES Secretariat's database) is used for taxonomy only** (decided 29.09.2026 on the owner's «решай сам»): to resolve synonyms and to place a species in its genus, family or order when checking `SPECIES_DB` against section 2.7. It is never the legal list — the list is section 2.7 of the Единый перечень (Решение № 30), which lags CITES (no 2023/2026 listings, e.g. Sphyrnidae); a Species+ fact about a newer CITES listing may go into a row's note as information, never change its appendix.
+
+**Georgia and Turkmenistan** (decided 29.09.2026): Kyrgyz Government reports of 2013 and 2021 name a free-trade regime with both under the 1994 CIS FTA Agreement, but the Agreement's text and its ratification by them are not in the Kyrgyz registry (Toktom needs a login) — so no 0% is shown for them: a wrong 0% makes a user underpay, which is worse than overpaying.
+
 **`erkintoo.kg` is not the official gazette any more** — on 24.09.2026 the domain served an online casino. Never cite it; take the official publication date from `gov.kg` or the registry.
 
 ### Verifying a code list against a Kyrgyz act, in practice

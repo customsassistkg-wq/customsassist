@@ -38,7 +38,8 @@ const g = (expr) => new vm.Script(expr).runInContext(sb);
 const KNOWN = {
   // длина не 2/4/6/8/9/10: самый длинный живой префикс кода, который акт пишет по прежней редакции (source-audit.md)
   len: new Set(['NKS_MAP:68151', 'NKS_MAP:84622', 'NKS_ITCAT:68151', 'NKS_ITCAT:84622', 'TNVED_MAP_keys:68151', 'TNVED_MAP_keys:84622',
-    'SERT_CODES:44181', 'SERT_CODES:44182', 'MAT_CODES:29142', 'MAT_CODES:1515905', 'MAT_CODES:2930909']),
+    'SERT_CODES:44181', 'SERT_CODES:44182', 'MAT_CODES:29142', 'MAT_CODES:1515905', 'MAT_CODES:2930909',
+    'MARK_DB:27101209000']), // MARK_DB: одиннадцатизначный код ПКМ № 361 — опечатка акта, сохранён как напечатан
   // кода нет в ЕТТ и нет в TNVED_MAP: опечатки самого акта (перечень к Пост. № 709), помечены в наименовании
   dead: new Set(['ART297_P26_SPORT_CODES:850491', 'ART297_P26_SPORT_CODES:903400']),
   // базы, где мёртвые коды и повторы — свойство источника: реестр ТРОИС; в EEC_DECISIONS коды идут по товарам решения
@@ -69,6 +70,14 @@ X.NBNDS_DB = () => g('NBNDS_DB').map((r) => ({ code: r[1] }));
 for (const [n, idx] of [['ANTIDUMP_DB', 0], ['TRIGGER_DB', 0], ['QUOTA_DB', 0], ['NTM_DB', 2], ['EEC_DECISIONS', 1]]) X[n] = lists(n, (r) => r[idx]);
 X.TROIS_DB = () => g('TROIS_DB').flatMap((r) => (r[9] || []).map((c) => ({ code: String(c), list: r[0] })));
 X.UNIMEAS_DB = () => g('UNIMEAS_DB').flatMap((r, i) => [6, 7, 8, 9].flatMap((k) => (Array.isArray(r[k]) ? r[k] : []).filter((c) => /^\d+$/.test(c)).map((c) => ({ code: c, list: i + ':' + k }))));
+// Базы 24–29.09.2026: маркировка и прослеживаемость (диапазоны «a-b» пропускаются форматом), требования законов КР,
+// вывозные пошлины, НДС 0%, временные ветеринарные ограничения.
+X.MARK_DB = lists('MARK_DB', (r) => r[2].concat(r[3]));
+X.TRACE_DB = lists('TRACE_DB', (r) => r[1]);
+X.NAT_REQ_DB = lists('NAT_REQ_DB', (r) => r[2]);
+X.EXPORT_DUTY_DB = lists('EXPORT_DUTY_DB', (r) => r[2].map((l) => l[0]));
+X.VAT0_DB = lists('VAT0_DB', (r) => r[3]);
+X.VET_TEMP_DB = lists('VET_TEMP_DB', (r) => r[4]);
 X.TNVED_MAP_keys = () => Object.keys(TN).map((k) => ({ code: k }));
 X.TNVED_MAP_targets = () => Object.entries(TN).flatMap(([k, v]) => (v.t || []).map((c) => ({ code: c, list: k, target: true })));
 

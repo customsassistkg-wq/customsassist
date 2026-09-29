@@ -298,13 +298,14 @@ function searchBase({ query, country: countryName, date, direction, full } = {},
       }
     }
     // Ставка НДС в карточках не написана, и модель брала её из памяти («20%»).
-    // Здесь — то же, что считает калькулятор сайта (runCalc): 12%, 0% по перечню № 596.
+    // Здесь — то же, что считает калькулятор сайта (runCalc): 12% или 0% по vatFreeHits — освобождение (ст.297 НК КР)
+    // или ставка 0% по решению Кабинета (VAT0_DB); источник называет, что именно.
     if (digits.length === 10 && dir === 'im' && !(cty && cty.eaeu) && c.ETT_DB.some((r) => r[0] === digits)) {
       const vf = c.vatFreeHits(digits);
       extra.push(vf.firm.length
-        ? 'НДС при импорте: 0% — освобождение: ' + [...new Set(vf.firm.map((x) => x.src))].join('; ') + '.'
+        ? 'НДС при импорте: 0% — основание: ' + [...new Set(vf.firm.map((x) => x.src))].join('; ') + '.'
         : 'НДС при импорте: 12% от суммы таможенной стоимости, пошлины и акциза (ст. 310, ч. 4 ст. 311 НК КР)'
-          + (vf.cond.length ? '; условное освобождение: ' + vf.cond.map((x) => x.why).join('; ') : '')
+          + (vf.cond.length ? '; 0% только при условии: ' + vf.cond.map((x) => x.why).join('; ') : '')
           + '. Другие освобождения — только если есть в карточках ниже, и с их условиями.');
     }
     if (digits.length === 10 && dir === 'im') extra.push(...footnotesFor(digits, date));
@@ -590,8 +591,8 @@ async function calcOne({ code, value, currency, quantity, country: countryName, 
   const vat = (valueSom + duty.duty) * vatRate / 100;
   const vatEtt = (valueSom + dutyEtt) * vatRate / 100;
   lines.push(`НДС ${vatRate}% (вид платежа 5010): ${som(vat)} (база — стоимость + пошлина)`
-    + (vf.firm.length ? ' — освобождение: ' + [...new Set(vf.firm.map((x) => x.src))].join('; ') : '')
-    + (!vf.firm.length && vf.cond.length ? '; условное освобождение: ' + vf.cond.map((x) => x.why).join('; ') : ''));
+    + (vf.firm.length ? ' — основание: ' + [...new Set(vf.firm.map((x) => x.src))].join('; ') : '')
+    + (!vf.firm.length && vf.cond.length ? '; 0% только при условии: ' + vf.cond.map((x) => x.why).join('; ') : ''));
   if (!batch) {
     const fee = c.customsFeeGoods(valueSom);
     lines.push(`Сбор за таможенные операции (вид платежа 1010): ${som(fee)} (0,4% от таможенной стоимости, вилка 500–250 000 сом)`);
