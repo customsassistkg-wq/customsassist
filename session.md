@@ -10396,3 +10396,4 @@ text / query / searchText / title / keyword и возвращает общий �
   - Строк только с LF — 582: HEAD 580 плюс две строки записи `natreq` в LF-блоке `SOURCE_AUDIT`.
   - NUL и U+FFFD в файле — 0. Прежняя проверка по диффу давала ложные U+FFFD: куски потока склеивались как строки.
   - `lookup-filter` (с Edge), `direction-regime`, `engine`, `assistant`, `watch-sources`, `engine-browser`, `checker-access`, `api-boundary` — PASS.
+- **Выложено** 29.09.2026 10:35 UTC: `private/base.js` (SHA256 `c555df28…8977`) и `private/checker.js` (`41d60ddc…9196`) коммита `45208e4` (вместе с `e9f589b` — СНГ), копия прежних — `/root/deploy_backups/20260929_103546_natreq/`; до выкладки сервер = `549e9d0`; `node --check` на сервере, `tnved` слушал 127.0.0.1:3000; на сервере 8543 40 000 0 даёт карточку запрета законом, большеголовая черепаха — приложение I; снаружи / 200, /api/checker.js 401, /server/private/base.js 404. Незакоммиченные правки другой сессии не выкладывались.
