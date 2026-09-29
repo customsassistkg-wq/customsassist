@@ -258,6 +258,12 @@ app.get('/', (req,res)=>res.type('html').send(html));
     await run('tr','','2402200000');
     assert.equal(await mark(),false,'при транзите маркировка не требуется');
 
+    // Запрет законом КР, где коды — толкование слов акта: в «Запретах», но вердикт — «возможный», не красный.
+    await run('im','','8543400000');
+    const vape=await page.evaluate(()=>({card:Array.from(document.querySelectorAll('#result .card')).some(c=>/Запрет по законодательству КР: Электронные сигареты/.test(c.textContent)&&c.dataset.partial==='1'),red:!!document.querySelector('#result .vd-danger')}));
+    assert.ok(vape.card,'электронные сигареты: карточка запрета законом с пометкой «проверьте по наименованию»');
+    assert.equal(vape.red,false,'вердикт не красный — коды сопоставлены по смыслу');
+
     // Страна ЗСТ СНГ и Азербайджан: плашка 0% на карточке ЕТТ появляется после ответа lkRates — до 22.09.2026
     // lkApplyRates выходил на «нет pref», и для них показывалась только синяя подсказка.
     const plaque=async(cty,text)=>{
