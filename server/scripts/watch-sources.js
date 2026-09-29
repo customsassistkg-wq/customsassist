@@ -304,17 +304,21 @@ function baseCounter(baseSrc) {
 
 // Датированные меры базы: что истекает в ближайшие `horizon` дней или истекло не дольше
 // `grace` дней назад (дольше — уже открытый вопрос в CURRENT.md, а не новость для письма).
+// Истёкшая мера, продление которой уже искали (в карточке «продление … не найдено»), не
+// повторяется в каждом письме: постановление о продлении придёт находкой gov.kg или реестра.
 function datedMeasures(base, today, horizon = 14, grace = 30) {
   const out = [];
-  const add = (label, date, note) => {
+  const add = (label, date, note, reviewed) => {
     if (!date) return;
     const left = daysBetween(today, date);
+    if (left < 0 && reviewed) return;
     if (left <= horizon && left >= -grace) out.push({ label, date, left, note });
   };
+  const reviewed = (n) => /продлен[^·]*не найден/.test(n || '');
   for (const e of base.BAN_DB || []) {
     const name = (e.name || '').slice(0, 90);
-    add(`запрет ввоза: ${name}`, e.imUntil, e.imN && /продлен|истёк/.test(e.imN) ? '' : 'проверить продление');
-    add(`запрет вывоза: ${name}`, e.exUntil, e.exN && /продлен|истёк/.test(e.exN) ? '' : 'проверить продление');
+    add(`запрет ввоза: ${name}`, e.imUntil, e.imN && /продлен|истёк/.test(e.imN) ? '' : 'проверить продление', reviewed(e.imN));
+    add(`запрет вывоза: ${name}`, e.exUntil, e.exN && /продлен|истёк/.test(e.exN) ? '' : 'проверить продление', reviewed(e.exN));
     add(`льгота: ${name}`, e['льгUntil'], '');
   }
   for (const r of base.ANTIDUMP_DB || []) add(`антидемпинг: ${String(r[2] || '').slice(0, 90)} (${r[1] || ''})`, r[6], '');

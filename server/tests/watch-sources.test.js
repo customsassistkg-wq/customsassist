@@ -179,6 +179,7 @@ const base = {
   BAN_DB: [
     { name: 'Гипсокартон', im: true, imUntil: '2026-10-25' },
     { name: 'Удобрения', ex: true, exUntil: '2026-09-15' },
+    { name: 'Удобрения азотные', ex: true, exUntil: '2026-09-15', exN: 'срок истёк; продление в реестре НПА и на gov.kg на 24.09.2026 не найдено' },
     { name: 'Саженцы', im: true, imUntil: '2026-06-01' },
     { name: 'Электромобили', 'льг': true, 'льгUntil': '2026-12-31' },
     { name: 'Без даты', im: true },
@@ -191,6 +192,7 @@ assert.deepEqual(due.map((d) => [d.label.split(':')[0], d.date, d.left]), [
   ['антидемпинг', '2026-09-30', 7],
 ]);
 assert.equal(w.datedMeasures(base, '2026-10-20', 14, 30).some((d) => /Гипсокартон/.test(d.label)), true, 'за 5 дней до конца — в списке');
+assert.equal(w.datedMeasures(base, '2026-09-10', 14, 30).some((d) => /азотные/.test(d.label)), true, 'до истечения — в списке, даже с пометкой о продлении');
 
 // ── отчёт ──
 const report = w.renderText({
