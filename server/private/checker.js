@@ -1637,7 +1637,7 @@ function renderCalcFormFields(parsed, isPassengerCar){
   const excList=(calcUseAuto&&isPassengerCar)?[]:((calcInfo[calcSelectedCode]||{}).exc||[]);
   if(excList.length){
     html+='<div class="calc-row">';
-    html+='<div class="calc-field"><label>Пункт ст.336 НК КР (акциз)</label><select id="calcExcIdx" onchange="onCalcExcChange()"><option value="">— не подакцизный / не считать —</option>'+excList.map((r,i)=>'<option value="'+i+'">п.'+esc(r[0])+' — '+esc(trunc(r[1],60))+' — '+esc(String(r[4]))+' сом / '+esc(r[3])+'</option>').join('')+'</select></div>';
+    html+='<div class="calc-field"><label>Акциз: пункт и ставка на сегодня</label><select id="calcExcIdx" onchange="onCalcExcChange()"><option value="">— не подакцизный / не считать —</option>'+excList.map((r,i)=>'<option value="'+i+'">п.'+esc(r[0])+' — '+esc(trunc(r[1],60))+' — '+esc(String(r[4]))+' сом / '+esc(r[3])+'</option>').join('')+'</select></div>';
     html+='<div class="calc-field"><label id="calcExcQtyLbl">Количество для акциза</label><input type="number" id="calcExcQty" min="0" step="0.001" placeholder="0"/></div>';
     html+='</div>';
   }
@@ -1691,7 +1691,7 @@ function readCalcForm(){
   if(excSel!==undefined&&excSel!==''&&excSel!==null){
     const list=calcInfo[code].exc;
     const r=list[parseInt(excSel,10)];
-    if(r)it.excise={n:r[0],name:r[1],unit:r[3],rate:r[4],qty:parseFloat((document.getElementById('calcExcQty')||{}).value)||0};
+    if(r)it.excise={n:r[0],name:r[1],unit:r[3],rate:r[4],src:r[6]||'',qty:parseFloat((document.getElementById('calcExcQty')||{}).value)||0};
   }
   return it;
 }
@@ -1704,7 +1704,7 @@ function readCalcForm(){
 function itemExcise(it){
   if(!it.excise||!it.excise.qty)return {sum:0,note:''};
   const s=it.excise.rate*it.excise.qty;
-  return {sum:s,note:'п.'+it.excise.n+' ст.336 НК КР: '+it.excise.rate+' сом × '+it.excise.qty+' '+it.excise.unit};
+  return {sum:s,note:(it.excise.src||('п.'+it.excise.n+' ст.336 НК КР'))+': '+it.excise.rate+' сом × '+it.excise.qty+' '+it.excise.unit};
 }
 
 function itemDuty(it,cvSom){

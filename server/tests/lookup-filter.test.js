@@ -27,7 +27,7 @@ const sandbox = {console, setTimeout, clearTimeout, addEventListener:noop, local
 sandbox.window = sandbox;
 vm.createContext(sandbox);
 new vm.Script(code).runInContext(sandbox);
-new vm.Script(baseCode + '\nthis.__lk={vatFreeHits,calcWarnings,BATCH_REQS,renderHtml,lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded,adActive,ANTIDUMP_DB};').runInContext(sandbox);
+new vm.Script(baseCode + '\nthis.__lk={vatFreeHits,calcWarnings,BATCH_REQS,exciseOptions,renderHtml,lkCountry,lkCtyMatch,LK_EAEU,lkPrefRates,ETT_DB,ETT_VN_DB,ETT_IRAN_DB,banOn,BAN_DB,umTermEnded,adActive,ANTIDUMP_DB};').runInContext(sandbox);
 const {vatFreeHits, lkCountry, lkCtyMatch, lkPrefRates, ETT_DB, ETT_VN_DB, ETT_IRAN_DB, banOn, BAN_DB, umTermEnded, adActive, ANTIDUMP_DB} = sandbox.__lk;
 
 // ── Антидемпинговые меры и тарифные льготы: машинная дата окончания у каждой ──
@@ -92,7 +92,10 @@ if (new Date().toISOString().slice(0, 10) <= '2027-12-31') {
   assert.match(H('8112610000'), /Отходы и лом кадмиевые \[в перечне — код 8107 30 000 0, в действующем ЕТТ — 8112 61 000 0\]/);
   assert.match(H('8112610000'), /data-except-cty="армения беларусь казахстан россия/);
   // Маркировка: служебных пометок на карточке нет, воды общепита к ввозу не относятся, масло 3403 — по ПКМ № 179.
-  assert.doesNotMatch(H('2202100000'), /banFrom|не выводить|общественного питания/);
+  const markCard = (q) => { const h = H(q); const i = h.indexOf('Обязательная маркировка при ввозе'); return i < 0 ? '' : h.slice(h.lastIndexOf('<div class="card', i), h.indexOf('<div class="card', i)); };
+  assert.ok(markCard('2202100000'), 'карточка маркировки 2202 есть');
+  assert.doesNotMatch(markCard('2202100000'), /banFrom|не выводить|общественного питания/);
+  assert.doesNotMatch(H('2202100000'), /banFrom|не выводить/);
   assert.match(H('3403199000'), /в ред\. ПКМ № 179 от 04\.04\.2025/);
   // Прослеживаемость — учёт, а не запрет: слово «запрет» в тегах увело бы карточку в «Запреты».
   assert.doesNotMatch(H('8528721000'), /Прослеживаемость — учёт, не запрет/);
@@ -113,6 +116,21 @@ if (new Date().toISOString().slice(0, 10) <= '2027-12-31') {
   assert.doesNotMatch(eecBan('9304000000'), /data-partial/, '9304 00 000 0: точные позиции пп.10 и 14 — запрет');
   assert.match(renderHtml('9304000000').html, /с пометкой «из» у категори[иймя]+ «Кистени/, 'пояснение называет категорию с «из»');
   console.log('PASS: Единый перечень ЕАЭС — «из» в акте даёт возможный запрет, точный код — запрет');
+}
+{
+  // Акциз: калькулятор считает по действующей ставке прил.3 к ПКМ КР № 94, а не по базовой ст.336 (до 30.09.2026 — 100 сом/л на воды вместо 3).
+  const { exciseOptions, renderHtml } = sandbox.__lk;
+  const rates = (c, d) => Array.from(exciseOptions(c, d), (o) => o[4]); // массив из vm — в массив этого контекста
+  assert.deepEqual(rates('2202100000', '2026-10-01'), [3, 0, 6], 'воды 2202: 3, бозо/максым/жарма 0, энергетические 6');
+  assert.match(exciseOptions('2202100000', '2026-10-01')[0][6], /п\.1 прил\.3 к ПКМ КР № 94/);
+  assert.deepEqual(rates('2203000100', '2026-10-01'), [20], 'пиво 2026');
+  assert.deepEqual(rates('2203000100', '2027-03-01'), [25], 'пиво 2027');
+  assert.deepEqual(rates('2710192900', '2026-10-01'), [5000, 400], 'п.12 и зимнее дизтопливо п.16');
+  assert.deepEqual(rates('2402209000', '2026-10-01'), [3250, 3250, 325], 'табак — ставка ст.336 на 2026');
+  assert.deepEqual(rates('2402209000', '2027-01-15'), [3500, 3500, 350], 'табак — ставка ст.336 с 01.01.2027');
+  assert.match(renderHtml('2202100000', '2026-10-01').html, /Действующая ставка[\s\S]*3 сом \/ литр/);
+  assert.match(renderHtml('2711210000').html, /только для газа, используемого в качестве автомобильного топлива/);
+  console.log('PASS: акциз — действующие ставки прил.3 к ПКМ № 94 и ставка ст.336 на дату');
 }
 
 assert.equal(lkCountry(''), null);

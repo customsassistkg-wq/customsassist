@@ -104,6 +104,20 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
     await page.selectOption('#calcExcIdx', '0');
     assert.match(await page.locator('#calcExcQtyLbl').textContent(), /Количество для акциза, /);
 
+    // воды 2202: действующая ставка прил.3 к ПКМ КР № 94 — 3 сом/л, а не базовая 100 сом/л ст.336 (до 30.09.2026)
+    await page.fill('#inp', '2202100000');
+    await page.locator('#calcExcIdx').waitFor();
+    await page.waitForFunction(() => document.querySelector('#calcResult .rc') && document.querySelector('#calcResult .rc').textContent.replace(/\D/g, '') === '2202100000');
+    assert.match(await page.locator('#calcExcIdx option[value="0"]').textContent(), /— 3 сом \/ литр/);
+    await page.selectOption('#calcExcIdx', '0');
+    await page.fill('#calcValue', '1000');
+    await page.selectOption('#calcCur', 'СОМ');
+    await page.fill('#calcExcQty', '1000');
+    await page.locator('#calcResult button', { hasText: 'Рассчитать' }).click();
+    await page.locator('#calcOut .calc-total').waitFor();
+    const excOut = await page.locator('#calcOut').innerText();
+    assert.match(excOut, /п\.1 прил\.3 к ПКМ КР № 94[^\n]*: 3 сом × 1000 литр/, 'строка акциза — по действующей ставке');
+
     // запрещённый к ввозу код: красное предупреждение и без формы
     await page.fill('#inp', banned);
     await page.locator('#calcResult .calc-warn.w-red').waitFor();

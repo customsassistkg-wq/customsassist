@@ -24,7 +24,8 @@
 //     изменяющих решений против ETT_SEEN (ettChanges).
 //
 //  7. Кыргызские публикации против KG_SEEN: выпуск реестра ТРОИС ГТС, файл ветеринарных
-//     ограничений на ввоз (vet.gov.kg), темы ГНС (sti.gov.kg); и законопроекты Жогорку Кенеша
+//     ограничений на ввоз (vet.gov.kg), темы ГНС (sti.gov.kg), редакции актов реестра НПА, по которым
+//     сверены ставки (ПКМ № 94 — действующие ставки акциза, Налоговый кодекс); и законопроекты Жогорку Кенеша
 //     по таможне и налогам за окно — как раннее предупреждение.
 //
 // И восьмое, без сети: датированные меры базы (запреты, льготы, антидемпинг),
@@ -64,6 +65,13 @@ const ETT_SEEN = { notesEtt: '2026-08-24', notesTnved: '2025-05-11', lastAmend: 
 const KG_SEEN = {
   trois: '11 -16 сентября   2026 года ТРОИС ГТС.pdf',
   vet: '2026-08-25',
+  // docs — акты реестра НПА, по которым сверена база (GetDocument): последняя редакция — по наибольшему editionCode
+  // (id редакций идут не по времени); refs — число ссылающихся актов: у ПКМ № 94 новый изменяющий акт виден по нему
+  // раньше, чем реестр сведёт редакцию. У кодекса ссылок сотни и они растут каждую неделю — там только редакция.
+  docs: {
+    159100: { what: 'ПКМ КР № 94, приложение 3 — действующие ставки акциза (EXCISE_APPLIED)', seen: { edition: 44256, refs: 34 } },
+    112340: { what: 'Налоговый кодекс КР — акциз ст.334/336 (EXCISE_DB), НДС и льготы', seen: { edition: 57656, refs: null } },
+  },
   sti: {
     'fc8a71a8-13f5-4d35-9ef2-4403bd572759': { what: 'налоговая база НДС с признаками риска (приказ П-347) → карточка НДС-риска', seen: '2026-08-19' },
     '6bd04495-c141-4e8a-be49-a8d384a2d273': { what: 'перечень товаров для прослеживаемости ЕАЭС', seen: '2026-08-28' },
@@ -71,6 +79,7 @@ const KG_SEEN = {
 };
 const TROIS_PAGE = 'https://www.customs.gov.kg/site/ru/master/customskg/intellektualdyk-menchik-ukuktaryn-korgoo';
 const VET_MEDIA = 'https://vet.gov.kg/wp-json/wp/v2/media?search=%D0%BE%D0%B3%D1%80%D0%B0%D0%BD%D0%B8%D1%87%D0%B5%D0%BD&per_page=20&orderby=date&order=desc&_fields=date,source_url,title';
+const REG_DOC = (code) => `https://cbd.minjust.gov.kg/api/v1/GetDocument?documentCode=${code}&lang=ru`;
 const STI_DOCS = (theme) => `https://sti.gov.kg/api/Documents/get-documents-by-theme-id?themeId=${theme}&language=1&page=1`;
 const KENESH_DOCS = 'https://kenesh.kg/sed/docs?page=0&limit=100';
 const BILL_RE = /таможен|налог|акциз|лицензи|ЕАЭС|Евразийск|свободной торговл|нетарифн|технического регулирования|ветеринар|фитосанитар/i;
@@ -97,7 +106,7 @@ const EXTRA_CA = fs.readFileSync(path.join(__dirname, '..', 'certs', 'RapidSSLTL
 
 // Слова, по которым акт считается таможенным. Широко нарочно: лучше лишняя строка в
 // письме, чем пропущенный запрет.
-const TRADE_RE = /запрет|ввоз|вывоз|таможен|ТН ?ВЭД|квот|пошлин|лицензир|акциз|нетарифн|техническ\w* регламент|сертифик|ветеринар|фитосанитар|санитарн|экспорт|импорт/i;
+const TRADE_RE = /запрет|ввоз|вывоз|таможен|налог|ТН ?ВЭД|квот|пошлин|лицензир|акциз|нетарифн|техническ\w* регламент|сертифик|ветеринар|фитосанитар|санитарн|экспорт|импорт/i;
 
 const strip = (html) => String(html)
   .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
@@ -252,6 +261,14 @@ function ettChanges(html, notesJson, seen, today) {
 }
 
 // Имена PDF реестра ТРОИС на странице ГТС.
+// Карточка документа реестра НПА (GetDocument): последняя редакция по editionCode и число ссылающихся актов.
+function docEditions(json) {
+  const x = (json && json.data && json.data.editions ? json.data : json) || {};
+  const eds = (x.editions || []).filter((e) => e && e.id);
+  const last = eds.reduce((m, e) => (!m || Number(e.editionCode) > Number(m.editionCode) ? e : m), null);
+  return { last: last && { id: last.id, date: String(last.nameRus || '').trim() }, count: eds.length, refs: (x.documentReferences || []).length };
+}
+
 function troisFiles(html) {
   const dec = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
   return [...new Set([...String(html).matchAll(/"([^"]*\/attachment\/inline\/[^"]+\.pdf)"/g)].map((m) => dec(m[1]).split('/').pop()))]
@@ -505,6 +522,14 @@ async function collect({ days = 21, log = () => {} } = {}) {
     if (!last) errors.push('ветслужба: файл «Ограничения на ввоз» не найден');
     else if (last.date.slice(0, 10) > KG_SEEN.vet) findings.push({ kind: 'kg', src: 'ветслужба', text: `новый файл «Ограничения на ввоз» от ${dmyFromIso(last.date.slice(0, 10))} (сверено по ${dmyFromIso(KG_SEEN.vet)}): ${last.source_url}` });
   } catch (err) { errors.push(`ветслужба vet.gov.kg: ${err.message}`); }
+  for (const [code, t] of Object.entries(KG_SEEN.docs)) {
+    try {
+      const r = docEditions(JSON.parse(await fetchText(REG_DOC(code))));
+      if (!r.last) errors.push(`реестр НПА: у документа ${code} нет редакций`);
+      else if (r.last.id !== t.seen.edition) findings.push({ kind: 'kg', src: 'реестр', text: `${t.what}: новая редакция от ${r.last.date} (${r.last.id}), база сверена по ${t.seen.edition} — сверить` });
+      else if (t.seen.refs !== null && r.refs > t.seen.refs) findings.push({ kind: 'kg', src: 'реестр', text: `${t.what}: ссылающихся актов стало ${r.refs} (было ${t.seen.refs}) — возможно, изменяющий акт ещё не сведён в редакцию` });
+    } catch (err) { errors.push(`реестр НПА, документ ${code}: ${err.message}`); }
+  }
   for (const [theme, t] of Object.entries(KG_SEEN.sti)) {
     try {
       const v = JSON.parse(await fetchText(STI_DOCS(theme))).Value || {};
@@ -609,5 +634,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
+module.exports = { docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });

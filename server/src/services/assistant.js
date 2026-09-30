@@ -600,7 +600,7 @@ async function calcOne({ code, value, currency, quantity, country: countryName, 
     if (dutyEtt !== duty.duty) lines.push(`Итого по ставке ЕТТ — если преференцию не подтвердят (нет сертификата о происхождении): ${som(dutyEtt + vatEtt + fee)}`);
   }
   const tail = [];
-  if (c.findExcise(digits).length) tail.push('Товар подакцизный: акциз в расчёт не включён — ставка зависит от вида и объёма (ст. 336 НК КР), и он увеличивает базу НДС.');
+  if (c.findExcise(digits).length) tail.push('Товар подакцизный: акциз в расчёт не включён — он зависит от вида товара и объёма (базовая ставка — ст. 336 НК КР, действующая — приложение 3 к ПКМ КР № 94 в ред. № 811) и увеличивает базу НДС; рассчитать его можно в калькуляторе сайта.');
   const warns = c.calcWarnings(digits).map((w) => cardsToText(w.text).slice(0, 500)).filter(Boolean);
   if (warns.length) tail.push('Предупреждения калькулятора:\n' + warns.join('\n'));
   // Расчёт выше — по ставке ЕТТ. Действующая сноска может снижать её (часто до 0%
