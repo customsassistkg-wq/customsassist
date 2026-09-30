@@ -5768,6 +5768,9 @@ function findByName(q){
   // типа "теплый", "хороший" и т.п.) не должны обнулять весь результат — они игнорируются
   // как фильтр, но участвуют в подсветке совпадений.
   const anyMatch=new Array(wordVariants.length).fill(false);
+  // Названия не из ЕТТ: товары решений ЕЭК о классификации и меры Единого перечня (NTM_DB: «фреоны», вещества
+  // разделов 2.1 и 2.12 — их названий в ЕТТ часто нет). [название, коды]; «из» у кода для подбора строк ЕТТ снимается.
+  const nameSrc=EEC_DECISIONS.map(d=>[(d[4]||'').toLowerCase(),d[1]]).concat(NTM_DB.map(r=>[(r[1]||'').toLowerCase(),r[2].map(c=>String(c).replace(/^из\s+/,''))]));
   for(const r of ETT_DB){
     const name=(r[1]||'').toLowerCase();
     let allFound=true;
@@ -5784,8 +5787,8 @@ function findByName(q){
   // бытовые и промышленные") вообще не встречаются в сухом тексте ЕТТ, поэтому без этой
   // добавки слово так и осталось бы "незначимым" и не задействовало бы этот источник.
   if(!anyMatch.every(Boolean)){
-    for(const d of EEC_DECISIONS){
-      const name=(d[4]||'').toLowerCase();
+    for(const d of nameSrc){
+      const name=d[0];
       let allFound=true;
       for(let i=0;i<wordVariants.length;i++){
         if(!anyMatch[i]){
@@ -5819,8 +5822,8 @@ function findByName(q){
   // собой полный список из "Классификатора ТН ВЭД") её кодов, начинающихся с этого префикса.
   if(res.length<150){
     outerDec:
-    for(const d of EEC_DECISIONS){
-      const name=(d[4]||'').toLowerCase();
+    for(const d of nameSrc){
+      const name=d[0];
       const ok=useIdx.every(i=>wordMatches(name,wordVariants[i]));
       if(!ok)continue;
       for(const c of d[1]){
