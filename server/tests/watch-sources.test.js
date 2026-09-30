@@ -152,6 +152,33 @@ assert.deepEqual(w.dataGaps(uniBase, '2026-09-24').map((s) => s.split(':')[0]), 
 
 assert.deepEqual(w.datedMeasures(gapBase, '2026-11-15').map((d) => [d.label, d.date]), [['преференция ЗСТ (Вьетнам) приостановлена', '2026-11-23']]);
 
+// ── решения Коллегии и Совета ЕЭК: предмет в заголовке или изменение решения, на которое ссылается база ──
+const eecItem = (id, n, title, adopted, pub, inForce = '') => `<div class="DocSearchResult_Item">
+  <div class="DocSearchResult_Item__Date">Акты ЕЭК &ndash; Коллегия &ndash; Решения &ndash; 2026</div>
+  <a target="_blank" href="/documents/463/${id}/" class="DocSearchResult_Item__Link">Решение Коллегии ЕЭК № ${n}   </a>
+  <div class="DocSearchResult_Item__Text">   ${title}   </div>
+  <div class="DocSearchResult_Item__Dates"><div class="DocSearchResult_Item__DatesLeft">
+  <div>Дата принятия документа: ${adopted}</div><div>Дата опубликования документа: ${pub}</div></div>
+  <div class="DocSearchResult_Item__DatesRight">${inForce && `<div>Дата вступления в силу: ${inForce}</div>`}</div></div></div>`;
+const eecHtml = '<div class="DocSearchResult_Items">' + [
+  eecItem(10954, 125, 'О внесении изменения в Решение Коллегии Евразийской экономической комиссии от 20 декабря 2022 г. № 197', '29.09.2026', '30.09.2026'),
+  eecItem(10924, 123, 'О внесении изменений в Решение Коллегии Евразийской экономической комиссии от 25 сентября 2023 г. № 143', '21.09.2026', '23.09.2026'),
+  eecItem(10923, 122, 'О внесении изменений в подраздел 1.1 классификатора льгот по уплате таможенных платежей', '21.09.2026', '23.09.2026', '23.10.2026'),
+  eecItem(10918, 121, 'О продлении действия антидемпинговой меры в отношении сварных труб', '08.09.2026', '10.09.2026'),
+  eecItem(10913, 116, 'О внесении изменений в перечень стандартов … технического регламента Таможенного союза «О безопасности пищевой продукции»', '08.09.2026', '10.09.2026'),
+  eecItem(10886, 107, 'О классификации тепловизионного прицела в соответствии с единой Товарной номенклатурой', '18.08.2026', '20.09.2026'),
+  eecItem(10896, 113, 'О применении ставок ввозных таможенных пошлин в отношении товаров из ОАЭ', '25.08.2026', '28.08.2026'),
+].join('') + '</div>';
+const eecItems = w.parseEecList(eecHtml);
+assert.equal(eecItems.length, 7);
+assert.deepEqual(eecItems[2], { num: '122', url: 'https://docs.eaeunion.org/documents/463/10923/', title: 'О внесении изменений в подраздел 1.1 классификатора льгот по уплате таможенных платежей', adopted: '2026-09-21', pub: '2026-09-23', inForce: '2026-10-23' });
+assert.deepEqual(w.refActs(eecItems[0].title + '; от 3 мая 2020 г. № 5, от 1 марта 2024 г. № 7'), ['197@2022-12-20', '5@2020-05-03', '7@2024-03-01']);
+const eecKnown = new Set(['197@2022-12-20', '121@2026-09-08']);
+assert.deepEqual(w.eecNew(eecItems, eecKnown, '2026-09-09', {}).map((d) => [d.num, d.amends]),
+  [['125', ['197@2022-12-20']], ['122', []]],
+  'изменение решения из базы — по ссылке; льготы — по предмету; известное, чужое изменение, стандарты, классификация и старое — нет');
+assert.deepEqual(w.eecNew(eecItems, eecKnown, '2026-09-09').map((d) => d.num), ['125'], 'разобранное (EEC_REVIEWED) молчит');
+
 // ── ЕТТ: новое имя файла главы, будущая дата, примечания, изменяющее решение ──
 const ettHtml = `<p>ТН ВЭД в ред. решений Коллегии&nbsp;от 11.08.2026 № 104,&nbsp;от 02.10.2026 № 130</p>
 <a href="/upload/files/catr/ett/ru.01_2022.pdf">1</a>

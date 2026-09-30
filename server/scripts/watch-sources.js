@@ -1,5 +1,5 @@
 // Дозор источников: что появилось у государства, чего ещё нет в базе, и что в базе
-// вот-вот истечёт. Семь официальных источников и проверка самой базы:
+// вот-вот истечёт. Восемь официальных источников и проверка самой базы:
 //
 //  1. Сайт Кабинета Министров (gov.kg/ru/npa/c/provisions) — постановления с датой
 //     официального опубликования появляются там через день-два после подписания,
@@ -25,10 +25,13 @@
 //
 //  7. Кыргызские публикации против KG_SEEN: выпуск реестра ТРОИС ГТС, файл ветеринарных
 //     ограничений на ввоз (vet.gov.kg), темы ГНС (sti.gov.kg), редакции актов реестра НПА, по которым
-//     сверены ставки (ПКМ № 94 — действующие ставки акциза, Налоговый кодекс); и законопроекты Жогорку Кенеша
+//     сверены ставки (ПКМ № 94 — действующие ставки акциза, Налоговый кодекс, ПКМ № 385 — марки на воду 2201); и законопроекты Жогорку Кенеша
 //     по таможне и налогам за окно — как раннее предупреждение.
 //
-// И восьмое, без сети: датированные меры базы (запреты, льготы, антидемпинг),
+//  8. Правовой портал ЕАЭС (docs.eaeunion.org) — решения Коллегии и Совета ЕЭК за окно: по предмету
+//     в заголовке (EEC_RE) или потому, что меняют решение, на которое ссылается база (eecNew).
+//
+// И последнее, без сети: датированные меры базы (запреты, льготы, антидемпинг),
 // срок которых истёк или истекает в ближайшие дни, возраст UNIMEAS_ASOF и записей
 // SOURCE_AUDIT.
 //
@@ -80,6 +83,7 @@ const KG_SEEN = {
   docs: {
     159100: { what: 'ПКМ КР № 94, приложение 3 — действующие ставки акциза (EXCISE_APPLIED)', seen: { edition: 44256, refs: 34 } },
     112340: { what: 'Налоговый кодекс КР — акциз ст.334/336 (EXCISE_DB), НДС и льготы', seen: { edition: 57656, refs: null } },
+    '7-42968': { what: 'ПКМ КР № 385 — учётно-контрольные марки на воду 2201 (MARK_DB m385-water)', seen: { edition: 56661, refs: 3 } },
   },
   sti: {
     'fc8a71a8-13f5-4d35-9ef2-4403bd572759': { what: 'налоговая база НДС с признаками риска (приказ П-347) → карточка НДС-риска', seen: '2026-08-19' },
@@ -93,6 +97,21 @@ const STI_DOCS = (theme) => `https://sti.gov.kg/api/Documents/get-documents-by-t
 const KENESH_DOCS = 'https://kenesh.kg/sed/docs?page=0&limit=100';
 const BILL_RE = /таможен|налог|акциз|лицензи|ЕАЭС|Евразийск|свободной торговл|нетарифн|технического регулирования|ветеринар|фитосанитар/i;
 const REMEDIES_FIND = 'https://remedies.eaeunion.org/spd2/find?collection=zvr.v_actionsregistry&limit=5000';
+// Решения Коллегии и Совета ЕЭК — раздел «Решения — <год>» правового портала. Id раздела у каждого года свой и заранее
+// неизвестен (2026: Коллегия 463, Совет 461); на год без записи дозор пишет ошибку — добавить id с портала.
+const EEC_SECTIONS = { 2026: [[463, 'Коллегии'], [461, 'Совета']] };
+const EEC_LIST = (id) => `https://docs.eaeunion.org/documents/${id}/`;
+// Предмет, который ведёт база: тариф, квоты, меры защиты, льготы и преференции, нетарифные меры, контроль на границе,
+// техрегламенты. Перечни стандартов к ТР и классификационные решения (их забирает services/classDecisions.js) — не находка.
+const EEC_RE = /тариф|пошлин|квот|антидемпинг|защитн\S* мер|компенсацион|триггерн|Товарн\S* номенклатур|ТН ВЭД|преференц|льгот|освобожден|подкарантинн|карантинн\S* фитосанитарн|ветеринарн|санитарн|технически\S* регламент|запрет|лицензир|нетарифн|маркировк|прослеживаем|единого перечня товаров|единый перечень товаров/i;
+// Разобранные решения, которые базу не меняют: «номер@дата принятия» → почему. Решение, которое базу меняет, цитируется
+// в base.js (карточка или SOURCE_AUDIT) — тогда оно известно по knownActs и сюда не пишется.
+const EEC_REVIEWED = {
+  '101@2026-09-09': 'Совет: ЕКФТ, таблица 2 — исключён вирус мозаики пепино; этой таблицы в базе нет',
+  '106@2026-09-09': 'Совет: ТР ТС 008/2011 — требование к информации на игрушке; перечень продукции не меняется',
+  '115@2026-09-08': 'Коллегия: переходные положения к изменениям ТР ТС 019/2011 (Решение Совета № 40 от 13.03.2026) — перечень продукции к ТР сверить при сверке ТР',
+  '122@2026-09-21': 'Коллегия: классификатор льгот, код ЭК заменён на АК — база и помощник кодов льгот не используют',
+};
 const BASE_PATH = path.join(__dirname, '..', 'private', 'base.js');
 // Справочники ЕС НСИ, с которыми сверяется база: код → что в базе от него зависит и дата
 // обновления справочника, по которой база последний раз сверена (null — ещё не сверялась).
@@ -292,6 +311,40 @@ function troisFiles(html) {
 function freshBills(list, since) {
   return (list || []).filter((b) => String(b.vh_dat || '').slice(0, 10) >= since && BILL_RE.test(b.zpNameRus || ''))
     .map((b) => ({ n: b.vh_nom, d: String(b.vh_dat).slice(0, 10), title: String(b.zpNameRus || '').replace(/\s+/g, ' ').trim() }));
+}
+
+// Список раздела правового портала ЕАЭС: номер в ссылке, заголовок — в соседнем блоке (docs/legal-sources.md), даты.
+function parseEecList(html) {
+  return String(html).split('<div class="DocSearchResult_Item">').slice(1).map((b) => {
+    const href = (b.match(/href="(\/documents\/\d+\/\d+\/)"/) || [])[1];
+    const num = (strip((b.match(/DocSearchResult_Item__Link">([\s\S]*?)<\/a>/) || [])[1] || '').match(/№\s*(\d+)/) || [])[1];
+    const date = (re) => { const m = b.match(re); return m ? isoFromDmy(m[1]) : null; };
+    return {
+      num, url: href && `https://docs.eaeunion.org${href}`, title: strip((b.match(/DocSearchResult_Item__Text">([\s\S]*?)<\/div>/) || [])[1] || ''),
+      adopted: date(/Дата принятия документа:\s*(\d\d\.\d\d\.\d{4})/), pub: date(/Дата опубликования документа:\s*(\d\d\.\d\d\.\d{4})/),
+      inForce: date(/Дата вступления в силу[^:<]*:\s*(\d\d\.\d\d\.\d{4})/),
+    };
+  }).filter((d) => d.num && d.url && d.adopted);
+}
+
+// «от 20 декабря 2022 г. № 197» в заголовке → ключи knownActs изменяемых решений.
+const RU_MONTHS = ['январ', 'феврал', 'март', 'апрел', 'мая', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр', 'декабр'];
+function refActs(title) {
+  return [...String(title).matchAll(/от (\d{1,2}) ([а-я]+) (\d{4}) г\. № (\d+)/g)].flatMap((m) => {
+    const mi = RU_MONTHS.findIndex((p) => m[2].startsWith(p));
+    return mi < 0 ? [] : [`${m[4]}@${m[3]}-${String(mi + 1).padStart(2, '0')}-${m[1].padStart(2, '0')}`];
+  });
+}
+
+// Свежие решения, которых база не знает: по предмету в заголовке или потому, что меняют решение, на которое база
+// ссылается, — у изменяющих решений заголовок пустой («О внесении изменения в Решение … № 197»), так пришли
+// отмена ценовых обязательств по задвижкам (№ 125/2026) и квоты Ирана на 2027 год (№ 119/2026).
+function eecNew(items, known, since, reviewed = EEC_REVIEWED) {
+  return items
+    .filter((d) => (d.pub || d.adopted) >= since && !/^О классификации/.test(d.title)
+      && !known.has(`${d.num}@${d.adopted}`) && !reviewed[`${d.num}@${d.adopted}`])
+    .map((d) => ({ ...d, amends: refActs(d.title).filter((k) => known.has(k)) }))
+    .filter((d) => d.amends.length || (EEC_RE.test(d.title) && !/стандарт/i.test(d.title)));
 }
 
 // Реестр мер защиты внутреннего рынка ЕЭК против ANTIDUMP_DB. Мера реестра и строка базы —
@@ -554,6 +607,23 @@ async function collect({ days = 21, log = () => {} } = {}) {
     for (const t of r.changes) findings.push({ kind: 'ett', src: 'ЕЭК', text: t });
   } catch (err) { errors.push(`ЕТТ ЕЭК: ${err.message}`); }
 
+  // 7а. решения Коллегии и Совета ЕЭК за окно (правовой портал ЕАЭС)
+  for (const y of new Set([since.slice(0, 4), today.slice(0, 4)])) {
+    if (!EEC_SECTIONS[y]) { errors.push(`правовой портал ЕАЭС: нет разделов «Решения — ${y}» — добавить id в EEC_SECTIONS`); continue; }
+    for (const [id, body] of EEC_SECTIONS[y]) {
+      try {
+        const items = parseEecList(await fetchText(EEC_LIST(id), { headers: { Referer: 'https://docs.eaeunion.org/', Origin: 'https://docs.eaeunion.org' } }));
+        if (!items.length) { errors.push(`правовой портал ЕАЭС: в разделе ${id} (решения ${body} ${y}) решений не найдено — разметка изменилась`); continue; }
+        const fresh = eecNew(items, known, since);
+        log(`ЕЭК, решения ${body} ${y}: на странице ${items.length}, новых для базы ${fresh.length}`);
+        for (const d of fresh) {
+          const amends = d.amends.map((k) => `№ ${k.split('@')[0]} от ${dmyFromIso(k.split('@')[1])}`).join(', ');
+          findings.push({ kind: 'new-act', src: 'ЕЭК', text: `Решение ${body} ЕЭК № ${d.num} от ${dmyFromIso(d.adopted)} «${d.title.slice(0, 200)}»${amends ? ` — изменяет решение, на которое ссылается база (${amends})` : ''}; опубликовано ${d.pub ? dmyFromIso(d.pub) : '—'}${d.inForce ? `, в силу ${dmyFromIso(d.inForce)}` : ''}: ${d.url}` });
+        }
+      } catch (err) { errors.push(`правовой портал ЕАЭС, раздел ${id}: ${err.message}`); }
+    }
+  }
+
   // 8. кыргызские публикации: ТРОИС ГТС, ветеринарные ограничения, темы ГНС, законопроекты
   try {
     const files = troisFiles(await fetchText(TROIS_PAGE));
@@ -679,5 +749,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { TEXT_RE, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
+module.exports = { TEXT_RE, parseEecList, refActs, eecNew, EEC_REVIEWED, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });
