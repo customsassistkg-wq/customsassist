@@ -132,6 +132,21 @@ if (new Date().toISOString().slice(0, 10) <= '2027-12-31') {
   assert.match(renderHtml('2711210000').html, /только для газа, используемого в качестве автомобильного топлива/);
   console.log('PASS: акциз — действующие ставки прил.3 к ПКМ № 94 и ставка ст.336 на дату');
 }
+{
+  // Запреты Кабмина: «за пределы таможенной территории ЕАЭС» (ПКМ № 397, № 587), транзит (ПКМ № 66), уголь, мораторий на рыбу.
+  const { renderHtml } = sandbox.__lk;
+  const banCard = (q, re) => { const h = renderHtml(q, '2026-09-30').html; const i = h.search(re); return i < 0 ? '' : h.slice(h.lastIndexOf('<div class="card', i), i); };
+  assert.match(banCard('4403110000', /Лесоматериалы/), /data-ex-third="1"/, 'лес: запрет только за пределы ЕАЭС');
+  assert.match(banCard('2515110000', /Известняк/), /data-ex-third="1"/, 'известняк: запрет только за пределы ЕАЭС');
+  assert.match(banCard('2711120000', /Нефтяные газы/), /data-dir="ex tr"/, '2711: запрет и при транзите');
+  assert.match(banCard('2701120000', /Уголь/), /data-partial="1"/, 'уголь: только автотранспорт — возможный запрет');
+  assert.match(banCard('0302710000', /Иссык-Куль/), /data-dir="ex" data-partial="1"/, 'мораторий Указа № 261: вывоз, по происхождению');
+  assert.equal(banCard('2804610000', /Гелий/), '', 'гелий не ловит кремний 2804 61');
+  const eec = (q) => { const h = renderHtml(q).html; const i = h.indexOf('Единые меры нетарифного регулирования ЕАЭС'); return i < 0 ? '' : h.slice(i, h.indexOf('<div class="det">', i)); };
+  assert.match(eec('3824840000'), /Запрет ввоза \(ЕАЭС\)/);
+  assert.doesNotMatch(eec('3824840000'), /Запрет вывоза/, 'раздел 1.4 — запрет только ввоза');
+  console.log('PASS: запреты — только за пределы ЕАЭС, транзит по № 66, уголь и рыба — возможный запрет; раздел 1.4 — ввоз');
+}
 
 assert.equal(lkCountry(''), null);
 assert.equal(lkCountry('Ки'), null);              // слишком коротко — не гадаем
@@ -340,6 +355,14 @@ app.get('/', (req,res)=>res.type('html').send(html));
     await run('ex','Казахстан','4101200000');
     const expEaeu=await page.evaluate(()=>{const c=Array.from(document.querySelectorAll('#result .card')).find(c=>/Вывозная таможенная пошлина Кыргызской Республики/.test(c.textContent));return c?{partial:c.dataset.partial||'',why:/акт содержит исключение/.test(c.textContent)}:null;});
     assert.ok(expEaeu&&expEaeu.partial==='1'&&expEaeu.why,'вывоз в Казахстан: исключение п.2 акта '+JSON.stringify(expEaeu));
+    // Запрет вывоза леса (ПКМ № 397) — только за пределы ЕАЭС: вывоз в Казахстан не запрещён, в Китай — запрещён.
+    const timber=()=>page.evaluate(()=>{const vis=Array.from(document.querySelectorAll('#result .res-sec > .card, #result > .card')).some(c=>/Лесоматериалы в виде необработанных/.test(c.textContent));const hid=Array.from(document.querySelectorAll('.lk-hidden .card')).some(c=>/Лесоматериалы в виде необработанных/.test(c.textContent));return {vis,hid};});
+    await run('ex','Казахстан','4403110000');
+    let tb=await timber();
+    assert.ok(!tb.vis&&tb.hid,'лес в Казахстан: запрет не относится '+JSON.stringify(tb));
+    await run('ex','Китай','4403110000');
+    tb=await timber();
+    assert.ok(tb.vis,'лес в Китай: запрет вывоза '+JSON.stringify(tb));
 
     // Прослеживаемость — учёт, не запрет: карточка не в «Запретах», вердикт не красный (до 29.09.2026 был красным).
     await run('im','','8528721000');

@@ -51,6 +51,15 @@ const zlib = require('node:zlib');
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128 Safari/537.36';
 const GOV_LIST = 'https://www.gov.kg/ru/npa/c/provisions';
 const REG_SEARCH = 'https://cbd.minjust.gov.kg/api/v1/GetDocuments';
+const REG_EDITION = (id) => `https://cbd.minjust.gov.kg/api/v1/GetEdition?editionId=${id}&lang=ru`;
+// Заголовки вида «О некоторых вопросах …» ничего не говорят о предмете: запреты на вывоз угля (№ 430) и нефтепродуктов
+// (№ 615) пришли именно так. У таких постановлений читается текст, как в ветке gov.kg; не больше GENERIC_MAX за прогон.
+const GENERIC_RE = /О некоторых вопросах|О мерах по|О вопросах/i;
+const GENERIC_MAX = 15;
+// Признак меры в прочитанном тексте — строже заголовочного: «таможенный сбор» и «налог» встречаются мимоходом (ПКМ № 609 о
+// закупке лекарств), а мера о товаре называет коды ТН ВЭД или вводит запрет. Указы Президента читаются все — их за окно
+// единицы, а заголовок моратория на рыбу (УП № 261) о вывозе не говорит.
+const TEXT_RE = /ТН ?ВЭД|временн\S* запрет\S*[^.]{0,120}на (?:ввоз|вывоз)|запрет\S* на (?:ввоз|вывоз)|моратори\S* на [^.]{0,160}(?:ввоз|вывоз)/i;
 const GTS_HOME = 'https://www.customs.gov.kg/site/ru/master/customskg';
 const NSI_LIST = 'https://nsi.eaeunion.org/portal/api/registries/get-list-data';
 const ETT_PAGE = 'https://eec.eaeunion.org/comission/department/catr/ett/';
@@ -179,19 +188,22 @@ function parseGovItem(html) {
   return strip(html.slice(i, j > i ? j : undefined));
 }
 
-// Ответ GetDocuments: постановления Кабинета Министров или (kind 'law') законы, включая
-// конституционные.
+// Ответ GetDocuments: постановления Кабинета Министров, (kind 'law') законы, включая
+// конституционные, или (kind 'ukaz') указы Президента — мораторий на рыбу озёр Иссык-Куль и
+// Сон-Куль (УП № 261 от 17.07.2026) и основа продлений запрета на лом (УП № 375) пришли указами.
 function parseRegistry(json, kind = 'pkm') {
   const d = typeof json === 'string' ? JSON.parse(json) : json;
   return (d.data || [])
-    .filter((x) => kind === 'law' ? /Закон/.test(x.vid || '') : /^Постановление/.test(x.vid || '') && /Кабинет/.test(x.organ || ''))
+    .filter((x) => kind === 'law' ? /Закон/.test(x.vid || '')
+      : kind === 'ukaz' ? /^Указ/.test(x.vid || '') && /Президент/.test(x.organ || '')
+        : /^Постановление/.test(x.vid || '') && /Кабинет/.test(x.organ || ''))
     .map((x) => {
       const name = strip(x.nameRu || '');
       const num = (name.match(/№\s*(\d+)/) || [])[1] || null;
       return {
         code: x.documentCode, num, adopted: String(x.dateAdopted || '').slice(0, 10),
         pub: String(x.datePublication || '').slice(0, 10) || null, title: name,
-        url: `https://cbd.minjust.gov.kg/${x.documentCode}/edition/${x.lastEdition}/ru`,
+        url: `https://cbd.minjust.gov.kg/${x.documentCode}/edition/${x.lastEdition}/ru`, edition: x.lastEdition || null,
       };
     });
 }
@@ -431,7 +443,7 @@ async function collect({ days = 21, log = () => {} } = {}) {
   // 2. реестр НПА — GetDocuments отдаёт не больше 12 записей на запрос, сколько бы их ни
   // было (docs/legal-sources.md), поэтому по одному дню за запрос.
   try {
-    const acts = [], laws = [];
+    const acts = [], laws = [], ukazes = [];
     const day = async (d, filter, kind) => {
       const body = JSON.stringify({ dateAdoptedFrom: d, dateAdoptedTo: d, ...filter });
       const parsed = JSON.parse(await fetchText(REG_SEARCH, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } }));
@@ -448,12 +460,33 @@ async function collect({ days = 21, log = () => {} } = {}) {
       acts.push(...await day(d, { refTypeId: '0050', authoritiesId: '0040.0011' }, 'pkm'));
       await sleep(1500);
       laws.push(...await day(d, { refTypeId: '0020' }, 'law'));
+      // refTypeId 0072 = «Указ», орган 0020.1 = Президент (карточка УП № 261 в реестре).
+      await sleep(1500);
+      ukazes.push(...await day(d, { refTypeId: '0072', authoritiesId: '0020.1' }, 'ukaz'));
     }
-    log(`реестр: постановлений Кабмина за окно ${acts.length}, законов ${laws.length}`);
+    log(`реестр: постановлений Кабмина за окно ${acts.length}, законов ${laws.length}, указов ${ukazes.length}`);
+    let generic = 0;
     for (const a of acts) {
-      if (!TRADE_RE.test(a.title)) continue;
+      let trade = TRADE_RE.test(a.title);
+      if (!trade && GENERIC_RE.test(a.title) && a.edition && !(a.num && known.has(`${a.num}@${a.adopted}`))) {
+        if (++generic > GENERIC_MAX) { if (generic === GENERIC_MAX + 1) errors.push(`реестр НПА: постановлений с общим заголовком больше ${GENERIC_MAX} — остальные не прочитаны`); continue; }
+        await sleep(1500);
+        try { trade = TEXT_RE.test(strip(JSON.parse(await fetchText(REG_EDITION(a.edition))).contentRu || '')); } catch (err) { errors.push(`реестр НПА, текст ${a.url}: ${err.message}`); }
+      }
+      if (!trade) continue;
       if (a.num && known.has(`${a.num}@${a.adopted}`)) continue;
       findings.push({ kind: 'new-act', src: 'реестр', text: `${a.title.slice(0, 200)} — в базе не упомянуто: ${a.url}` });
+    }
+    for (const a of ukazes) {
+      if (a.num && known.has(`${a.num}@${a.adopted}`)) continue;
+      // у указов «запрет» в заголовке бывает и о проверках бизнеса (УП № 327) — судит только TEXT_RE
+      let trade = TEXT_RE.test(a.title);
+      if (!trade && a.edition) {
+        await sleep(1500);
+        try { trade = TEXT_RE.test(strip(JSON.parse(await fetchText(REG_EDITION(a.edition))).contentRu || '')); } catch (err) { errors.push(`реестр НПА, текст ${a.url}: ${err.message}`); }
+      }
+      if (!trade) continue;
+      findings.push({ kind: 'new-act', src: 'реестр, указ', text: `${a.title.slice(0, 220)} — в базе не упомянуто: ${a.url}` });
     }
     // Закон — шире: налоговые и таможенные слова законопроектов (BILL_RE) плюс торговые.
     for (const a of laws) {
@@ -634,5 +667,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
+module.exports = { TEXT_RE, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });
