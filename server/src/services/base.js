@@ -42,7 +42,7 @@ function load() {
   // Последняя строка — то, что читает только дашборд администраторов (routes/dash.js): даты
   // мер и записи сверки. В браузер эти имена по-прежнему не уходят.
   ctx = new vm.Script('({ENGINE_API,renderHtml,findByName,lkCountry,lkCtyMatch,lkPrefRates,ETT_DB,fmtCode,fmtRate,'
-    + 'TNVED_MAP,parseRateInfo,itemDuty,vatFreeHits,customsFeeGoods,findExcise,calcWarnings,'
+    + 'TNVED_MAP,parseRateInfo,itemDuty,ettRateOn,ettTempNote,vatFreeHits,customsFeeGoods,findExcise,calcWarnings,'
     + 'BAN_DB,ANTIDUMP_DB,LK_IN_FORCE,SOURCE_AUDIT,AUDIT_REV,UNIMEAS_ASOF,QUOTA_DB,PREF_FTA,UNIMEAS_DB})').runInContext(sb);
   info.loadedAt = new Date().toISOString();
   info.loadMs = Date.now() - t0;

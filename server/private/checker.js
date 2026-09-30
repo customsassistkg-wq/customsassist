@@ -1544,7 +1544,7 @@ async function selectCalcCode(code){
   let html='<div class="calc-card">';
   html+='<div class="rh"><div class="ico" style="background:rgba(224,36,94,.29)">💰</div><div><div class="rc">'+esc(fmtCode(code))+'</div></div></div>';
   html+='<div class="rn">'+esc(name)+'</div>';
-  html+='<div class="calc-rateinfo">Базовая ставка ЕТТ: <b>'+esc(fmtRate(rate))+'</b>'+(unit?(' · Ед.изм. в базе: '+esc(unit)):'')+'</div>';
+  html+='<div class="calc-rateinfo">Ставка ЕТТ: <b>'+esc(fmtRate(rate))+'</b>'+(unit?(' · Ед.изм. в базе: '+esc(unit)):'')+'</div>';
   // Красные предупреждения (запрет) — перед формой; остальные — после результата, свёрнутыми:
   // до расчёта они занимали экран и отодвигали поля ввода.
   const redWarns=warns.filter(w=>w.level==='red'),softWarns=warns.filter(w=>w.level!=='red');

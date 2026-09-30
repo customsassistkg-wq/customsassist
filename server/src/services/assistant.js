@@ -262,7 +262,8 @@ function searchBase({ query, country: countryName, date, direction, full } = {},
   const dir = DIRS[direction] ? direction : 'im';
   const c = checker();
   const cty = country(c, countryName);
-  const html = c.renderHtml(q).html;
+  // карточки — на дату вопроса: ставка ЕТТ в силе и сроки мер зависят от неё (renderHtml проверяет формат сам)
+  const html = c.renderHtml(q, typeof date === 'string' ? date : '').html;
   const topics = topicKinds(hint.question);
 
   // Поиск по наименованию: на сайте названия кандидатов обрезаны до 110 знаков,
@@ -290,7 +291,7 @@ function searchBase({ query, country: countryName, date, direction, full } = {},
     if (cty && digits.length === 10 && dir === 'im') {
       const row = c.ETT_DB.find((r) => r[0] === digits);
       if (row) {
-        const rates = c.lkPrefRates(digits, row[3], cty, date);
+        const rates = c.lkPrefRates(digits, c.ettRateOn(digits, date).rate, cty, date);
         extra.push(`Страна происхождения: ${cty.name}`
           + (cty.eaeu ? ' — государство — член ЕАЭС, ЕТТ во взаимной торговле не применяется.' : '')
           + (rates.length ? '\n' + rates.map((r) => `Ставка ${r.rate}: ${r.basis}${r.note ? '; ' + r.note : ''}${r.pending ? ` (применяется с ${r.pending})` : ''}`).join('\n')
@@ -538,7 +539,10 @@ async function calcOne({ code, value, currency, quantity, country: countryName, 
   const valueCur = Math.round((goodsCur + freightCur - deductCur) * 100) / 100;
   const valueSom = valueCur * curRate;
   const qty = num(quantity);
-  const [, name, unit, ettRate] = row;
+  const [, name, unit] = row;
+  // ставка в силе на дату: временная по примечанию NС к ЕТТ, если действует, иначе базовая
+  const ettNow = c.ettRateOn(digits, date);
+  const ettRate = ettNow.rate;
   const cty = country(c, countryName);
   const lines = [...(mapped ? [mapped] : []), `Код ${c.fmtCode(digits)} — ${name}`,
     `Таможенная стоимость: ${freightCur || deductCur ? `${goodsCur}${freightCur ? ` + перевозка ${freightCur}` : ''}${deductCur ? ` − вычет ${deductCur}` : ''} = ${valueCur}` : valueCur} ${cur}`
@@ -562,7 +566,7 @@ async function calcOne({ code, value, currency, quantity, country: countryName, 
   if (cty && cty.eaeu) return `Товар из государства — члена ЕАЭС (${cty.name}): взаимная торговля, тарифные меры ЕТТ не применяются, таможенного оформления нет. Косвенные налоги (НДС, акциз) при этом есть — их взимает налоговый орган, а не таможня, и в этот расчёт они не входят: не пиши, что НДС не возникает. Этот расчёт — для ввоза из третьих стран.`;
   let duty = null, dutyEtt = null;
   {
-    const options = [{ rate: ettRate, basis: 'ставка ЕТТ ' + c.fmtRate(ettRate), ett: true }];
+    const options = [{ rate: ettRate, basis: ettNow.temp ? c.ettTempNote(ettNow.temp, ettNow.base) : 'ставка ЕТТ ' + c.fmtRate(ettRate), ett: true }];
     if (cty) {
       for (const r of c.lkPrefRates(digits, ettRate, cty, date)) {
         if (!r.pending) options.push({ rate: asRate(r.rate), basis: `${r.who}: ${r.rate} — ${r.basis}` });
