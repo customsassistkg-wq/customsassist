@@ -109,6 +109,9 @@ for (const [db, fn] of Object.entries(X)) {
 const ettCodes = ETT.map((r) => r[0]);
 if (new Set(ettCodes).size !== ettCodes.length) findings.push('ett   повторяющиеся коды в ETT_DB');
 for (const r of ETT) { if (!/^\d{10}$/.test(r[0])) findings.push('ett   не 10 знаков: ' + r[0]); }
+// Поле доп. единицы — единица из графы ЕТТ (шт, м2, кг 90% с/в, 1000 кВт·ч…) или null. До 30.09.2026 у 118 кодов там стоял
+// текст примечания или решения, и карточка печатала его как «Доп. ед. изм.»; временные ставки — в ETT_TEMP.
+for (const r of ETT) { if (r[2] != null && String(r[2]).length > 14) findings.push('unit  ' + r[0] + ' в поле доп. единицы текст: ' + String(r[2]).slice(0, 60)); }
 const parse = g('parseRateInfo'), types = {};
 for (const r of ETT) { const t = parse(r[3]).type; types[t] = (types[t] || 0) + 1; if (t === 'complex' || t === 'unknown') findings.push('rate  ' + r[0] + ' ставка не разбирается: ' + JSON.stringify(r[3])); if (typeof r[3] === 'string' && /[A-Za-z]/.test(r[3])) findings.push('rate  ' + r[0] + ' латиница в ставке: ' + r[3]); }
 
