@@ -61,7 +61,7 @@ const CODE = '6810119000';
 
 (async () => {
   // Слепок: день в день не меняется, через месяц — меняется (мера со сроком).
-  const d1 = watch.fingerprint(CODE, '2026-09-24'), d2 = watch.fingerprint(CODE, '2026-09-25'), m1 = watch.fingerprint(CODE, '2026-10-24');
+  const d1 = watch.fingerprint(CODE, '2026-09-23'), d2 = watch.fingerprint(CODE, '2026-09-24'), m1 = watch.fingerprint(CODE, '2026-10-24');
   assert.deepEqual(d1, d2);
   const df = watch.diff(d1, m1);
   assert.equal(df.any, true);
