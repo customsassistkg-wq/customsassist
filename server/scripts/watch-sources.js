@@ -25,7 +25,8 @@
 //
 //  7. Кыргызские публикации против KG_SEEN: выпуск реестра ТРОИС ГТС, файл ветеринарных
 //     ограничений на ввоз (vet.gov.kg), темы ГНС (sti.gov.kg), редакции актов реестра НПА, по которым
-//     сверены ставки (ПКМ № 94 — действующие ставки акциза, Налоговый кодекс, ПКМ № 385 — марки на воду 2201); и законопроекты Жогорку Кенеша
+//     сверены ставки (ПКМ № 94 — действующие ставки акциза, Налоговый кодекс, ПКМ № 385 — марки на воду 2201), и любой
+//     акт реестра, на редакцию которого ссылается база (kgLinkedEditions); и законопроекты Жогорку Кенеша
 //     по таможне и налогам за окно — как раннее предупреждение.
 //
 //  8. Правовой портал ЕАЭС (docs.eaeunion.org) — решения Коллегии и Совета ЕЭК за окно: по предмету
@@ -109,10 +110,11 @@ const EEC_RE = /тариф|пошлин|квот|антидемпинг|защи
 const EEC_REVIEWED = {
   '101@2026-09-09': 'Совет: ЕКФТ, таблица 2 — исключён вирус мозаики пепино; этой таблицы в базе нет',
   '106@2026-09-09': 'Совет: ТР ТС 008/2011 — требование к информации на игрушке; перечень продукции не меняется',
-  '115@2026-09-08': 'Коллегия: переходные положения к изменениям ТР ТС 019/2011 (Решение Совета № 40 от 13.03.2026) — перечень продукции к ТР сверить при сверке ТР',
+  '115@2026-09-08': 'Коллегия: переходные положения к изменениям ТР ТС 019/2011 (Решение Совета № 40 от 13.03.2026); перечень продукции для декларирования (Коллегия № 79 от 13.06.2012) не меняется',
   '122@2026-09-21': 'Коллегия: классификатор льгот, код ЭК заменён на АК — база и помощник кодов льгот не используют',
 };
 const BASE_PATH = path.join(__dirname, '..', 'private', 'base.js');
+const CHECKER_PATH = path.join(__dirname, '..', 'private', 'checker.js');
 // Справочники ЕС НСИ, с которыми сверяется база: код → что в базе от него зависит и дата
 // обновления справочника, по которой база последний раз сверена (null — ещё не сверялась).
 // Сверил — поставь сюда дату updateDateTime, которую видел, в том же коммите, что и
@@ -298,6 +300,20 @@ function docEditions(json) {
   const eds = (x.editions || []).filter((e) => e && e.id);
   const last = eds.reduce((m, e) => (!m || Number(e.editionCode) > Number(m.editionCode) ? e : m), null);
   return { last: last && { id: last.id, date: String(last.nameRus || '').trim() }, count: eds.length, refs: (x.documentReferences || []).length };
+}
+
+// Редакции реестра НПА, по которым сверены строки базы: ссылка «cbd.minjust.gov.kg/<код>/edition/<id>/ru» в base.js
+// или checker.js — это и есть редакция сверки. Код → множество id (одну строку могли сверить по одной редакции,
+// другую — по следующей). 30.09.2026 так собрано 68 актов, и все, кроме одного разобранного, стояли на последней редакции.
+function kgLinkedEditions(...sources) {
+  const m = new Map();
+  for (const src of sources) {
+    for (const [, code, ed] of String(src).matchAll(/cbd\.minjust\.gov\.kg\/(\d[\d-]*)\/edition\/(\d+)\/ru/g)) {
+      if (!m.has(code)) m.set(code, new Set());
+      m.get(code).add(Number(ed));
+    }
+  }
+  return m;
 }
 
 function troisFiles(html) {
@@ -645,6 +661,25 @@ async function collect({ days = 21, log = () => {} } = {}) {
       else if (t.seen.refs !== null && r.refs > t.seen.refs) findings.push({ kind: 'kg', src: 'реестр', text: `${t.what}: ссылающихся актов стало ${r.refs} (было ${t.seen.refs}) — возможно, изменяющий акт ещё не сведён в редакцию` });
     } catch (err) { errors.push(`реестр НПА, документ ${code}: ${err.message}`); }
   }
+  // Все акты, на редакцию которых ссылается база: новая редакция — строки базы сверены по прежней.
+  // Акты из KG_SEEN.docs уже проверены выше (там ещё и число ссылающихся актов) — их редакции пропускаются.
+  const seenEds = new Set(Object.values(KG_SEEN.docs).map((t) => t.seen.edition));
+  const linked = kgLinkedEditions(baseSrc, fs.readFileSync(CHECKER_PATH, 'utf8'));
+  let staleEds = 0;
+  for (const [code, eds] of linked) {
+    if ([...eds].some((e) => seenEds.has(e))) continue;
+    try {
+      await sleep(1500);
+      const doc = JSON.parse(await fetchText(REG_DOC(code)));
+      const r = docEditions(doc);
+      if (!r.last) { errors.push(`реестр НПА: у документа ${code} нет редакций`); continue; }
+      if (eds.has(r.last.id)) continue;
+      staleEds++;
+      const name = String((doc.data || doc).nameRus || code).replace(/\s+/g, ' ').trim().slice(0, 160);
+      findings.push({ kind: 'kg', src: 'реестр', text: `${name}: в базе ссылка на редакцию ${[...eds].join(', ')}, в реестре новая — от ${r.last.date} (${r.last.id}) — сверить строки базы и поднять ссылку: https://cbd.minjust.gov.kg/${code}/edition/${r.last.id}/ru` });
+    } catch (err) { errors.push(`реестр НПА, документ ${code}: ${err.message}`); }
+  }
+  log(`реестр НПА: актов со ссылкой на редакцию в базе ${linked.size}, с новой редакцией ${staleEds}`);
   for (const [theme, t] of Object.entries(KG_SEEN.sti)) {
     try {
       const v = JSON.parse(await fetchText(STI_DOCS(theme))).Value || {};
@@ -749,5 +784,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { TEXT_RE, parseEecList, refActs, eecNew, EEC_REVIEWED, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
+module.exports = { TEXT_RE, kgLinkedEditions, parseEecList, refActs, eecNew, EEC_REVIEWED, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });

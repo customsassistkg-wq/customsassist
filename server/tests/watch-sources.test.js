@@ -179,6 +179,12 @@ assert.deepEqual(w.eecNew(eecItems, eecKnown, '2026-09-09', {}).map((d) => [d.nu
   'изменение решения из базы — по ссылке; льготы — по предмету; известное, чужое изменение, стандарты, классификация и старое — нет');
 assert.deepEqual(w.eecNew(eecItems, eecKnown, '2026-09-09').map((d) => d.num), ['125'], 'разобранное (EEC_REVIEWED) молчит');
 
+// ── редакции реестра НПА, на которые ссылается база: код → множество id, из обоих файлов ──
+const linkedEds = w.kgLinkedEditions(
+  "u:'https://cbd.minjust.gov.kg/7-20912/edition/51297/ru' … https://cbd.minjust.gov.kg/7-20912/edition/51297/ru",
+  "stroymat18:'https://cbd.minjust.gov.kg/4-4095/edition/864081/ru', x:'https://cbd.minjust.gov.kg/7-20912/edition/49000/ru', y:'https://cbd.minjust.gov.kg/act/view/ru-ru/1'");
+assert.deepEqual([...linkedEds].map(([c, s]) => [c, [...s]]), [['7-20912', [51297, 49000]], ['4-4095', [864081]]]);
+
 // ── ЕТТ: новое имя файла главы, будущая дата, примечания, изменяющее решение ──
 const ettHtml = `<p>ТН ВЭД в ред. решений Коллегии&nbsp;от 11.08.2026 № 104,&nbsp;от 02.10.2026 № 130</p>
 <a href="/upload/files/catr/ett/ru.01_2022.pdf">1</a>
