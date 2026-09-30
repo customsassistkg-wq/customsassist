@@ -127,6 +127,8 @@ assert.deepEqual(w.dataGaps(gapBase, '2026-09-24').map((s) => s.slice(0, 20)), [
 const octGaps = w.dataGaps(gapBase, '2026-10-02');
 assert.equal(octGaps.length, 2);
 assert.match(octGaps[1], /Картофель \(Иран\).*на 2027/);
+const riceGaps = w.dataGaps({ QUOTA_DB: [[['1006'], 'Рис (Вьетнам)', 2027], [['0406'], 'Сыры (Сербия)', '2025-2027']] }, '2026-09-24');
+assert.deepEqual(riceGaps, ['квота «Рис (Вьетнам)» есть на 2027 год, а на текущий 2026 в базе нет'], 'следующий год без текущего; диапазон покрывает текущий');
 // переключение по дате (8112 92 410 0 → 410 1 / 410 9 с 08.10.2026): за неделю и после — пока в базе прежняя разметка
 const swBase = { TNVED_MAP: { 8112924101: { b: 'gone' } } };
 assert.ok(w.dataGaps(swBase, '2026-10-02').some((t) => /8112 92 410 0 исключён.*claude\/ett-8112-split/.test(t)), 'за неделю до 08.10.2026 — напоминание');

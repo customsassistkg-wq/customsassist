@@ -405,14 +405,17 @@ function dataGaps(base, today) {
       out.push(`${String(e.name || '').slice(0, 60)}: карточка — до ${dmyFromIso(until)}, реестр односторонних мер (№ ${num}) — до ${end}; сверить с текстом постановления`);
     }
   }
+  // Годы квоты по наименованию («2026-2028» — все три). Есть следующий год, а текущего нет — так до 30.09.2026
+  // в базе не было риса из Вьетнама на 2026 год (Решение № 86), хотя 2027 год был.
   const year = Number(today.slice(0, 4));
-  if (today.slice(5) >= '10-01') {
-    const last = {};
-    for (const q of base.QUOTA_DB || []) {
-      const y = Math.max(...String(q[2]).match(/\d{4}/g).map(Number));
-      last[q[1]] = Math.max(last[q[1]] || 0, y);
-    }
-    for (const [name, y] of Object.entries(last)) if (y === year) out.push(`квота «${name.slice(0, 80)}» есть только по ${y} год — решения на ${year + 1} в базе нет`);
+  const years = {};
+  for (const q of base.QUOTA_DB || []) {
+    const ys = String(q[2]).match(/\d{4}/g).map(Number), s = years[q[1]] || (years[q[1]] = new Set());
+    for (let y = Math.min(...ys); y <= Math.max(...ys); y++) s.add(y);
+  }
+  for (const [name, s] of Object.entries(years)) {
+    if (s.has(year + 1) && !s.has(year)) out.push(`квота «${name.slice(0, 80)}» есть на ${year + 1} год, а на текущий ${year} в базе нет`);
+    if (today.slice(5) >= '10-01' && Math.max(...s) === year) out.push(`квота «${name.slice(0, 80)}» есть только по ${year} год — решения на ${year + 1} в базе нет`);
   }
   return out;
 }
