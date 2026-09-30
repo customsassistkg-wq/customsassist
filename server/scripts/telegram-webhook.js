@@ -7,6 +7,8 @@
 //                                              пока стоит webhook, getUpdates не работает)
 // Токен бота в адресе запроса — в вывод он не попадает.
 require('dotenv').config();
+// Как в src/index.js: IPv6 на сервере прописан, но не работает.
+require('node:dns').setDefaultResultOrder('ipv4first');
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const api = (method, body) => fetch(`https://api.telegram.org/bot${token}/${method}`, {

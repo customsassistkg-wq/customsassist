@@ -21,15 +21,25 @@ function readJson(name) {
   }
 }
 
-// Запись через переименование: служба выкладки не увидит полузаписанную заявку.
-function writeJson(name, value) {
+// Запись через переименование: читающий (служба выкладки, API) не увидит полузаписанный файл.
+function writeText(name, text) {
   fs.mkdirSync(dir(), { recursive: true });
   const tmp = file(name) + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(value, null, 1));
+  fs.writeFileSync(tmp, String(text));
   fs.renameSync(tmp, file(name));
 }
+const writeJson = (name, value) => writeText(name, JSON.stringify(value, null, 1));
 
 const exists = (name) => fs.existsSync(file(name));
+// Сколько миллисекунд назад файл записан; null — файла нет.
+function age(name) {
+  try {
+    return Date.now() - fs.statSync(file(name)).mtimeMs;
+  } catch {
+    return null;
+  }
+}
+const remove = (name) => fs.rmSync(file(name), { force: true });
 const state = () => readJson('ops-state.json') || {};
 function setState(patch) {
   const next = { ...state(), ...patch };
@@ -37,10 +47,7 @@ function setState(patch) {
   return next;
 }
 
-function saveWatchReport(text) {
-  fs.mkdirSync(dir(), { recursive: true });
-  fs.writeFileSync(file('watch-last.txt'), String(text));
-}
+const saveWatchReport = (text) => writeText('watch-last.txt', text);
 function lastWatchReport() {
   try {
     return fs.readFileSync(file('watch-last.txt'), 'utf8');
@@ -52,4 +59,4 @@ function lastWatchReport() {
 // Рутина Claude Code с API-триггером: адрес …/routines/<id>/fire и её токен — в .env.
 const routineEnabled = () => /^https:\/\/api\.anthropic\.com\//.test(process.env.ROUTINE_FIRE_URL || '') && !!process.env.ROUTINE_TOKEN;
 
-module.exports = { dir, readJson, writeJson, exists, state, setState, saveWatchReport, lastWatchReport, routineEnabled };
+module.exports = { dir, readJson, writeJson, exists, age, remove, state, setState, saveWatchReport, lastWatchReport, routineEnabled };

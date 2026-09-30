@@ -6,8 +6,12 @@
 Description=Customs Assist KG: deploy a claude/ branch approved in Telegram
 After=network-online.target
 Wants=network-online.target
+# Остановленная по времени или упавшая выкладка — письмо администраторам, как у остальных служб.
+OnFailure=tnved-alert@%n.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/node /usr/local/lib/tnved-deploy/deploy-branch.js
-TimeoutStartSec=20min
+TimeoutStartSec=30min
+# Своя /tmp: копию дерева для тестов не видит процесс API, а после остановки службы её убирает systemd.
+PrivateTmp=yes

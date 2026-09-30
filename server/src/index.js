@@ -46,6 +46,7 @@ const ASSISTANT_PATH = /^\/api\/assistant(?:\/read)?\/?$/;
 const MAIL_INBOUND_PATH = /^\/api\/mail\/inbound\/?$/;
 const PAY_CALLBACK_PATH = /^\/api\/pay\/(callback|check)\/?$/;
 // Команды боту от Telegram и отчёт рутины Claude Code (routes/ops.js): без браузера и cookie.
+// Чтение официальных сайтов для рутины (/api/ops/fetch) — GET, проверка Origin его не касается.
 const OPS_PATH = /^\/api\/ops\/(telegram|report)\/?$/;
 const jsonDefault = express.json();
 const jsonAssistant = express.json({ limit: '15mb' });
@@ -193,6 +194,7 @@ if (require.main === module) {
   require('./routes/pay').init();
   require('./services/reminders').init();
   require('./services/watch').init();
+  require('./routes/ops').init();
   // База грузится до открытия порта: первый поиск пользователя не ждёт разбора 12 МБ.
   require('./services/base').load();
   const port = process.env.PORT || 3000;

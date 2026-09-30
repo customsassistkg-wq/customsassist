@@ -88,7 +88,7 @@ Deploying `server/private/*.js` or anything under `server/src/` follows the orde
 
 ## Разбор находок дозора из Telegram (29.09.2026)
 
-The owner replies «разобрать» to the watch summary → `routes/ops.js` fires a Claude Code routine → it works on a `claude/…` branch and reports to `/api/ops/report` → the owner replies «выложи» → root service `tnved-deploy` (`server/ops/`) deploys only `base.js`/`watch-sources.js` after checks and tests, with rollback, and fast-forwards `main`. Secrets `TELEGRAM_WEBHOOK_SECRET`, `OPS_REPORT_SECRET`, `ROUTINE_FIRE_URL`, `ROUTINE_TOKEN` in `.env`; deploy key `/root/.ssh/deploy_customsassist`; state in `server/var/`. Setup, the routine's prompt and the network allowlist: [ops-routine.md](ops-routine.md).
+The owner replies «разобрать» to the watch summary → `routes/ops.js` fires a Claude Code routine with the full watch report → it works on a `claude/…` branch, reads `*.gov.kg` through the server (`GET /api/ops/fetch`, `services/officialFetch.js` — those sites drop connections from the cloud) and reports to `/api/ops/report` → the owner replies «выложи» → root service `tnved-deploy` (`server/ops/`) deploys only `base.js`/`watch-sources.js` after checks and tests, with rollback, and fast-forwards `main`. `server/ops/deploy-branch.js` and the units are installed by hand (`/usr/local/lib/tnved-deploy/`, `/etc/systemd/system/`), not with the application files. Secrets `TELEGRAM_WEBHOOK_SECRET`, `OPS_REPORT_SECRET`, `ROUTINE_FIRE_URL`, `ROUTINE_TOKEN` in `.env`; deploy key `/root/.ssh/deploy_customsassist`; state in `server/var/`. Setup, the routine's prompt and the network allowlist: [ops-routine.md](ops-routine.md).
 
 ## Contact address
 
