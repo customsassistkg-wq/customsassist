@@ -179,6 +179,11 @@ assert.deepEqual(w.eecNew(eecItems, eecKnown, '2026-09-09', {}).map((d) => [d.nu
   'изменение решения из базы — по ссылке; льготы — по предмету; известное, чужое изменение, стандарты, классификация и старое — нет');
 assert.deepEqual(w.eecNew(eecItems, eecKnown, '2026-09-09').map((d) => d.num), ['125'], 'разобранное (EEC_REVIEWED) молчит');
 
+// ── файл реестра односторонних мер на странице ЕЭК: путь medialibrary меняется с каждой загрузкой ──
+assert.deepEqual(w.interimFiles('<a href="https://eec.eaeunion.org/upload/medialibrary/edd/abc/2024_2026.pdf" class="btn"> <a href="/upload/medialibrary/f00/x.pdf">'),
+  ['https://eec.eaeunion.org/upload/medialibrary/edd/abc/2024_2026.pdf', 'https://eec.eaeunion.org/upload/medialibrary/f00/x.pdf']);
+assert.match(w.KG_SEEN.unimeas, /^https:\/\/eec\.eaeunion\.org\/upload\/medialibrary\/.+\.pdf$/);
+
 // ── редакции реестра НПА, на которые ссылается база: код → множество id, из обоих файлов ──
 const linkedEds = w.kgLinkedEditions(
   "u:'https://cbd.minjust.gov.kg/7-20912/edition/51297/ru' … https://cbd.minjust.gov.kg/7-20912/edition/51297/ru",

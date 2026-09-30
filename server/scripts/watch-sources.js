@@ -78,6 +78,8 @@ const ETT_SEEN = { notesEtt: '2026-08-24', notesTnved: '2025-05-11', lastAmend: 
 const KG_SEEN = {
   trois: '11 -16 сентября   2026 года ТРОИС ГТС.pdf',
   vet: '2026-08-25',
+  // файл реестра односторонних мер ЕЭК, по которому разобран UNIMEAS_DB (путь medialibrary меняется при каждой загрузке)
+  unimeas: 'https://eec.eaeunion.org/upload/medialibrary/edd/29rz9nupyxvkrns97h6afdqg2d0kz8ta/2024_2026.pdf',
   // docs — акты реестра НПА, по которым сверена база (GetDocument): последняя редакция — по наибольшему editionCode
   // (id редакций идут не по времени); refs — число ссылающихся актов: у ПКМ № 94 новый изменяющий акт виден по нему
   // раньше, чем реестр сведёт редакцию. У кодекса ссылок сотни и они растут каждую неделю — там только редакция.
@@ -95,6 +97,7 @@ const TROIS_PAGE = 'https://www.customs.gov.kg/site/ru/master/customskg/intellek
 const VET_MEDIA = 'https://vet.gov.kg/wp-json/wp/v2/media?search=%D0%BE%D0%B3%D1%80%D0%B0%D0%BD%D0%B8%D1%87%D0%B5%D0%BD&per_page=20&orderby=date&order=desc&_fields=date,source_url,title';
 const REG_DOC = (code) => `https://cbd.minjust.gov.kg/api/v1/GetDocument?documentCode=${code}&lang=ru`;
 const STI_DOCS = (theme) => `https://sti.gov.kg/api/Documents/get-documents-by-theme-id?themeId=${theme}&language=1&page=1`;
+const INTERIM_PAGE = 'https://eec.eaeunion.org/comission/department/catr/nontariff/interim.php';
 const KENESH_DOCS = 'https://kenesh.kg/sed/docs?page=0&limit=100';
 const BILL_RE = /таможен|налог|акциз|лицензи|ЕАЭС|Евразийск|свободной торговл|нетарифн|технического регулирования|ветеринар|фитосанитар/i;
 const REMEDIES_FIND = 'https://remedies.eaeunion.org/spd2/find?collection=zvr.v_actionsregistry&limit=5000';
@@ -314,6 +317,11 @@ function kgLinkedEditions(...sources) {
     }
   }
   return m;
+}
+
+// Ссылки на PDF реестра односторонних мер на странице interim.php (обычно одна).
+function interimFiles(html) {
+  return [...new Set([...String(html).matchAll(/href="((?:https:\/\/eec\.eaeunion\.org)?\/upload\/medialibrary\/[^"]+\.pdf)"/g)].map((m) => (m[1].startsWith('/') ? 'https://eec.eaeunion.org' + m[1] : m[1])))];
 }
 
 function troisFiles(html) {
@@ -648,6 +656,11 @@ async function collect({ days = 21, log = () => {} } = {}) {
     for (const f of files) if (f !== KG_SEEN.trois) findings.push({ kind: 'kg', src: 'ГТС', text: `реестр ТРОИС: на сайте выпуск «${f}», база сверена ${KG_SEEN.trois ? `по «${KG_SEEN.trois}»` : 'по выпуску на 21.08.2026'} — перенести новые и изменённые записи в TROIS_DB: ${TROIS_PAGE}` });
   } catch (err) { errors.push(`ТРОИС ГТС: ${err.message}`); }
   try {
+    const files = interimFiles(await fetchText(INTERIM_PAGE, { headers: { Referer: INTERIM_PAGE, Origin: 'https://eec.eaeunion.org' } }));
+    if (!files.length) errors.push('реестр односторонних мер ЕЭК: ссылка на файл на странице не найдена');
+    else if (!files.includes(KG_SEEN.unimeas)) findings.push({ kind: 'kg', src: 'ЕЭК', text: `реестр односторонних мер: на странице новый файл ${files[0]} (база разобрана по ${KG_SEEN.unimeas.split('/').slice(-2).join('/')}) — сверить кыргызский раздел по актам и поднять UNIMEAS_ASOF и KG_SEEN.unimeas` });
+  } catch (err) { errors.push(`реестр односторонних мер ЕЭК: ${err.message}`); }
+  try {
     const media = JSON.parse(await fetchText(VET_MEDIA));
     const last = media.find((m) => /Ограничения на ввоз/i.test((m.title && m.title.rendered) || ''));
     if (!last) errors.push('ветслужба: файл «Ограничения на ввоз» не найден');
@@ -784,5 +797,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { TEXT_RE, kgLinkedEditions, parseEecList, refActs, eecNew, EEC_REVIEWED, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
+module.exports = { TEXT_RE, interimFiles, kgLinkedEditions, parseEecList, refActs, eecNew, EEC_REVIEWED, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });
