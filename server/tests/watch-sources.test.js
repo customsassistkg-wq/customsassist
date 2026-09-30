@@ -127,6 +127,11 @@ assert.deepEqual(w.dataGaps(gapBase, '2026-09-24').map((s) => s.slice(0, 20)), [
 const octGaps = w.dataGaps(gapBase, '2026-10-02');
 assert.equal(octGaps.length, 2);
 assert.match(octGaps[1], /Картофель \(Иран\).*на 2027/);
+// переключение по дате (8112 92 410 0 → 410 1 / 410 9 с 08.10.2026): за неделю и после — пока в базе прежняя разметка
+const swBase = { TNVED_MAP: { 8112924101: { b: 'gone' } } };
+assert.ok(w.dataGaps(swBase, '2026-10-02').some((t) => /8112 92 410 0 исключён.*claude\/ett-8112-split/.test(t)), 'за неделю до 08.10.2026 — напоминание');
+assert.ok(!w.dataGaps(swBase, '2026-09-24').some((t) => /8112 92 410/.test(t)), 'раньше недели — нет');
+assert.ok(!w.dataGaps({ TNVED_MAP: {} }, '2026-10-10').some((t) => /8112 92 410/.test(t)), 'правка внесена — нет');
 const uniBase = {
   BAN_DB: [
     { name: 'Уголь', ex: true, exUntil: '2026-12-26', exN: 'с 26.06.2026 по 26.12.2026 · ПКМ КР № 430 от 20.06.2026' },
