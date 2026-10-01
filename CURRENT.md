@@ -42,6 +42,7 @@ No task is in progress. **Изменения 01.10.2026 выложены** (`08a
 
 ## Recently completed
 
+- 01.10.2026 (afternoon) — «Назад» in the app (history entries without a URL, per-login token; repeat login returns to the search), the watcher waits for ПКМ № 614 and № 607 in the registry (`REG_PENDING`), the 8112 branch rebased and its deploy scheduled for 08.10, routine branches merged or deleted.
 - 01.10.2026 06:35 UTC — routine run `771b0f081512`: beef benefit 7.1.82 (Council № 18) checked, 2027 decision absent; watcher learns notes without a number; deployed by «выложи» — **the first live «разобрать» → «выложи» → deploy, end to end** (`session.md`, 01.10.2026).
 - 30.09.2026 — sweep of the bases against primary sources, one commit and deploy per class (tariff quotas, antidumping, ТР 047/2018 from 01.01.2027, ETT units and temporary rates, Единый перечень «из», unilateral-measures register, excise of ПКМ № 94, transit by the Положения), two new watcher checks; Telegram ops improvements (`f2698bb`).
 - 29.09.2026 — Telegram ops installed (`b27b458`); СИТЕС and national requirements; recheck of 24–29.09.
@@ -57,9 +58,9 @@ No task is in progress. **Изменения 01.10.2026 выложены** (`08a
 - 15 grandfathered accounts without a term; payments recorded by hand; `terms.html` has no clause on price, payment and refund (draft with the owner; a new edition needs a month's notice before xPay goes live).
 - Assistant answer variance (contested classifications differ between runs; lubricant excise needs litres; packaging weight named as a discrepancy; text can contradict its own calculation) — eval set 11–12 of 13.
 - EV duty-free quota 2026 exhausted (ГТС counter 25 000 of 25 000 on 29.09.2026); card and calculator say so; the watcher follows the counter.
-- ПКМ № 614 (construction materials): ban dates per the ЕЭК register 25.09.2026–25.03.2027 (`fb27fb0`); the card cites `gov.kg/ru/npa/s/4835` — switch `docUrl` to the registry card when indexed (not indexed on 23.09.2026).
-- ПКМ № 607 (livestock export ban 11.09.2026–11.03.2027) not indexed in the registry (re-checked 23.09.2026); the card cites the ЕЭК register.
-- No extension found for the fertilizer (№ 115, lapsed 15.09.2026) and sapling (№ 103, lapsed 01.09.2026) bans (checked 23.09.2026); cards say «продление в базе не найдено».
+- ПКМ № 614 (construction materials): ban dates per the ЕЭК register 25.09.2026–25.03.2027 (`fb27fb0`); the card cites `gov.kg/ru/npa/s/4835` — not indexed in the registry on 01.10.2026 (by number and date; № 615 of the same day is). The watcher now searches for it daily (`REG_PENDING`) and reports the day it appears — then switch the cards to the registry card.
+- ПКМ № 607 (livestock export ban 11.09.2026–11.03.2027) not indexed in the registry on 01.10.2026 (№ 604 of 08.09 is); the card cites the ЕЭК register; the watcher reports the day it appears (`REG_PENDING`).
+- No extension found for the fertilizer (№ 115, lapsed 15.09.2026) and sapling (№ 103, lapsed 01.09.2026) bans — checked again 01.10.2026 on the registry cards (`7-51494`: one edition of 18.02.2026; `7-51413`: editions 13.02 and 30.04.2026, ПКМ № 314, no newer amending act); cards say «продление в базе не найдено».
 - `SOURCE_AUDIT` (36 records): partial — `trois`, `ban`, `tr`, `species`, `marking`, `natreq`, `vettemp`, each says why on its card; `kef` — not checked (the КНР coefficient card was restored on 22.09.2026 at the owner's word with «первоисточник не подтверждён»; the source is still to come from the owner).
 - Edition history partial: `banPrevOn` (ЕЭК register from 2024) and ETT temporary rates since 01.10.2024; earlier dates answer «база не хранит редакций».
 - CIS: the 2011 Treaty and the 1994 FTA Agreement are not in the Kyrgyz registry; 0 % not shown for Georgia and Turkmenistan (owner's call).
@@ -81,10 +82,10 @@ No task is in progress. **Изменения 01.10.2026 выложены** (`08a
 - Uptime monitor runs (first run on GitHub 01.10.2026 07:22:26 UTC, both checks 200); is it still running — `grep customsassist-uptime /var/log/nginx/access.log` (requests from GitHub's Azure addresses every 30 minutes). Owner, optionally — Telegram alerts from it: repository secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALERT_CHAT_ID` (copying the bot token to GitHub is the owner's decision); without them alerts come as a GitHub issue and mail.
 - **08.10.2026 — ETT split 8112 92 410 0 → 410 1 / 410 9** (Collegium № 112, Council № 100): `claude/ett-8112-split` rebased on 01.10.2026 onto `main` (`74e373a` on `f00f691`; base-sweep 0 new, the five deploy tests pass, on 08.10 410 0 — «кода нет», 410 1 — 0 % by 127С, 410 9 — 10 %). **Deploy scheduled by this session for 08.10 00:10 Bishkek** (send_later `trig_01GoAcFBW86rD4qHipNWYwxx`, 07.10 18:10 UTC); if `main` moves before that, the commit is cherry-picked again. The watcher keeps reminding until it is in.
 - Claude for the assistant: an Anthropic key on the server as `ANTHROPIC_API_KEY`, then `EVAL_MODEL=claude-sonnet-5-5 AI_THINKING=between_tools node tests/assistant-eval.js` and the same with `claude-haiku-4-5` / `claude-opus-5-5` against DeepSeek (several runs each); the eval has no document cases yet — add redacted dossier texts before deciding.
-- Next development steps proposed on 01.10.2026: «Назад» and links to a result (`history.pushState`; the app creates no history entries, so the Android back button most likely leaves the app — inferred from the code, not checked on a device), two-factor login for administrators.
+- Next development step: two-factor login for administrators (TOTP, opt-in from the account menu, recovery codes and a root-side switch-off on the server).
 - Owner (from before): reconnect Codemagic to `customsassistkg-wq/customsassist`, then delete the old `tshalabaev/customsassist`; rotate `MAIL_INBOUND_SECRET` (it appeared in a chat) in `.env` and the Worker together; recreate Turnstile in the new Cloudflare account and swap the keys; change the domain registrant to the ИП; switch the Google Cloud project owner; two-factor login in the Hetzner account; decide on backup encryption, DeepSeek and Gmail; the 15 grandfathered accounts; the tariff clause of `terms.html`; the КНР coefficients source.
 - **Launch day** (owner names it; payments through xPay under ИП Ким): delete pre-launch test payments, QR orders and audit-log rows, count retention from that day.
-- Re-check the registry for ПКМ № 607, № 614 (switch `docUrl`), № 160 and № 116.
+- Re-check the registry for ПКМ № 160 (livestock) and № 116 (catalysts) — their cards carry no name and the edition texts come back empty through the API (№ 607 and № 614 are watched automatically now).
 
 ## Do not break
 

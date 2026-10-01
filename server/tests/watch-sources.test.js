@@ -73,6 +73,14 @@ const laws = w.parseRegistry(lawReg, 'law');
 assert.deepEqual(laws.map((l) => l.num), ['150', '151'], 'законы, с конституционными, без постановлений');
 assert.deepEqual(laws.filter((l) => w.TRADE_RE.test(l.title) || w.BILL_RE.test(l.title)).map((l) => l.num), ['150'], 'в отчёт — только налоговый');
 
+// ── акты, которых база ждёт в реестре (REG_PENDING) ──
+const pending = { num: '615', adopted: '2026-09-14', what: 'ПКМ № 615 от 14.09.2026 (проба)' };
+assert.match(w.pendingFinding(pending, acts), /^ПКМ № 615 от 14\.09\.2026 \(проба\): акт появился в реестре НПА — https:\/\/cbd\.minjust\.gov\.kg\/7-58169\/edition\/58961\/ru; заменить ссылку/);
+assert.equal(w.pendingFinding({ ...pending, adopted: '2026-09-15' }, acts), null, 'тот же номер другого дня — не он');
+assert.equal(w.pendingFinding({ ...pending, num: '700' }, acts), null, 'распоряжение № 700-р в разбор не попадает — parseRegistry берёт только постановления');
+assert.equal(w.pendingFinding(pending, []), null, 'ещё нет в реестре — молчит');
+assert.ok(w.REG_PENDING.every((p) => /^\d+$/.test(p.num) && /^\d{4}-\d\d-\d\d$/.test(p.adopted) && p.what), 'список ожидаемых актов — номер, дата, что заменить');
+
 // ── ГТС: счётчик квоты среди других виджетов ──
 const gts = `{"type":"customskg:chart","data":{"values":[{"name":"Импорт","value":10},{"name":"Экспорт","value":5}]}}
 {"type":"customskg:quotas","data":{"values":[{"name":"Квоты на электромобили 2026г","value":25000},{"name":"На текущий момент использовано","value":24970},{"name":"Оставшееся количество квот","value":30}],"active":true}}`;

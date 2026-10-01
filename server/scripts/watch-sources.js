@@ -453,6 +453,21 @@ const DATED_SWITCH = [
     text: 'с 08.10.2026 код 8112 92 410 0 исключён, введены 8112 92 410 1 (ниобий-алюминиевая лигатура) и 8112 92 410 9 (Решение Коллегии ЕЭК № 112 от 25.08.2026; в перечне ЕСТП — Решение Совета ЕЭК № 100 от 09.09.2026): выложить ветку claude/ett-8112-split' },
 ];
 
+// Акты, которые база цитирует по gov.kg или по реестру ЕЭК, потому что реестр НПА их ещё не проиндексировал (он отстаёт
+// от подписания на недели). Окно поиска новых актов — 21 день и только неупомянутые в базе, так что появление такого
+// акта в реестре раньше не замечал никто, и ссылка оставалась временной навсегда (01.10.2026). Каждый день — поиск по
+// номеру и дате принятия; появился — находка: заменить ссылку на карточку реестра и убрать акт из списка тем же коммитом.
+const REG_PENDING = [
+  { num: '614', adopted: '2026-09-14', what: 'ПКМ № 614 от 14.09.2026 (временный запрет ввоза стройматериалов из третьих стран) — карточки ссылаются на gov.kg/ru/npa/s/4835' },
+  { num: '607', adopted: '2026-09-10', what: 'ПКМ № 607 от 10.09.2026 (временный запрет вывоза скота) — карточки ссылаются на реестр односторонних мер ЕЭК' },
+];
+// Ответ поиска реестра по номеру → текст находки или null. Номер у кыргызских актов не уникален по видам (docs/legal-sources.md),
+// поэтому совпасть должны и номер, и дата принятия, и вид — постановление Кабинета (parseRegistry это и отбирает).
+function pendingFinding(p, acts) {
+  const hit = acts.find((a) => a.num === p.num && a.adopted === p.adopted);
+  return hit ? `${p.what}: акт появился в реестре НПА — ${hit.url}; заменить ссылку на карточку реестра, сверить текст и убрать акт из REG_PENDING` : null;
+}
+
 function dataGaps(base, today) {
   const out = [];
   for (const d of DATED_SWITCH) if (daysBetween(today, d.on) <= 7 && !d.done(base)) out.push(d.text);
@@ -590,6 +605,17 @@ async function collect({ days = 21, log = () => {} } = {}) {
       findings.push({ kind: 'new-act', src: 'реестр, закон', text: `${a.title.slice(0, 220)} — подписан; проверить, меняет ли ставки, льготы, запреты или порядок ввоза: ${a.url}` });
     }
   } catch (err) { errors.push(`реестр НПА: ${err.message}`); }
+
+  // 2а. акты, которые база цитирует, а реестр НПА ещё не проиндексировал (REG_PENDING): поиск по номеру и дате
+  // принятия каждый день, находка — в день, когда акт появился.
+  for (const p of REG_PENDING) {
+    try {
+      await sleep(1500);
+      const body = JSON.stringify({ number: p.num, dateAdoptedFrom: p.adopted, dateAdoptedTo: p.adopted, refTypeId: '0050', authoritiesId: '0040.0011' });
+      const text = pendingFinding(p, parseRegistry(JSON.parse(await fetchText(REG_SEARCH, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } }))));
+      if (text) findings.push({ kind: 'kg', src: 'реестр', text });
+    } catch (err) { errors.push(`реестр НПА, ожидаемый № ${p.num}: ${err.message}`); }
+  }
 
   // 3. счётчик ГТС
   try {
@@ -803,5 +829,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { TEXT_RE, interimFiles, kgLinkedEditions, parseEecList, refActs, eecNew, EEC_REVIEWED, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
+module.exports = { TEXT_RE, REG_PENDING, pendingFinding, interimFiles, kgLinkedEditions, parseEecList, refActs, eecNew, EEC_REVIEWED, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });

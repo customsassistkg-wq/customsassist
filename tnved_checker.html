@@ -1855,6 +1855,7 @@ async function showApp(){
   const st=document.getElementById('accMenuStatus');if(st)st.innerHTML=document.getElementById('accountPanel').innerHTML;
   renderVerifyBar();
   initApp();
+  if(typeof navStart==='function')navStart();
   showTermsGate();
 }
 
@@ -2077,6 +2078,7 @@ async function doLogin(){
 // окне — и видел чужие адреса, роли и даты входа. Данные при этом сервер
 // заново не отдавал (он отвечает 403), но на экране они были.
 function resetAppView(){
+  if(typeof navReset==='function')navReset();
   if(typeof closePay==='function')closePay();if(typeof closeAdminRowMenu==='function')closeAdminRowMenu();if(typeof resetWatch==='function')resetWatch();
   appViewVersion++;
   if(typeof adminUsers!=='undefined')adminUsers=[];

@@ -487,6 +487,69 @@ app.get('/', (req,res)=>res.type('html').send(html));
       console.log('PASS: браузер — дата условий по умолчанию — сегодня по Бишкеку (в 02:00 2 октября — 2 октября, а не 1-е по UTC)');
     }else console.log('SKIP: дата условий по умолчанию — в этой версии Playwright нет page.clock');
     await night.close();
+
+    // История переходов (01.10.2026): «Назад» возвращает прежний раздел и прежний запрос (в обёртке Android — та же
+    // кнопка, раньше она закрывала приложение), адрес страницы не меняется, после выхода записи прежнего входа не открываются.
+    const nav=await browser.newPage({viewport:{width:1280,height:900}});
+    const navErrors=[];
+    nav.on('pageerror',e=>navErrors.push(e.message));
+    const login=async()=>{
+      await nav.locator('#authEmail').fill('test@example.test');
+      await nav.locator('#authPassword').fill('valid');
+      await nav.locator('#authSubmit').click();
+      await nav.locator('#appWrap').waitFor({state:'visible'});
+    };
+    const shown=(q)=>nav.waitForFunction((q)=>(document.getElementById('result').dataset.rq||'').split('|')[0]===q,q);
+    const mode=(m)=>nav.waitForFunction((m)=>document.body.dataset.mode===m&&document.body.dataset.page==='search',m);
+    await nav.goto(origin);
+    await login();
+    await nav.fill('#inp','8517130000');
+    await shown('8517130000');
+    // один переход — одна запись: кнопка раздела зовёт и setPage, и setSearchMode
+    const before=await nav.evaluate(()=>history.length);
+    await nav.locator('#navCalcBtn').click();
+    await mode('calc');
+    assert.equal(await nav.evaluate(()=>history.length),before+1,'переход в раздел — одна запись');
+    await nav.evaluate(()=>history.back());
+    await mode('code');
+    await shown('8517130000');
+    assert.equal(await nav.inputValue('#inp'),'8517130000','«Назад» из калькулятора — прежний запрос');
+    await nav.evaluate(()=>history.forward());
+    await mode('calc');
+    await nav.evaluate(()=>history.back());
+    await shown('8517130000');
+    // слово → код из списка кандидатов → «Назад» — снова список по слову
+    await nav.fill('#inp','смартфон');
+    await shown('смартфон');
+    await nav.locator('#result [onclick^="goToCode"]').first().click();
+    await nav.waitForFunction(()=>/^\d{10}$/.test((document.getElementById('result').dataset.rq||'').split('|')[0]));
+    await nav.evaluate(()=>history.back());
+    await shown('смартфон');
+    assert.equal(await nav.inputValue('#inp'),'смартфон');
+    // другой раздел и обратно
+    await nav.locator('#navTreeBtn').click();
+    await nav.waitForFunction(()=>document.body.dataset.page==='tree');
+    await nav.evaluate(()=>history.back());
+    await shown('смартфон');
+    const u=new URL(nav.url());
+    assert.equal(u.pathname+u.search+u.hash,'/','адрес не меняется: в адресной строке и в истории браузера кодов нет');
+    // выход и новый вход: прежние записи принадлежат прошлому входу — «Назад» их не открывает. Перед выходом —
+    // ещё один переход, чтобы за текущей записью стояла запись этого входа с запросом «смартфон».
+    await nav.locator('#navCalcBtn').click();
+    await mode('calc');
+    await nav.evaluate(()=>{window.__sameDoc=1});
+    await nav.evaluate(()=>doLogout());
+    await nav.locator('#authScreen').waitFor({state:'visible'});
+    await login();
+    assert.equal(await nav.inputValue('#inp'),'');
+    await nav.evaluate(()=>history.back());
+    await nav.waitForTimeout(600);
+    assert.equal(await nav.evaluate(()=>window.__sameDoc),1,'«Назад» остался в том же документе');
+    assert.equal(await nav.inputValue('#inp'),'','запись прошлого входа не открывается');
+    assert.equal(await nav.evaluate(()=>document.body.dataset.mode),'code');
+    assert.deepEqual(navErrors,[]);
+    await nav.close();
+    console.log('PASS: браузер — «Назад» и «Вперёд»: раздел, запрос, код из списка; адрес не меняется; прошлый вход не открывается');
   }finally{
     await browser.close();
     await new Promise(resolve=>server.close(resolve));

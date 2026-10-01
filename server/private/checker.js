@@ -2373,6 +2373,40 @@ function updateNavActive(){
   const more=document.getElementById('tabMoreBtn');
   if(more)more.classList.toggle('active',['navAutoBtn','navPersonalBtn','navSpeciesBtn'].some(id=>document.getElementById(id).classList.contains('active')));
 }
+// ─── История переходов (01.10.2026): «Назад» в браузере и в приложении на Android ───
+// Раздел, режим и открытый код — записи в истории вкладки: «Назад» возвращает прежний раздел и прежний запрос, а в
+// обёртке Android кнопка «Назад» больше не закрывает приложение с первого нажатия. Адрес страницы не меняется
+// (pushState без URL): коды поиска не попадают ни в адресную строку, ни в историю браузера, и на общем компьютере
+// следующий человек их не увидит. Записи помечены номером входа (navToken): после выхода и входа другого человека
+// прежние записи «Назад» не открывает. Переход — запись (navPush, несколько вызовов в одном действии — одна запись),
+// набор в поле поиска — правка текущей записи (navReplace), чтобы «Назад» с открытого кода вёл к списку, из которого
+// он открыт, а не перебирал буквы.
+let navToken=null,navApplying=false,navPending=false;
+function navState(){
+  const inp=document.getElementById('inp');
+  const q=currentPage==='search'&&searchMode==='code'&&inp?inp.value.trim().slice(0,200):'';
+  return {ca:navToken,page:currentPage,mode:searchMode,q:q};
+}
+function navSame(a,b){return !!a&&!!b&&a.ca===b.ca&&a.page===b.page&&a.mode===b.mode&&a.q===b.q}
+function navPush(){
+  if(navApplying||!navToken||navPending||typeof history==='undefined')return;
+  navPending=true;
+  Promise.resolve().then(()=>{navPending=false;if(!navToken)return;const s=navState();if(!navSame(s,history.state))history.pushState(s,'')});
+}
+function navReplace(){if(!navApplying&&navToken&&typeof history!=='undefined')history.replaceState(navState(),'')}
+function navStart(){navToken=Math.random().toString(36).slice(2)+Date.now().toString(36);history.replaceState(navState(),'')}
+function navReset(){navToken=null}
+window.addEventListener('popstate',function(e){
+  const s=e.state;
+  if(!s||!navToken||s.ca!==navToken)return;
+  document.body.classList.remove('nav-open');
+  const acc=document.getElementById('accWrap');if(acc)acc.classList.remove('open');
+  navApplying=true;
+  try{
+    if(s.page==='search')setSearchMode(s.mode||'code');else setPage(s.page);
+    if(s.page==='search'&&(s.mode||'code')==='code'){const inp=document.getElementById('inp');inp.value=s.q||'';render(inp.value)}
+  }finally{navApplying=false}
+});
 function tabGo(id){document.body.classList.remove('nav-open');const b=document.getElementById(id);if(b)b.click();window.scrollTo({top:0,behavior:'smooth'})}
 function tabMore(){document.body.classList.toggle('nav-open')}
 // ─── AI-помощник ───
@@ -3068,6 +3102,7 @@ function setPage(p){
   if(p==='ai')renderAiPage();
   if(p==='tree')renderTreeRoot();
   updateNavActive();
+  navPush();
 }
 
 // ─── Дерево ТН ВЭД: раздел → группа → коды из ETT_DB ───
@@ -3456,6 +3491,7 @@ function setSearchMode(m){
   const leftSide=document.querySelector('.content-row > .sidebar-left');
   if(leftSide) leftSide.style.display=(m==='admin')?'none':'';
   updateNavActive();
+  navPush();
 }
 
 // ═══════════════════════════════════════════
@@ -4129,7 +4165,9 @@ function goToCode(code){
 
 let appInitialized=false;
 function initApp(){
-if(appInitialized)return;
+// Повторный вход в той же вкладке (выход и вход, в том числе другого человека): разметка уже готова, но на экране
+// оставался раздел прошлого входа — калькулятор, дерево (найдено тестом истории переходов 01.10.2026). Возвращаем поиск.
+if(appInitialized){setPage('search');setSearchMode('code');return;}
 appInitialized=true;
 document.body.dataset.page='search';
 document.body.dataset.mode='code';
@@ -4148,7 +4186,7 @@ renderSourceAudit();
 loadNbkrRates();
 
 let t;
-document.getElementById('inp').addEventListener('input',function(){clearTimeout(t);const v=this.value;t=setTimeout(()=>{if(searchMode==='species'){renderSpecies(v)}else if(searchMode==='calc'){renderCalcSearch(v)}else{render(v)}},250)});
+document.getElementById('inp').addEventListener('input',function(){clearTimeout(t);const v=this.value;t=setTimeout(()=>{if(searchMode==='species'){renderSpecies(v)}else if(searchMode==='calc'){renderCalcSearch(v)}else{render(v)}navReplace()},250)});
 
 // Примеры: одна строка из восьми, по одному на тип ответа; полные группы — за «Больше примеров».
 SRCH_EXAMPLES.forEach(([c,l])=>{
