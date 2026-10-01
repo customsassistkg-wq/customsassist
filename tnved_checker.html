@@ -1515,7 +1515,11 @@ function authCheckPassword(id,min){
 // скрипт Cloudflare даже не загружается — чужой код не тянем без нужды.
 let TURNSTILE_KEY=null, tsWidgets={}, tsReady=false;
 
+let tsStarted=false;
 async function initTurnstile(){
+  // Грузится не при открытии страницы, а когда гостю показан вид с формой (showAuthView): вошедшему человеку виджет не
+  // нужен, а скрипт Cloudflare — это 85 КБ и обращение к чужому серверу с его IP при каждом открытии приложения.
+  if(tsStarted)return;tsStarted=true;
   try{
     const res=await fetch("/api/auth/config",{credentials:"include"});
     if(!res.ok)return;
@@ -1577,6 +1581,7 @@ function tsReset(name){
 }
 
 function showAuthView(view){
+  if(view==='login'||view==='forgot'||view==='register')initTurnstile();
   document.getElementById('authViewLoading').style.display=view==='loading'?'':'none';
   document.getElementById('authViewLogin').style.display=view==='login'?'':'none';
   document.getElementById('authViewForgot').style.display=view==='forgot'?'':'none';
@@ -2220,9 +2225,8 @@ document.getElementById("authVerifyResend").addEventListener("click",resendVerif
 document.getElementById('authVerifyBackLink').addEventListener('click',function(e){e.preventDefault();showAuthView('login');});
 syncThemeButtons();
 
-// Загрузка капчи идёт параллельно проверке сессии и ничего не блокирует:
-// человеку с действующей сессией виджет не нужен вовсе.
-initTurnstile();
+// Капча не грузится при открытии страницы: человеку с действующей сессией виджет не нужен вовсе. Загрузку запускает
+// showAuthView, как только гостю показан вид входа, регистрации или восстановления пароля (initTurnstile).
 
 (async function initAuth(){
   const authVersion=appViewVersion;

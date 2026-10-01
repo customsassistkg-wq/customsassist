@@ -231,14 +231,25 @@ const DOC_SOURCES={
   cites165:'https://cbd.minjust.gov.kg/7-16479/edition/378146/ru',
   unimeas:'https://eec.eaeunion.org/comission/department/catr/nontariff/interim.php',
 };
+// «Актуальность баз» (боковая панель): в свёрнутом виде нужна только сводка — несколько байт; таблица (~40 КБ сжатого
+// ответа) приходит при первом раскрытии панели. До 01.10.2026 обе грузились при каждом открытии приложения.
+let srcAuditLoaded=false;
+async function loadSourceAuditTable(){
+  const box=document.getElementById('srcAudit');
+  if(!box||srcAuditLoaded)return;
+  srcAuditLoaded=true;
+  let r;
+  try{r=await engine('sourceAuditHtml')}catch(e){srcAuditLoaded=false;return}
+  box.innerHTML=r.html;
+}
 async function renderSourceAudit(){
   const box=document.getElementById('srcAudit');
   if(!box)return;
-  let r;
-  try{r=await engine('sourceAuditHtml')}catch(e){return}
-  box.innerHTML=r.html;
+  const det=box.closest('details');
+  if(!det)loadSourceAuditTable();
+  else if(!det.dataset.auditBound){det.dataset.auditBound='1';det.addEventListener('toggle',()=>{if(det.open)loadSourceAuditTable()});if(det.open)loadSourceAuditTable()}
   const sum=document.getElementById('srcAuditSum');
-  if(sum)sum.textContent=r.sum;
+  if(sum){try{sum.textContent=await engine('sourceAuditSum')}catch(e){}}
 }
 
 function psnUrl(nn){return 'https://eec.eaeunion.org/upload/files/catr/psn/psn'+nn+'.pdf'}

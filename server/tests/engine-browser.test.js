@@ -61,9 +61,15 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
     await page.locator('#appWrap').waitFor({ state: 'visible' });
     assert.equal(await page.evaluate(() => typeof ETT_DB + typeof findBan + typeof renderHtml), 'undefinedundefinedundefined');
 
-    // сверка источников в боковой панели
-    await page.waitForFunction(() => document.querySelectorAll('#srcAudit a').length > 20);
+    // сверка источников в боковой панели: сводка приходит сразу (несколько байт), таблица на ~40 КБ — при первом раскрытии
+    // панели (до 01.10.2026 она грузилась при каждом открытии приложения)
+    await page.waitForFunction(() => /✔ \d+/.test(document.getElementById('srcAuditSum').textContent));
     assert.match(await page.locator('#srcAuditSum').textContent(), /✔ \d+ · ◐ \d+ · ○ \d+/);
+    assert.equal(await page.locator('#srcAudit a').count(), 0, 'таблица сверки не грузится, пока панель свёрнута');
+    assert.ok(!engineCalls.includes('sourceAuditHtml'), 'sourceAuditHtml не вызывается при открытии приложения');
+    await page.locator('details.side-det', { has: page.locator('#srcAudit') }).locator('summary').click();
+    await page.waitForFunction(() => document.querySelectorAll('#srcAudit a').length > 20);
+    assert.ok(engineCalls.includes('sourceAuditHtml'), 'таблица загружена при раскрытии');
 
     // виды
     await page.click('#navSpeciesBtn');
@@ -212,7 +218,7 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
 
     assert.deepEqual(errors, []);
     assert.deepEqual(csps, []);
-    for (const fn of ['sourceAuditHtml', 'speciesHtml', 'calcCodeList', 'codeBundle', 'specLookup', 'treeChapter', 'autoBrands', 'autoModels', 'autoVariants', 'auditNote', 'renderHtml']) {
+    for (const fn of ['sourceAuditSum', 'sourceAuditHtml', 'speciesHtml', 'calcCodeList', 'codeBundle', 'specLookup', 'treeChapter', 'autoBrands', 'autoModels', 'autoVariants', 'auditNote', 'renderHtml']) {
       assert.ok(engineCalls.includes(fn), 'вызов ' + fn);
     }
     console.log('PASS: браузер — сверка, виды, калькулятор и партия, спецификация, дерево, авто, личные отправления, гонка ответов, лимит');

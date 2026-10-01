@@ -7316,6 +7316,7 @@ const ENGINE_API={
   renderHtml:(q,date)=>renderHtml(engStr(q,200),engStr(date,10)),
   speciesHtml:(q)=>speciesHtml(engStr(q,200)),
   sourceAuditHtml:()=>sourceAuditHtml(),
+  sourceAuditSum:()=>sourceAuditHtml().sum,
   auditNote:(key)=>engHas(SOURCE_AUDIT,key)?auditNote(key):'',
   calcWarnings:(code)=>/^\d{4,10}$/.test(engStr(code,10))?calcWarnings(code):[],
   calcCodeList:(q)=>calcCodeList(engStr(q,40)),
