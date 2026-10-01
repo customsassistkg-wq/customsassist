@@ -36,6 +36,7 @@ Open only what the current task needs:
 - **Regulatory / legal source work** (fetching or parsing an act, checking a base against its source, adding data, touching an audit record) → [docs/legal-sources.md](docs/legal-sources.md) (registries, their APIs and WAFs, PDF/Word parsing traps) **and** [docs/source-audit.md](docs/source-audit.md) (`SOURCE_AUDIT` registry, mandatory post-import checks, resolved cases).
 - **Databases, `findX()`, cards, direction/country/date filter, `TNVED_MAP`, `DOC_SOURCES`, ТР lists, НКС, ЕСТП, editing large data literals** → [docs/base-architecture.md](docs/base-architecture.md).
 - **Backend / deploy / Nginx / VPS / PostgreSQL / migrations / mail / DNS / git remotes and keys** → [docs/backend-ops.md](docs/backend-ops.md) and, for the application files, [server/CHECKER.md](server/CHECKER.md).
+- **Launch of paid subscriptions** (new terms edition and the one-month notice, switching xPay on, accounts without a term, first real payment, rollback) → [docs/launch.md](docs/launch.md) and the wording in [docs/launch-terms-draft.md](docs/launch-terms-draft.md).
 - **Authentication, registration, sessions, captcha, admin access, private-data exposure, privacy policy and terms** → [docs/security-auth.md](docs/security-auth.md).
 - **Tests, browser checks, vm smoke tests, standalone UI pages, Playwright** → [docs/testing.md](docs/testing.md).
 - **UI: result page, cards, verdict, login screen, themes, phone width, overflow** → [docs/ui-architecture.md](docs/ui-architecture.md).
@@ -118,6 +119,7 @@ node server/tests/client-error.test.js       # ошибки браузера (/a
 node server/tests/base-index.test.js        # поиск по коду через корзины первых четырёх знаков = прямой просмотр перечней: ТР, Единый перечень, ЕТТ и ЕТТ ОАЭ (~1 100 запросов из самих данных и «мусор»), ещё 20 перечней, ТРОИС и путь «кандидат при любом запросе» (~10 000 сверок)
 node server/tests/turnstile-lazy.test.js     # капча Cloudflare: скрипт грузится гостю при показе формы входа/регистрации/восстановления, вошедшему — нет, виду сброса пароля — нет; браузер
 node server/tests/a11y.test.js               # доступность (axe-core: WCAG 2.0/2.1 A и AA + best-practice) на входе, регистрации, восстановлении, поиске, результате, калькуляторе, классификаторе и помощнике × 1280/390 px × две темы; нужен axe-core рядом с playwright-core, иначе SKIP
+node server/tests/notify-terms.test.js       # письмо о новой редакции правил (scripts/notify-terms.js): срок не меньше 31 дня по Бишкеку, ссылка только на наш сайт, «только показать» по умолчанию, тест одному адресу, запись в журнал после отправки, повтор после сбоя
 node server/tests/totp.test.js               # второй фактор входа администраторов: эталоны RFC 6238, секрет зашифрован, повтор кода и кода восстановления отклонён, лимит неверных кодов; браузер — включение из меню, вход с полем кода
 ```
 
