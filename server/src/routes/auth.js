@@ -10,6 +10,7 @@ const xpay = require('../services/xpay');
 const telegram = require('../services/telegram');
 const { browserOf } = require('../services/userAgent');
 const totp = require('../services/totp');
+const termsNotice = require('../services/termsNotice');
 const PAY_SESSION_MS = 3600e3;
 
 const router = express.Router();
@@ -138,7 +139,8 @@ const checkResendRateLimit = makeRateLimiter(FORGOT_RATE_LIMIT, FORGOT_RATE_WIND
 // зашиваем в HTML, чтобы включение капчи было правкой .env и перезапуском
 // службы, а не правкой и выкатом страницы.
 router.get('/config', (req, res) => {
-  res.json({ turnstileSiteKey: turnstileEnabled() ? (turnstileSiteKey() || null) : null });
+  // termsNotice — уведомление об изменении правил, пока не наступил день вступления (services/termsNotice.js)
+  res.json({ turnstileSiteKey: turnstileEnabled() ? (turnstileSiteKey() || null) : null, termsNotice: termsNotice.current() });
 });
 
 router.post('/login', async (req, res, next) => {
@@ -250,6 +252,8 @@ router.post('/login', async (req, res, next) => {
       if (err) return next(err);
       req.session.userId = user.id;
       if (dash) req.session.dash = true;
+      const notice = termsNotice.current();
+      termsNotice.recordShown(pool, req.session, user, notice);
       res.json({
         email: user.email,
         role: user.role,
@@ -258,6 +262,7 @@ router.post('/login', async (req, res, next) => {
         payEnabled: xpay.enabled(),
         dashUrl: dashUrlFor(user),
         totpEnabled: !!user.totp_enabled_at,
+        termsNotice: notice,
       });
     });
   } catch (err) {
@@ -678,6 +683,8 @@ router.post('/resend-verification-public', async (req, res) => {
 
 router.get('/me', (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'not authenticated', reason: req.authReason || null });
+  const notice = termsNotice.current();
+  termsNotice.recordShown(pool, req.session, req.user, notice);
   res.json({
     email: req.user.email,
     role: req.user.role,
@@ -687,6 +694,7 @@ router.get('/me', (req, res) => {
     payEnabled: xpay.enabled(),
     dashUrl: dashUrlFor(req.user),
     totpEnabled: !!req.user.totp_enabled_at,
+    termsNotice: notice,
   });
 });
 

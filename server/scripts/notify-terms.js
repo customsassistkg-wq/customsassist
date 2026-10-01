@@ -12,8 +12,8 @@
 //   … --send                                  — разослать всем действующим пользователям с подтверждённой почтой.
 //
 // Защита: дата вступления — не раньше чем через 31 день по Бишкеку (иначе месяц не выдержан); ссылка — только на наш
-// сайт; текст «что меняется» — 20–700 знаков, обычный текст. Кому письмо уже ушло (запись terms_notice с этой датой
-// в журнале администрирования), тому второе не отправляется, поэтому после сбоя команду можно повторить. По
+// сайт; текст «что меняется» — 20–700 знаков, обычный текст. Кому письмо уже ушло (запись terms_notice с этой датой и via scripts/notify-terms.js
+// в журнале администрирования; показ блока на сайте — services/termsNotice.js — письма не заменяет), тому второе не отправляется, поэтому после сбоя команду можно повторить. По
 // итогам — одно сообщение администраторам в Telegram. Содержимое правил здесь не хранится: ссылка ведёт на страницу.
 const path = require('node:path');
 
@@ -78,7 +78,7 @@ async function run(a, deps) {
   const todo = [];
   for (const u of rows) {
     if (!test) {
-      const done = await pool.query("select 1 from admin_audit_log where action = 'terms_notice' and target_user_id = $1 and detail->>'effective' = $2", [u.id, a.effective]);
+      const done = await pool.query("select 1 from admin_audit_log where action = 'terms_notice' and target_user_id = $1 and detail->>'effective' = $2 and detail->>'via' = 'scripts/notify-terms.js'", [u.id, a.effective]);
       if (done.rows.length) { res.skipped++; continue; }
     }
     todo.push(u);

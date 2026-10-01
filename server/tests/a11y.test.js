@@ -25,6 +25,8 @@ process.env.SESSION_SECRET = 'local-check-only';
 delete process.env.NODE_ENV;
 delete process.env.RESEND_API_KEY;
 delete process.env.TURNSTILE_SECRET_KEY;
+// с включённым уведомлением об изменении правил: его блок входит во все снимки (экран входа и приложение)
+process.env.TERMS_NOTICE = JSON.stringify({ effective: '2099-01-01', url: '/terms-next.html', text: 'С 01.01.2099 вступает в силу новая редакция правил использования: тарифы, оплата и возврат.' });
 
 const user = { id: '22222222-2222-4222-8222-222222222222', email: 'user@test.local', password_hash: bcrypt.hashSync('user-password', 4), role: 'user', active: true,
   email_verified_at: new Date(), subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base', terms_version: '2026-09-18', totp_secret: null, totp_enabled_at: null };

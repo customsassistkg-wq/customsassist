@@ -50,7 +50,10 @@ function world() {
   const pool = { async query(sql, args = []) {
     if (/from users where active and lower\(email\)/.test(sql)) return { rows: users.filter((u) => u.email === args[0]) };
     if (/from users where active and email_verified_at/.test(sql)) return { rows: users.slice() };
-    if (/from admin_audit_log where action = 'terms_notice'/.test(sql)) return { rows: audit.filter((r) => r.target === args[0] && r.detail.effective === args[1]).map(() => ({ '?column?': 1 })) };
+    if (/from admin_audit_log where action = 'terms_notice'/.test(sql)) {
+      assert.match(sql, /detail->>'via' = 'scripts\/notify-terms\.js'/, 'повтор определяется по записям самого скрипта');
+      return { rows: audit.filter((r) => r.target === args[0] && r.detail.effective === args[1] && r.detail.via === 'scripts/notify-terms.js').map(() => ({ '?column?': 1 })) };
+    }
     if (/insert into admin_audit_log/.test(sql)) { audit.push({ target: args[0], detail: JSON.parse(args[1]) }); return { rows: [] }; }
     throw new Error('неожиданный запрос: ' + sql);
   } };
@@ -61,10 +64,11 @@ function world() {
 {
   // по умолчанию — только показать
   const w = world();
-  w.audit.push({ target: 'u1', detail: { effective: '2026-11-01' } });
+  w.audit.push({ target: 'u1', detail: { effective: '2026-11-01', via: 'scripts/notify-terms.js' } });
+  w.audit.push({ target: 'u2', detail: { effective: '2026-11-01', via: 'banner' } }); // блок на сайте показан, а письма не было
   const r = await notify.run(ok, w.deps);
-  assert.deepEqual(r, { planned: 2, sent: 0, skipped: 1, failed: 0 }, 'u1 уже получил: пропущен');
-  assert.equal(w.sent.length, 0); assert.equal(w.tg.length, 0); assert.equal(w.audit.length, 1);
+  assert.deepEqual(r, { planned: 2, sent: 0, skipped: 1, failed: 0 }, 'u1 уже получил письмо: пропущен; u2 видел только блок на сайте: письмо ему ещё нужно');
+  assert.equal(w.sent.length, 0); assert.equal(w.tg.length, 0); assert.equal(w.audit.length, 2);
   assert.match(w.logs.join('\n'), /Кому: 2 \(уже получили: 1\) — b@example\.test, c@example\.test/);
   assert.match(w.logs.join('\n'), /Ничего не отправлено/);
   // тест одному адресу: «[ТЕСТ]» в теме, журнал и Telegram не трогаются, повтор не блокируется

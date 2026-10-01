@@ -591,6 +591,12 @@
   .calc-warn.w-red{background:rgba(224,52,43,.11);border-color:rgba(224,52,43,.4);color:var(--red)}
   .calc-warn.w-yellow{background:rgba(166,106,0,.11);border-color:rgba(166,106,0,.4);color:var(--yellow)}
   .calc-warn.w-blue{background:rgba(90,86,214,.11);border-color:rgba(90,86,214,.4);color:var(--blue)}
+  .terms-notice{display:flex;align-items:flex-start;gap:10px}
+  .terms-notice .tn-txt{flex:1;min-width:0}
+  .terms-notice a{color:inherit;font-weight:700;text-decoration:underline}
+  .terms-notice .tn-close{flex:none;min-width:32px;min-height:32px;margin:-6px -8px -6px 0;padding:0;border:0;border-radius:8px;background:transparent;color:inherit;font-size:22px;line-height:1;cursor:pointer}
+  .terms-notice .tn-close:hover{background:rgba(90,86,214,.16)}
+  .terms-notice .tn-close:focus-visible{outline:2px solid currentColor;outline-offset:1px}
   /* Справка по товару: карточки, не относящиеся к выбранному направлению или
      стране происхождения, не удаляются, а уезжают в свёрнутый блок с причиной.
      Скрыть ограничение насовсем нельзя — инспектор должен иметь возможность
@@ -1116,6 +1122,7 @@
       <div class="auth-card">
         <div class="auth-card-logo"><img class="auth-logo-img auth-logo-dark" src="/assets/login-logo-dark.webp" width="490" height="120" alt="Customs Assist KG" loading="lazy" decoding="async"><img class="auth-logo-img auth-logo-light" src="/assets/login-logo-light.webp" width="456" height="107" alt="Customs Assist KG" loading="lazy" decoding="async"></div>
 
+    <div id="authNotice" class="calc-warn w-blue terms-notice" role="region" aria-label="Уведомление об изменении правил" style="display:none"></div>
     <div id="authViewLoading" role="status" aria-live="polite">
       <h1>Открываем приложение</h1>
       <p id="authLoadStatus" class="sub">Проверяем вход…</p>
@@ -1291,6 +1298,7 @@
     </div>
 
     <div class="main-col" role="main">
+      <div id="appNotice" class="calc-warn w-blue terms-notice" role="region" aria-label="Уведомление об изменении правил" style="display:none"></div>
 
 
       <div id="pageSearch">
@@ -1516,15 +1524,36 @@ function authCheckPassword(id,min){
 // скрипт Cloudflare даже не загружается — чужой код не тянем без нужды.
 let TURNSTILE_KEY=null, tsWidgets={}, tsReady=false;
 
+// Настройки для гостя (/api/auth/config) спрашиваются один раз: из них берутся и ключ капчи, и уведомление об изменении
+// правил (ч. 5 ст. 114 Цифрового кодекса; сервер отдаёт его, пока не наступил день вступления, services/termsNotice.js).
+let authCfgP=null;
+function authConfig(){
+  if(!authCfgP)authCfgP=fetch("/api/auth/config",{credentials:"include"}).then(function(r){return r.ok?r.json():{}}).catch(function(){return {}});
+  return authCfgP;
+}
+// Блок уведомления: текст и ссылка приходят с сервера, поэтому собираются узлами, а не разметкой; ссылка — только путь на нашем
+// сайте. Нет уведомления — блок скрыт. В приложении блок можно закрыть до следующего входа (в хранилище ничего не пишется).
+function termsNoticeFill(box,n,closable){
+  if(!box)return;
+  box.textContent="";
+  if(!n||typeof n.text!=="string"||typeof n.url!=="string"||n.url.charAt(0)!=="/"||n.url.charAt(1)==="/"){box.style.display="none";return;}
+  const t=document.createElement("span");t.className="tn-txt";t.appendChild(document.createTextNode(n.text+" "));
+  const a=document.createElement("a");a.href=n.url;a.target="_blank";a.rel="noopener";a.textContent="Прочитать новую редакцию";
+  t.appendChild(a);box.appendChild(t);
+  if(closable){
+    const b=document.createElement("button");b.type="button";b.className="tn-close";b.setAttribute("aria-label","Закрыть уведомление");b.textContent="×";
+    b.addEventListener("click",function(){box.style.display="none";});box.appendChild(b);
+  }
+  box.style.display="flex";
+}
+function termsNoticeGuest(){authConfig().then(function(c){termsNoticeFill(document.getElementById("authNotice"),c.termsNotice,false);});}
 let tsStarted=false;
 async function initTurnstile(){
   // Грузится не при открытии страницы, а когда гостю показан вид с формой (showAuthView): вошедшему человеку виджет не
   // нужен, а скрипт Cloudflare — это 85 КБ и обращение к чужому серверу с его IP при каждом открытии приложения.
   if(tsStarted)return;tsStarted=true;
   try{
-    const res=await fetch("/api/auth/config",{credentials:"include"});
-    if(!res.ok)return;
-    const cfg=await res.json();
+    const cfg=await authConfig();
     if(!cfg.turnstileSiteKey)return;
     TURNSTILE_KEY=cfg.turnstileSiteKey;
   }catch(e){return;}
@@ -1583,6 +1612,7 @@ function tsReset(name){
 
 function showAuthView(view){
   if(view==='login'||view==='forgot'||view==='register')initTurnstile();
+  if(view!=='loading')termsNoticeGuest();
   document.getElementById('authViewLoading').style.display=view==='loading'?'':'none';
   document.getElementById('authViewLogin').style.display=view==='login'?'':'none';
   document.getElementById('authViewForgot').style.display=view==='forgot'?'':'none';
@@ -1825,6 +1855,7 @@ async function showApp(){
   resetAppView();
   document.getElementById('authScreen').style.display='none';
   document.getElementById('appWrap').style.display='block';
+  termsNoticeFill(document.getElementById("appNotice"),currentUser.termsNotice,true);
   const bar=document.getElementById('userBar');
   bar.style.display='flex';
   const isAdmin=currentUser.role==='admin';
@@ -2127,6 +2158,7 @@ function resetAppView(){
   const sp=document.getElementById('speciesResult'); if(sp) sp.innerHTML='';
   const vb=document.getElementById('verifyBar'); if(vb) vb.style.display='none';
   const tg=document.getElementById('termsGate'); if(tg) tg.style.display='none';
+  const an=document.getElementById('appNotice'); if(an){an.textContent='';an.style.display='none';}
   if(typeof searchMode!=='undefined')searchMode='code';
   if(typeof currentPage!=='undefined')currentPage='search';
 }

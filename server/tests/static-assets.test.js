@@ -28,7 +28,7 @@ const all = new Map();
 // server/dash/index.html — страница дашборда администраторов: отдаётся своим блоком nginx
 // (dash.*), картинки берёт из того же /assets/ через alias.
 for (const [file, text] of [['tnved_checker.html', page], ['manifest.webmanifest', manifest],
-  ['privacy.html', read('privacy.html')], ['terms.html', read('terms.html')], ['server/dash/index.html', read('server/dash/index.html')]]) {
+  ['privacy.html', read('privacy.html')], ['terms.html', read('terms.html')], ['terms-next.html', read('terms-next.html')], ['server/dash/index.html', read('server/dash/index.html')]]) {
   for (const r of refs(text)) if (!all.has(r)) all.set(r, file);
 }
 
@@ -79,7 +79,7 @@ const denied = (p) => deny.some((re) => re.test(p));
 for (const p of ['/.git/config', '/.env', '/backup.SQL', '/tnved_checker.html.new', '/db.dump', '/site.tar.gz', '/session.md', '/deploy.sh']) {
   assert.ok(denied(p), 'должен быть закрыт: ' + p);
 }
-const open = [...all.keys(), '/', '/tnved_checker.html', '/privacy.html', '/terms.html', '/ai-risk.json', '/manifest.webmanifest',
+const open = [...all.keys(), '/', '/tnved_checker.html', '/privacy.html', '/terms.html', '/terms-next.html', '/ai-risk.json', '/manifest.webmanifest',
   '/.well-known/acme-challenge/token', '/api/checker.js', '/api/engine', '/api/auth/login', '/icons/icon-192.png', '/email-logo.jpg'];
 assert.deepEqual(open.filter(denied), [], 'запрет закрыл настоящий адрес сайта');
 assert.match(index, /app\.use\('\/icons', express\.static\(path\.join\(root, 'assets', 'icons'\)\)\)/,
