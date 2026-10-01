@@ -70,7 +70,7 @@ No task is in progress. **Изменения 01.10.2026 выложены** (`08a
 - CIS: the 2011 Treaty and the 1994 FTA Agreement are not in the Kyrgyz registry; 0 % not shown for Georgia and Turkmenistan (owner's call).
 - Play Console / TestFlight state unknown from public endpoints (`mobile/RELEASE.md`).
 - Document scanner limits found on ten dossiers (21.09.2026): a digit misread by every reader on 100-dpi scans passes with only a low-resolution note; stamped table rows lose their tails; collage pages are not rotated; per-code sums the model adds itself are not caught; the export customs fee (0.25 %) is not in the site.
-- Account menu after login (24.09.2026) not verified on production (no test account there).
+- Account menu after login: the administrator's menu verified on production on 01.10.2026 (one-off session, 1280 and 390 px, with «Двухфакторный вход»); a user's menu is not (no test user account there).
 
 ## Known risks
 
@@ -89,7 +89,6 @@ No task is in progress. **Изменения 01.10.2026 выложены** (`08a
 - Owner: turn on two-factor login in the account menu («Двухфакторный вход»: scan the QR code with an authenticator app, save the eight recovery codes). Without the phone and the codes — `scripts/totp-off.js <email>` on the server.
 - Owner (from before): reconnect Codemagic to `customsassistkg-wq/customsassist`, then delete the old `tshalabaev/customsassist`; rotate `MAIL_INBOUND_SECRET` (it appeared in a chat) in `.env` and the Worker together; recreate Turnstile in the new Cloudflare account and swap the keys; change the domain registrant to the ИП; switch the Google Cloud project owner; two-factor login in the Hetzner account; decide on backup encryption, DeepSeek and Gmail; the 15 grandfathered accounts; the tariff clause of `terms.html`; the КНР coefficients source.
 - **Launch day** (owner names it; payments through xPay under ИП Ким): delete pre-launch test payments, QR orders and audit-log rows, count retention from that day.
-- Re-check the registry for ПКМ № 160 (livestock) and № 116 (catalysts) — their cards carry no name and the edition texts come back empty through the API (№ 607 and № 614 are watched automatically now).
 
 ## Do not break
 
@@ -107,7 +106,8 @@ No task is in progress. **Изменения 01.10.2026 выложены** (`08a
 
 ## Last verified
 
-- 01.10.2026 07:19–07:23 UTC — deploy of `08aa579` verified (see Current task and `session.md`); production = GitHub `main` = mirror `main` = `08aa579`; uptime monitor ran on GitHub at 07:22:26 UTC.
+- 01.10.2026 08:10–08:16 UTC — deploys of `38d6906` (two-factor login, migration `0019` before the restart) and `da35d8e` (page description, Open Graph) verified from outside and in a browser (`session.md`); production application files = `main`; GitHub `main` = mirror `main`. Earlier the same day: `08aa579` (07:20) and `f23ab4a` (07:48); uptime monitor running since 07:22:26 UTC.
+- 01.10.2026 ~08:05 UTC, working tree of `38d6906`: all 26 tests of the `CLAUDE.md` list plus `assistant-browser.test.js` — exit 0, no SKIP (`account` after adding the new admin menu item to its expected list); after the per-account limit on wrong codes `totp`, `auth-loader`, `login-enumeration`, `api-boundary`, `telegram` and `account` rerun — pass. Browser parts in Playwright's Chromium on Linux, not in Edge.
 
 - 01.10.2026 ~07:20 UTC, working tree on `44cae24` (details in `session.md`, 01.10.2026): `node --check` of 13 files; `tools/base-sweep.js` — 43 988 codes, 0 new findings; all 25 tests of the `CLAUDE.md` list (with the new `client-error.test.js`) plus `assistant-browser.test.js` — exit 0, no SKIP; browser parts ran in Playwright's Chromium 153 on Linux (fonts DejaVu/Liberation/Noto/WenQuanYi), not in Edge. Not run: `reset-password.test.js` (needs a disposable DB), the paid `assistant-eval.js`. Big files: page 29/1, `checker.js` 4/3, `base.js` 2/2 lines; LF-only line counts equal HEAD, no NUL or U+FFFD. Nginx config: `nginx -t` of 1.28.3 on a copy — ok, h2 negotiated.
 - 01.10.2026 06:53 UTC — production = `44cae24` by SHA256 of 16 files (read from the server).
