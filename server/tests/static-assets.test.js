@@ -10,10 +10,12 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..', '..');
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 
-// Ссылки вида href="/x", src="/x", url(/x) — только свои, без внешних адресов и data:.
+// Ссылки вида href="/x", src="/x", url(/x) — только свои, без внешних адресов и data:; и полные адреса своих файлов
+// (content="https://customsassist.trade/assets/…" — картинка карточки ссылки, og:image, с 01.10.2026).
 function refs(text) {
   const out = new Set();
-  for (const re of [/(?:href|src)="(\/[^"#?]+)"/g, /url\((\/[^)#?]+)\)/g, /"src":\s*"(\/[^"#?]+)"/g]) {
+  for (const re of [/(?:href|src)="(\/[^"#?]+)"/g, /url\((\/[^)#?]+)\)/g, /"src":\s*"(\/[^"#?]+)"/g,
+    /(?:href|src|content)="https:\/\/customsassist\.trade(\/[^"#?]+\.\w+)"/g]) {
     let m;
     while ((m = re.exec(text))) out.add(m[1]);
   }
