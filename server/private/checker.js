@@ -2457,7 +2457,7 @@ function aiMark(size){
 const AI_HELLO_CHIPS=['Пошлина и ограничения на смартфоны из Китая','Сколько платить: 1000 кг куриных ножек 0207146001 из США на 2000 USD','📎 Разобрать документы: PDF, фото, Excel, Word'];
 function aiHelloHtml(){
   return '<div class="ai-hello" id="aiHello"><div class="ai-hello-mark">'+aiMark(72)+'</div>'
-    +'<h3>Чем помочь?</h3><p>Опишите товар, назовите код ТН ВЭД или приложите инвойс и другие документы — PDF, фото, Excel, Word. Ассистент ищет в базе CustomsAssistKG и отвечает по найденным карточкам.</p>'
+    +'<h3 aria-level="2">Чем помочь?</h3><p>Опишите товар, назовите код ТН ВЭД или приложите инвойс и другие документы — PDF, фото, Excel, Word. Ассистент ищет в базе CustomsAssistKG и отвечает по найденным карточкам.</p>'
     +'<div class="ai-chips">'+AI_HELLO_CHIPS.map((c,i)=>'<button type="button" class="ai-chip" data-chip="'+i+'">'+esc(c)+'</button>').join('')+'</div></div>';
 }
 function renderAiPage(){
@@ -2868,7 +2868,7 @@ function aiRenderThumbs(){
 let aiDocEditing=null;
 function aiShowDoc(d){
   aiDocEditing=d;
-  openModal('<h3 style="margin:0 0 6px">'+esc(d.name)+'</h3>'
+  openModal('<h3 aria-level="2" style="margin:0 0 6px">'+esc(d.name)+'</h3>'
     +'<div class="det">Это текст, который уйдёт в модель. Персональные данные из него уже вырезаны на сервере и заменены пометками вида [почта], [телефон], [сторона]. '
     +(d.uncleaned?'<b>Проверить очистку сейчас не удалось — сервер вычистит текст при отправке.</b> ':'')
     +'Лишнее можно убрать руками: исправьте текст и нажмите «Сохранить» — в модель уйдёт исправленное. Страницы-сканы и фото — расшифровка изображения; само изображение в модель не уходит.</div>'
@@ -3058,7 +3058,7 @@ async function openAssistantLog(onlyBad){
   openModal('<div class="ai-log-modal"></div><h2>Журнал AI-ассистента</h2>'
     +'<div class="det">За 30 дней. Страниц — прочитанных страниц документов (сканы и фото). Токены — вход без кэша / выход; стоимость — по ценам DeepSeek в момент вопроса; оценки — 👍 / 👎.</div>'
     +'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Пользователь</th><th>Вопросов</th><th>Страниц</th><th>Токены</th><th>Стоимость</th><th>Оценки</th><th>Ошибок</th></tr></thead><tbody>'+(totals||'<tr><td colspan="7">Вопросов пока не было</td></tr>')+'</tbody></table></div>'
-    +'<h3 style="margin:18px 0 8px">Расход за месяц — для счёта</h3>'
+    +'<h3 aria-level="2" style="margin:18px 0 8px">Расход за месяц — для счёта</h3>'
     +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="month" id="aiBillMonth" value="'+new Date(Date.now()+6*3600e3).toISOString().slice(0,7)+'" class="ai-bill-month"><button class="btn" type="button" onclick="loadAssistantBilling()">Показать</button><button class="btn" type="button" onclick="exportAssistantBilling()">⬇️ CSV</button></div>'
     +'<div id="aiBilling"></div>'
     +'<div style="display:flex;gap:8px;margin:14px 0 8px"><button class="btn" type="button" onclick="openAssistantLog(false)">Все</button><button class="btn" type="button" onclick="openAssistantLog(true)">Только 👎</button></div>'
@@ -3529,7 +3529,7 @@ const FOOTER_DOCS={
 function openFooterDocModal(title){
   const d=FOOTER_DOCS[title];
   if(!d)return;
-  openModal('<h3 style="margin:0 0 12px">'+esc(title)+'</h3>'
+  openModal('<h3 aria-level="2" style="margin:0 0 12px">'+esc(title)+'</h3>'
     +'<p style="font-size:13px;line-height:1.6">'+esc(d[1])+'</p>'
     +'<div class="modal-actions"><a class="calc-btn" href="'+d[0]+'" target="_blank" rel="noopener">'+esc(d[2])+'</a><button class="calc-btn ghost" type="button" onclick="closeModal()">Закрыть</button></div>');
 }
@@ -4045,7 +4045,7 @@ async function mailOpen(id){
       +'<div style="white-space:pre-wrap;font-size:12px">'+esc((t.body_text||'').slice(0,4000))+'</div></div>';
   }).join('');
   box.innerHTML='<button class="btn" type="button" id="mailBackBtn">← К списку</button>'
-    +'<h3 style="margin:12px 0 4px">'+esc(m.subject||'(без темы)')+'</h3>'
+    +'<h3 aria-level="2" style="margin:12px 0 4px">'+esc(m.subject||'(без темы)')+'</h3>'
     +'<div style="font-size:12px;color:var(--muted);margin-bottom:10px">'+esc(m.from_name?m.from_name+' <'+m.from_email+'>':m.from_email)
       +' · '+esc(fmtDateTime(m.created_at))+' · '+mailStatusTag(m.status)
       +(m.account?' · учётная запись: '+esc(m.account)+', тариф '+esc(AI_PLAN_NAMES[m.ai_plan]||m.ai_plan||'')+(m.subscription_expires_at?', подписка до '+esc(fmtCalDate(m.subscription_expires_at)):', без срока'):' · учётной записи с таким адресом нет')+'</div>'
@@ -4141,11 +4141,11 @@ async function moneyPanelRender(){
   try{const [a,b]=await Promise.all([apiFetch('/api/admin/payments?limit=100'),apiFetch('/api/admin/expenses')]);if(a.ok)pays=await a.json();if(b.ok)exps=await b.json();}
   catch(e){box.innerHTML='<div class="calc-warn w-red">Ошибка сети</div>';return;}
   const money=v=>Number(v).toLocaleString('ru-RU'),per={month:'в месяц',year:'в год',once:'разово'};
-  box.innerHTML='<h3 style="margin:0 0 8px">Оплаты'+(pays.length?' ('+pays.length+')':'')+'</h3>'
+  box.innerHTML='<h3 aria-level="2" style="margin:0 0 8px">Оплаты'+(pays.length?' ('+pays.length+')':'')+'</h3>'
     +(pays.length?'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Дата</th><th>Кто</th><th>Сумма</th><th>Тариф</th><th>Мес.</th><th>До</th><th>Способ</th><th>Заметка</th><th></th></tr></thead><tbody>'
       +pays.map(p=>'<tr><td>'+fmtDate(p.created_at)+'</td><td>'+esc(p.email)+'</td><td>'+money(p.amount)+' '+esc(p.currency)+'</td><td>'+esc(PLAN_PRICES[p.plan]?PLAN_PRICES[p.plan][0]:'—')+'</td><td>'+esc(p.months)+'</td><td>'+(p.paid_until?fmtCalDate(p.paid_until):'—')+'</td><td>'+esc(p.method||'')+'</td><td>'+esc(p.note||'')+'</td><td><button class="btn danger money-del-pay" data-id="'+esc(p.id)+'" type="button">Удалить</button></td></tr>').join('')
       +'</tbody></table></div>':'<div style="color:var(--muted);font-size:12px;margin-bottom:12px">Оплат ещё не записано. Кнопка «Оплата» — в строке пользователя.</div>')
-    +'<h3 style="margin:16px 0 8px">Постоянные расходы</h3>'
+    +'<h3 aria-level="2" style="margin:16px 0 8px">Постоянные расходы</h3>'
     +(exps.length?'<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Статья</th><th>Сумма</th><th>Период</th><th>С</th><th>По</th><th>Заметка</th><th></th></tr></thead><tbody>'
       +exps.map(x=>'<tr><td>'+esc(x.name)+'</td><td>'+money(x.amount)+' '+esc(x.currency)+'</td><td>'+esc(per[x.period]||x.period)+'</td><td>'+esc(x.starts_on||'')+'</td><td>'+esc(x.ends_on||'—')+'</td><td>'+esc(x.note||'')+'</td><td><button class="btn danger money-del-exp" data-id="'+esc(x.id)+'" type="button">Удалить</button></td></tr>').join('')
       +'</tbody></table></div>':'<div style="color:var(--muted);font-size:12px">Расходов не записано.</div>')
