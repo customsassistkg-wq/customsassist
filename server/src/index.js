@@ -227,6 +227,7 @@ if (require.main === module) {
   }
   // База грузится до открытия порта: первый поиск пользователя не ждёт разбора 12 МБ.
   require('./services/base').load();
+  require('./services/base').warm();
   const port = process.env.PORT || 3000;
   // Только loopback: снаружи API доступен через Nginx. На всех интерфейсах порт
   // закрывал лишь UFW, а при trust proxy прямой запрос подделал бы X-Forwarded-For

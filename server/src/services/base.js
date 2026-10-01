@@ -43,10 +43,21 @@ function load() {
   // мер и записи сверки. В браузер эти имена по-прежнему не уходят.
   ctx = new vm.Script('({ENGINE_API,renderHtml,findByName,lkCountry,lkCtyMatch,lkPrefRates,ETT_DB,fmtCode,fmtRate,'
     + 'TNVED_MAP,parseRateInfo,itemDuty,ettRateOn,ettTempNote,vatFreeHits,customsFeeGoods,findExcise,calcWarnings,'
-    + 'BAN_DB,ANTIDUMP_DB,LK_IN_FORCE,SOURCE_AUDIT,AUDIT_REV,UNIMEAS_ASOF,QUOTA_DB,PREF_FTA,UNIMEAS_DB})').runInContext(sb);
+    + 'BAN_DB,ANTIDUMP_DB,LK_IN_FORCE,SOURCE_AUDIT,AUDIT_REV,UNIMEAS_ASOF,QUOTA_DB,PREF_FTA,UNIMEAS_DB,'
+    // Поиск по коду идёт через корзины первых четырёх знаков; tests/base-index.test.js сверяет его с прямым просмотром этих перечней.
+    + 'norm,findTREAEU,findEEC30,findETT,findETTUAE,TR_EAEU_DB,NTM_DB,ETT_UAE_DB,NTM_BAN_DIR,ntmDir,ntmRegime})').runInContext(sb);
   info.loadedAt = new Date().toISOString();
   info.loadMs = Date.now() - t0;
   return ctx;
+}
+
+// Первый запрос после запуска строит индексы (наименования в нижнем регистре, корзины кодов) — около 100 мс. Сервер делает
+// его сам до открытия порта, а не заставляет ждать первого пользователя после каждой выкладки.
+function warm() {
+  const api = load().ENGINE_API;
+  for (const q of ['8517', 'смартфон']) {
+    try { api.renderHtml(q, ''); } catch { /* прогрев не должен ронять запуск */ }
+  }
 }
 
 // Только собственные ключи ENGINE_API: «constructor», «__proto__» и прочее унаследованное — не функции базы.
@@ -60,4 +71,4 @@ function call(fn, args) {
   return result === undefined ? null : result;
 }
 
-module.exports = { load, has, call, info };
+module.exports = { load, warm, has, call, info };
