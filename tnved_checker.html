@@ -1160,7 +1160,7 @@
       <button id="authSubmit" class="auth-btn" type="button"><span class="ab-label">Войти</span></button>
       <div class="auth-or"><span>или</span></div>
       <button id="authRegisterLink" class="auth-btn ghost" type="button"><span class="ab-label">Создать аккаунт</span></button>
-      <p class="auth-note">3 дня бесплатно, затем от 490 сом в месяц</p>
+      <p class="auth-note" id="authPriceNote">3 дня бесплатно, затем от 490 сом в месяц</p>
     </div>
 
     <div id="authViewForgot" style="display:none">
@@ -1415,9 +1415,10 @@
     <h2 id="payTitle">Оплата подписки</h2>
     <div id="payForm">
       <div class="calc-field"><label for="payPlanSel">Тариф</label><select id="payPlanSel"></select></div>
+      <p class="pay-note" id="payPlanInfo"></p>
       <div class="calc-field"><label for="payMonthsSel">Срок</label><select id="payMonthsSel"></select></div>
       <p class="pay-total" id="payTotal"></p>
-      <p class="pay-note">Оплата по QR из приложения любого банка Кыргызстана через платёжную организацию xPay. Подписка продлевается сразу после оплаты.</p>
+      <p class="pay-note">Оплата по QR из приложения любого банка Кыргызстана через платёжную организацию xPay. Подписка продлевается сразу после оплаты. Цена окончательная. Нажимая «Получить QR», вы принимаете <a href="/terms.html#payment" target="_blank" rel="noopener">условия оплаты и возврата</a> (раздел 4 правил).</p>
     </div>
     <div id="payQr" style="display:none">
       <img id="payQrImg" alt="QR-код для оплаты">
@@ -1546,7 +1547,13 @@ function termsNoticeFill(box,n,closable){
   }
   box.style.display="flex";
 }
-function termsNoticeGuest(){authConfig().then(function(c){termsNoticeFill(document.getElementById("authNotice"),c.termsNotice,false);});}
+// Из настроек гость берёт уведомление об изменении правил и цену самого дешёвого тарифа для строки под кнопкой регистрации
+// (цены лежат в PLANS на сервере; в разметке остаётся прежний текст на случай, если настройки не пришли).
+function guestConfigApply(){authConfig().then(function(c){
+  termsNoticeFill(document.getElementById("authNotice"),c.termsNotice,false);
+  const n=document.getElementById("authPriceNote");
+  if(n&&typeof c.fromPrice==="number"&&c.fromPrice>0)n.textContent="3 дня бесплатно, затем от "+c.fromPrice+" сом в месяц";
+});}
 let tsStarted=false;
 async function initTurnstile(){
   // Грузится не при открытии страницы, а когда гостю показан вид с формой (showAuthView): вошедшему человеку виджет не
@@ -1612,7 +1619,7 @@ function tsReset(name){
 
 function showAuthView(view){
   if(view==='login'||view==='forgot'||view==='register')initTurnstile();
-  if(view!=='loading')termsNoticeGuest();
+  if(view!=='loading')guestConfigApply();
   document.getElementById('authViewLoading').style.display=view==='loading'?'':'none';
   document.getElementById('authViewLogin').style.display=view==='login'?'':'none';
   document.getElementById('authViewForgot').style.display=view==='forgot'?'':'none';
@@ -2031,7 +2038,10 @@ async function openPay(){
   data.plans.forEach(p=>ps.add(new Option(p.name+' · '+p.price+' сом/мес',p.key)));
   data.months.forEach(m=>ms.add(new Option(m+' мес.',String(m))));
   const total=()=>{const p=data.plans.find(x=>x.key===ps.value);document.getElementById('payTotal').textContent='К оплате: '+(p.price*Number(ms.value)).toLocaleString('ru-RU')+' сом';};
-  ps.onchange=total;ms.onchange=total;total();
+  // Состав тарифа — до оплаты, как обещают правила (п. 4.1): тарифы различаются только лимитами AI-ассистента.
+  const pl=(n,a,b,c)=>{const d=n%10,dd=n%100;return d===1&&dd!==11?a:(d>=2&&d<=4&&(dd<12||dd>14)?b:c)};
+  const info=()=>{const p=data.plans.find(x=>x.key===ps.value);document.getElementById('payPlanInfo').textContent=p&&p.day!=null?'AI-ассистент: '+p.day+' '+pl(p.day,'вопрос','вопроса','вопросов')+' в день, '+p.month+' в месяц; документы: '+p.pages+' '+pl(p.pages,'страница','страницы','страниц')+' в месяц. Поиск, классификатор и калькуляторы — на всех тарифах одинаково.':'';};
+  ps.onchange=()=>{total();info()};ms.onchange=total;total();info();
   document.getElementById('payForm').style.display='';msg.textContent='';go.disabled=false;
   go.onclick=async()=>{
     go.disabled=true;msg.textContent='Создаём QR…';

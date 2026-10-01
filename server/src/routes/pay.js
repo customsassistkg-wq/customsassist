@@ -103,7 +103,7 @@ router.get('/plans', async (req, res, next) => {
   try {
     if (!(await payer(req))) return res.status(401).json({ error: 'unauthorized' });
     if (!xpay.enabled()) return res.status(503).json({ error: 'payments_disabled' });
-    res.json({ months: MONTHS, plans: Object.entries(PLANS).filter(([k]) => priced(k)).map(([key, p]) => ({ key, name: p.name, price: Number(p.price) })) });
+    res.json({ months: MONTHS, plans: Object.entries(PLANS).filter(([k]) => priced(k)).map(([key, p]) => ({ key, name: p.name, price: Number(p.price), day: p.day, month: p.month, pages: p.pages })) });
   } catch (err) {
     next(err);
   }

@@ -140,7 +140,10 @@ const checkResendRateLimit = makeRateLimiter(FORGOT_RATE_LIMIT, FORGOT_RATE_WIND
 // службы, а не правкой и выкатом страницы.
 router.get('/config', (req, res) => {
   // termsNotice — уведомление об изменении правил, пока не наступил день вступления (services/termsNotice.js)
-  res.json({ turnstileSiteKey: turnstileEnabled() ? (turnstileSiteKey() || null) : null, termsNotice: termsNotice.current() });
+  // fromPrice — цена самого дешёвого платного тарифа для строки под кнопкой регистрации: единственный источник цен — PLANS
+  // (routes/assistant.js, переопределяется AI_PLAN_LIMITS), а не копия в разметке страницы.
+  const prices = Object.values(require('./assistant').PLANS).map((p) => Number(p.price)).filter((x) => x > 0);
+  res.json({ turnstileSiteKey: turnstileEnabled() ? (turnstileSiteKey() || null) : null, termsNotice: termsNotice.current(), fromPrice: prices.length ? Math.min(...prices) : null });
 });
 
 router.post('/login', async (req, res, next) => {

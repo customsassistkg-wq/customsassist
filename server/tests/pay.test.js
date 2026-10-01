@@ -111,6 +111,9 @@ const { extendedUntil } = require('../src/routes/admin');
     const plans = await r.json();
     assert.deepEqual(plans.months, [1, 3, 6, 12]);
     assert.deepEqual(plans.plans.map((p) => [p.key, p.price]), [['base', 490], ['pro', 990], ['max', 1990]]);
+    // состав тарифа — окну оплаты (правила, п. 4.1: цены и состав видны до оплаты); цена на экране входа — из тех же PLANS
+    assert.deepEqual(plans.plans.map((p) => [p.key, p.day, p.month, p.pages]), [['base', 3, 90, 30], ['pro', 20, 300, 150], ['max', 100, 1500, 500]]);
+    assert.equal((await (await fetch(base + '/api/auth/config')).json()).fromPrice, 490, 'цена самого дешёвого тарифа для экрана входа — из PLANS');
 
     // Неверные тариф и срок — 400; сумма из браузера не читается.
     assert.equal((await call(ec, 'POST', '/api/pay/create', { plan: 'gold', months: 1 })).status, 400);
@@ -259,6 +262,13 @@ const { extendedUntil } = require('../src/routes/admin');
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));
       await page.goto(base + '/');
+      await page.waitForFunction(() => /от 490 сом в месяц/.test(document.getElementById('authPriceNote').textContent));
+      // строка берёт цену из настроек сервера, а не из разметки: подменённый ответ меняет её
+      const p2 = await browser.newPage();
+      await p2.route('**/api/auth/config', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ turnstileSiteKey: null, fromPrice: 777 }) }));
+      await p2.goto(base + '/');
+      await p2.waitForFunction(() => /затем от 777 сом в месяц/.test(document.getElementById('authPriceNote').textContent), null, { timeout: 5000 });
+      await p2.close();
       await page.fill('#authEmail', 'guest-pay@test.local');
       await page.fill('#authPassword', 'right-password');
       await page.click('#authSubmit');
@@ -269,6 +279,14 @@ const { extendedUntil } = require('../src/routes/admin');
       await page.waitForSelector('#payForm', { state: 'visible' });
       assert.equal(await page.locator('#payPlanSel option').count(), 3);
       assert.equal(await page.textContent('#payTotal'), 'К оплате: 490 сом');
+      assert.equal((await page.textContent('#payPlanInfo')).replace(/\s+/g, ' '), 'AI-ассистент: 3 вопроса в день, 90 в месяц; документы: 30 страниц в месяц. Поиск, классификатор и калькуляторы — на всех тарифах одинаково.');
+      await page.selectOption('#payPlanSel', 'pro');
+      assert.match(await page.textContent('#payPlanInfo'), /20 вопросов в день, 300 в месяц; документы: 150 страниц в месяц/);
+      await page.selectOption('#payPlanSel', 'max');
+      assert.match(await page.textContent('#payPlanInfo'), /100 вопросов в день, 1500 в месяц; документы: 500 страниц в месяц/);
+      await page.selectOption('#payPlanSel', 'base');
+      assert.equal(await page.locator('#payForm p', { hasText: 'Цена окончательная' }).count(), 1, 'в окне оплаты сказано, что цена окончательная');
+      assert.equal(await page.getAttribute('#payForm a[href="/terms.html#payment"]', 'target'), '_blank', 'ссылка на условия оплаты и возврата');
       await page.selectOption('#payMonthsSel', '3');
       assert.equal((await page.textContent('#payTotal')).replace(/\s/g, ' '), 'К оплате: 1 470 сом');
       if (shots) await page.screenshot({ path: shots + '/pay-form-1280.png' });
