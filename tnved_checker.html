@@ -269,7 +269,7 @@
   .acc-item.active{background:rgba(155,63,196,.12);color:var(--purple)}
   .acc-ico{width:20px;flex:none;display:flex;justify-content:center;color:var(--muted)}.acc-ico .ic{width:17px;height:17px}.acc-item:hover .acc-ico{color:var(--text)}
   .acc-lbl{flex:1;min-width:0}
-  .acc-item:has(.acc-sub:not(:empty)){flex-wrap:wrap;row-gap:1px}.acc-sub{flex-basis:100%;padding-left:30px;font-size:var(--fs-sm);color:var(--muted)}.acc-sub:empty{display:none}
+  .acc-item:has(.acc-sub:not(:empty)){flex-wrap:wrap;row-gap:1px}.acc-sub{flex-basis:100%;padding-left:30px;font-size:var(--fs-sm);color:var(--muted)}.tf-steps{margin:0 0 8px 18px;padding:0;font-size:var(--fs-md);line-height:1.5}.tf-qr{display:flex;justify-content:center;margin:6px 0 12px}.tf-qr img{background:#fff;padding:6px;border-radius:8px;width:200px;height:200px}.tf-key{display:block;font-family:ui-monospace,Consolas,monospace;font-size:var(--fs-md);letter-spacing:.04em;word-break:break-all;padding:6px 8px;border-radius:6px;background:var(--glass)}.tf-rec{font-family:ui-monospace,Consolas,monospace;font-size:var(--fs-md);line-height:1.6;columns:2;padding:8px 10px;border-radius:6px;background:var(--glass);white-space:pre;margin:0 0 6px}.acc-sub:empty{display:none}
   .acc-ext{flex:none;display:flex;color:var(--muted)}.acc-ext .ic{width:14px;height:14px}
   .acc-badge{flex:none;min-width:20px;padding:1px 6px;border-radius:10px;background:var(--red);color:#fff;font-size:var(--fs-sm);font-weight:600;text-align:center}
   .acc-badge[hidden]{display:none}
@@ -1126,6 +1126,12 @@
         </div>
         <div class="auth-fe"></div>
       </div>
+      <div class="auth-field" data-field="authTotp" id="authTotpRow" style="display:none">
+        <label for="authTotp">Код из приложения-аутентификатора</label>
+        <input id="authTotp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="11" placeholder="123456" spellcheck="false">
+        <div class="auth-fe"></div>
+        <div class="auth-note" style="text-align:left;margin-top:6px">Нет телефона под рукой — введите один из кодов восстановления (вида ABCD-EFGH).</div>
+      </div>
       <div id="turnstileLogin" class="cf-box"></div>
       <div id="authError" class="calc-warn w-red" style="display:none"></div>
       <div id="authInfo" class="calc-warn auth-ok" style="display:none"></div>
@@ -1617,6 +1623,7 @@ function showAuthScreen(msg){
   if(msg){errEl.textContent=msg;errEl.style.display='block';}
   else{errEl.style.display='none';}
   document.getElementById('authPayBtn').style.display='none';document.getElementById('authSubmit').classList.remove('ghost');
+  authHideSecondFactor();
   if(pendingVerifyMsg){
     const box=document.getElementById(pendingVerifyMsg.ok?'authInfo':'authError');
     box.textContent=pendingVerifyMsg.text;box.style.display='block';
@@ -1819,6 +1826,7 @@ async function showApp(){
       +(!isAdmin?mi('accAiBtn','i-sparkles','AI-ассистент','<span class="acc-sub" id="accQuota"></span>'):'')
       +(!isAdmin&&currentUser.payEnabled?mi('accPayBtn','i-card','Продлить подписку'):'')
       +mi('accWatchBtn','i-check','Мои коды')
+      +(isAdmin?mi('accTotpBtn','i-shield','Двухфакторный вход','<span class="acc-sub" id="accTotpState">'+(currentUser.totpEnabled?'включён':'выключен')+'</span>'):'')
       +mi('accPwdBtn','i-lock','Сменить пароль')
       +ml('mailto:info@customsassist.trade','i-mail','Написать в поддержку',false)
       +'<div class="acc-sep" role="separator"></div>'
@@ -1836,6 +1844,7 @@ async function showApp(){
   onItem('accPayBtn',()=>openPay());
   onItem('accWatchBtn',()=>openWatchList());
   onItem('accPwdBtn',()=>openChangePasswordModal());
+  onItem('accTotpBtn',()=>openTotpModal());
   document.querySelectorAll('#accWrap a.acc-item').forEach(a=>a.addEventListener('click',closeAccMenu));
   // Счётчик новых обращений и остаток вопросов — при каждом открытии, меню их не ждёт.
   const refreshAccMenu=async()=>{
@@ -2039,13 +2048,15 @@ async function doLogin(){
   authBusy=true;
   authBtnBusy(btn,true);
   try{
-    const res=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,turnstileToken:tsToken('login')})});
+    const res=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,turnstileToken:tsToken('login'),...authSecondFactor()})});
     if(!res.ok){
       const data=await res.json().catch(()=>({}));
       // Неподтверждённый адрес — не ошибка входа, а незаконченная
       // регистрация: показываем экран с объяснением и кнопкой повтора,
       // а не красную надпись под формой.
       if(data.error==='email_not_verified'){showVerifyNotice(email);return;}
+      // Второй фактор (01.10.2026): пароль верен, нужен код из приложения — показываем поле, сессии ещё нет.
+      if(data.error==='totp_required'||data.error==='totp_invalid'){authAskSecondFactor(data.error==='totp_invalid');tsReset('login');return;}
       // Токен Turnstile одноразовый: после любой неудачи нужен новый. Виджет появляется,
       // только когда сервер его потребовал, — обычный вход капчи не видит.
       if(data.error==='captcha_required'&&tsWidgets.login===undefined)tsRender('login');else tsReset('login');
@@ -2060,6 +2071,7 @@ async function doLogin(){
     }
     currentUser=await res.json();
     document.getElementById('authPassword').value='';
+    authHideSecondFactor();
     // Короткая зелёная вспышка вместо мгновенной подмены экрана: иначе переход
     // выглядит как сбой, особенно когда ответ приходит быстро.
     authBtnOk(btn);
@@ -2141,6 +2153,22 @@ document.getElementById('authSubmit').addEventListener('click',doLogin);
  document.getElementById('authLoadRetry').addEventListener('click',retryAppLoad);
  document.getElementById('authLoadLogout').addEventListener('click',doLogout);
 document.getElementById('authPassword').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin()});
+document.getElementById('authTotp').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin()});
+// Второй фактор входа (01.10.2026, только у администраторов, включивших его): шесть цифр — код из приложения,
+// иначе — код восстановления. Поле видно, пока сервер просит код; гостевой код — только имена страницы.
+function authSecondFactor(){
+  const row=document.getElementById('authTotpRow'),v=document.getElementById('authTotp').value.trim();
+  if(row.style.display==='none'||!v)return {};
+  return /^[0-9\s]{6,7}$/.test(v)?{totp:v.replace(/\s/g,'')}:{recovery:v};
+}
+function authAskSecondFactor(wrong){
+  document.getElementById('authTotpRow').style.display='';
+  const inp=document.getElementById('authTotp');inp.value='';inp.focus();
+  const err=document.getElementById('authError'),info=document.getElementById('authInfo');
+  if(wrong){info.style.display='none';err.textContent='Неверный код. Введите код, который приложение показывает сейчас, или код восстановления.';err.style.display='block';}
+  else{err.style.display='none';info.textContent='Введите код из приложения-аутентификатора.';info.style.display='block';}
+}
+function authHideSecondFactor(){const row=document.getElementById('authTotpRow');if(row){row.style.display='none';document.getElementById('authTotp').value='';}}
 document.getElementById('authEmail').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin()});
 
 document.getElementById('authForgotLink').addEventListener('click',function(e){e.preventDefault();showAuthView('forgot');});

@@ -402,6 +402,10 @@
             <label for="authPassword">Пароль</label>
             <input id="authPassword" type="password" autocomplete="current-password" placeholder="••••••••">
           </div>
+          <div class="auth-field" id="fTotp" style="display:none">
+            <label for="authTotp">Код из приложения-аутентификатора</label>
+            <input id="authTotp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="11" placeholder="123456" spellcheck="false">
+          </div>
           <div id="turnstileLogin"></div>
           <button id="authSubmit" class="auth-btn" type="button"><span class="ab-label">Войти</span></button>
           <p class="auth-note"><a href="https://customsassist.trade/">Основной сайт</a></p>
@@ -526,6 +530,7 @@
     $('who').textContent='';$('accEmail').textContent='';$('stamp').textContent='';
     $('accWrap').classList.remove('open');document.body.classList.remove('nav-open');
     $('appWrap').style.display='none';$('authScreen').style.display='flex';
+    $('authTotp').value='';$('fTotp').style.display='none';
     showAuthView('login');showMsg(msg);
   }
   function showLoading(text){$('authScreen').style.display='flex';showAuthView('loading');$('authStatus').textContent=text;}
@@ -538,11 +543,17 @@
     $('fPassword').classList.toggle('is-bad',!password);
     if(!AUTH_EMAIL_RE.test(email)||!password){showMsg('Введите email и пароль.');return;}
     busy=true;btnBusy(btn,true);showMsg('');
+    // Второй фактор (01.10.2026): поле кода появляется, когда сервер его просит; шесть цифр — код приложения, иначе — код восстановления.
+    const tv=$('authTotp').value.trim(),second=$('fTotp').style.display==='none'||!tv?{}:(/^[0-9\s]{6,7}$/.test(tv)?{totp:tv.replace(/\s/g,'')}:{recovery:tv});
     try{
-      const res=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,turnstileToken:tsToken()})});
+      const res=await fetch('/api/auth/login',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password,turnstileToken:tsToken(),...second})});
       const data=await res.json().catch(()=>({}));
       if(!res.ok){
         if(data.error==='captcha_required'){await tsRender();showMsg('Слишком много неудачных попыток. Пройдите проверку и нажмите «Войти» ещё раз.');}
+        else if(data.error==='totp_required'||data.error==='totp_invalid'){
+          tsReset();$('fTotp').style.display='';$('authTotp').value='';$('authTotp').focus();
+          showMsg(data.error==='totp_invalid'?'Неверный код. Введите код, который приложение показывает сейчас, или код восстановления.':'Введите код из приложения-аутентификатора.');
+        }
         else{
           tsReset();
           showMsg(data.error==='admin_only'?'Доступ к дашборду есть только у администраторов.'
@@ -555,12 +566,14 @@
       }
       currentUser=data;
       $('authPassword').value='';
+      $('authTotp').value='';$('fTotp').style.display='none';
       await startDash();
     }catch(e){showMsg('Не удалось соединиться с сервером.');}
     finally{busy=false;btnBusy(btn,false);}
   }
   $('authSubmit').addEventListener('click',doLogin);
   $('authPassword').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+  $('authTotp').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
   $('authEmail').addEventListener('keydown',e=>{if(e.key==='Enter')$('authPassword').focus();});
 
   async function doLogout(){

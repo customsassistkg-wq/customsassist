@@ -9,6 +9,7 @@ const { issueVerification } = require('../services/verification');
 const xpay = require('../services/xpay');
 const telegram = require('../services/telegram');
 const { browserOf } = require('../services/userAgent');
+const totp = require('../services/totp');
 const PAY_SESSION_MS = 3600e3;
 
 const router = express.Router();
@@ -159,7 +160,7 @@ router.post('/login', async (req, res, next) => {
     }
 
     const { rows } = await pool.query(
-      'select id, email, password_hash, role, active, subscription_expires_at, email_verified_at, terms_version from users where email = $1',
+      'select id, email, password_hash, role, active, subscription_expires_at, email_verified_at, terms_version, totp_secret, totp_enabled_at, totp_last_step, totp_recovery from users where email = $1',
       [key]
     );
     const user = rows[0];
@@ -205,6 +206,29 @@ router.post('/login', async (req, res, next) => {
       return res.status(403).json({ error: 'admin_only' });
     }
 
+    // Второй фактор (01.10.2026): у кого он включён, тому кроме пароля нужен код из приложения или код восстановления.
+    // «Нужен код» отвечается только после верного пароля; сессии до кода нет; неверный код — такая же неудачная
+    // попытка, как неверный пароль (те же лимиты и капча), и ещё своя: подбор кода идёт уже с верным паролем,
+    // поэтому 10 неверных кодов в час закрывают вход до конца окна (и с верным кодом), а администраторам приходит
+    // сообщение — пароль знает кто-то ещё, если это были не они.
+    let second = null;
+    if (user.totp_enabled_at) {
+      if (!totpFailures(user.id, false)) return res.status(429).json({ error: 'too many attempts, try again later' });
+      second = await checkSecondFactor(user, req.body || {});
+      if (second === 'required') return res.status(401).json({ error: 'totp_required' });
+      if (second === 'invalid') {
+        loginFailures(key);
+        loginFailuresHard(key);
+        totpFailures(user.id);
+        if (totpAlerts(user.id)) {
+          telegram.notify(`⚠️ <b>Верный пароль, неверный код второго фактора</b>\n${telegram.esc(user.email)} · IP ${telegram.esc(req.ip)} · `
+            + `${telegram.esc(browserOf(req.get('user-agent')))}\nЕсли это были не вы — пароль знает кто-то ещё: смените его в меню аккаунта. `
+            + 'После 10 неверных кодов за час вход закрыт до конца часа.');
+        }
+        return res.status(401).json({ error: 'totp_invalid' });
+      }
+    }
+
     // Enforce a single active session per account: a fresh login kicks out
     // any session already logged in as this user, so sharing one account's
     // credentials can't put two people in at the same time — the second
@@ -213,11 +237,13 @@ router.post('/login', async (req, res, next) => {
     // и основного сайта — два разных круга: вход в один не трогает другой.
     await endUserSessions(user.id, 'replaced', undefined, { dash });
     await pool.query('update users set last_login_at=now(), last_seen_at=now() where id=$1', [user.id]);
-    // Вход администратора — сообщение администраторам в Telegram (01.10.2026): второго фактора у входа нет, и вход
-    // по угаданному или утёкшему паролю иначе никто бы не заметил. Вход пользователей не сообщается.
+    // Вход администратора — сообщение администраторам в Telegram (01.10.2026): вход по угаданному или утёкшему паролю
+    // иначе никто бы не заметил. Вход пользователей не сообщается.
     if (user.role === 'admin') {
       telegram.notify(`🔐 <b>Вход администратора</b>\n${telegram.esc(user.email)} · ${dash ? 'дашборд' : 'сайт'} · IP ${telegram.esc(req.ip)} · `
-        + `${telegram.esc(browserOf(req.get('user-agent')))}\nЕсли это были не вы — смените пароль в меню аккаунта и проверьте журнал администрирования.`);
+        + `${telegram.esc(browserOf(req.get('user-agent')))}`
+        + (second && second.kind === 'recovery' ? `\n<b>По коду восстановления</b> — осталось кодов: ${second.left}.` : second ? '\nС кодом второго фактора.' : '')
+        + '\nЕсли это были не вы — смените пароль в меню аккаунта и проверьте журнал администрирования.');
     }
 
     req.session.regenerate((err) => {
@@ -231,6 +257,7 @@ router.post('/login', async (req, res, next) => {
         termsAccepted: user.terms_version === TERMS_VERSION,
         payEnabled: xpay.enabled(),
         dashUrl: dashUrlFor(user),
+        totpEnabled: !!user.totp_enabled_at,
       });
     });
   } catch (err) {
@@ -271,6 +298,99 @@ router.post('/change-password', async (req, res, next) => {
     req.session.userId = req.user.id;
     req.session.passwordChangedAt = Date.now();
     req.session.save((err) => (err ? next(err) : res.json({ ok: true })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── Второй фактор входа (01.10.2026) ──────────────────────────────────────────
+// Включает сам администратор в меню аккаунта; другим учётным записям маршруты отказывают (403). Секрет до первого
+// верного кода лежит в сессии зашифрованным, в базу (тоже зашифрованным, services/totp.js) — после него; коды
+// восстановления показываются один раз. Выключить — пароль и код (или код восстановления): с чужой открытой вкладки
+// второй фактор не снять. Без телефона и кодов — scripts/totp-off.js на сервере.
+const checkTotpLimit = makeRateLimiter(10, 60 * 60 * 1000);
+const totpFailures = makeRateLimiter(10, 60 * 60 * 1000); // неверные коды при входе — на учётную запись
+const totpAlerts = makeRateLimiter(1, 60 * 60 * 1000); // «верный пароль, неверный код» — раз в час на учётную запись
+
+// Код из тела запроса → { kind: 'code' } | { kind: 'recovery', left } | 'required' | 'invalid'. Шаг кода и код
+// восстановления «сгорают» условным UPDATE: два входа с одним и тем же кодом не проходят оба.
+async function checkSecondFactor(user, { totp: code, recovery } = {}) {
+  if (typeof code === 'string' && code.trim()) {
+    let secret;
+    try { secret = totp.unseal(user.totp_secret); } catch { return 'invalid'; }
+    const step = totp.verify(secret, code, { lastStep: user.totp_last_step == null ? null : Number(user.totp_last_step) });
+    if (step == null) return 'invalid';
+    const { rowCount } = await pool.query('update users set totp_last_step = $1 where id = $2 and (totp_last_step is null or totp_last_step < $1)', [step, user.id]);
+    return rowCount ? { kind: 'code' } : 'invalid';
+  }
+  if (typeof recovery === 'string' && recovery.trim()) {
+    const list = Array.isArray(user.totp_recovery) ? user.totp_recovery : [];
+    const i = totp.matchRecovery(list, recovery);
+    if (i < 0) return 'invalid';
+    const rest = list.filter((_, j) => j !== i);
+    const { rowCount } = await pool.query('update users set totp_recovery = $1 where id = $2 and totp_recovery @> $3',
+      [JSON.stringify(rest), user.id, JSON.stringify([list[i]])]);
+    if (!rowCount) return 'invalid';
+    await audit(user, 'totp_recovery_used', { left: rest.length });
+    return { kind: 'recovery', left: rest.length };
+  }
+  return 'required';
+}
+
+async function audit(user, action, detail = {}) {
+  await pool.query('insert into admin_audit_log (actor_id, action, target_user_id, detail) values ($1,$2,$3,$4)',
+    [user.id, action, user.id, JSON.stringify({ email: user.email, ...detail })]);
+}
+
+function adminOnly(req, res) {
+  if (!req.user) { res.status(401).json({ error: 'not authenticated' }); return false; }
+  if (req.user.role !== 'admin') { res.status(403).json({ error: 'admin_only' }); return false; }
+  return true;
+}
+
+router.post('/totp/setup', (req, res, next) => {
+  if (!adminOnly(req, res)) return;
+  if (req.user.totp_enabled_at) return res.status(409).json({ error: 'totp_already_enabled' });
+  const secret = totp.newSecret();
+  const uri = totp.otpauthUri(secret, req.user.email);
+  req.session.totpPending = totp.seal(secret);
+  req.session.save((err) => (err ? next(err) : res.json({ secret: totp.base32Encode(secret), uri, qr: totp.qrDataUrl(uri) })));
+});
+
+router.post('/totp/enable', async (req, res, next) => {
+  try {
+    if (!adminOnly(req, res)) return;
+    if (req.user.totp_enabled_at) return res.status(409).json({ error: 'totp_already_enabled' });
+    if (!req.session.totpPending) return res.status(400).json({ error: 'totp_setup_required' });
+    if (!checkTotpLimit(req.user.id)) return res.status(429).json({ error: 'too many attempts, try again later' });
+    const step = totp.verify(totp.unseal(req.session.totpPending), (req.body || {}).code);
+    if (step == null) return res.status(400).json({ error: 'totp_invalid' });
+    const codes = totp.newRecoveryCodes();
+    await pool.query('update users set totp_secret = $1, totp_enabled_at = now(), totp_last_step = $2, totp_recovery = $3 where id = $4',
+      [req.session.totpPending, step, JSON.stringify(codes.map(totp.hashRecovery)), req.user.id]);
+    delete req.session.totpPending;
+    await audit(req.user, 'totp_enabled');
+    telegram.notify(`🔐 <b>Второй фактор включён</b>\n${telegram.esc(req.user.email)} — вход теперь требует код из приложения.`);
+    req.session.save((err) => (err ? next(err) : res.json({ ok: true, recovery: codes })));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/totp/disable', async (req, res, next) => {
+  try {
+    if (!adminOnly(req, res)) return;
+    if (!req.user.totp_enabled_at) return res.status(409).json({ error: 'totp_not_enabled' });
+    if (!checkTotpLimit(req.user.id)) return res.status(429).json({ error: 'too many attempts, try again later' });
+    const { password } = req.body || {};
+    const { rows: [u] } = await pool.query('select id, email, password_hash, totp_secret, totp_last_step, totp_recovery from users where id = $1', [req.user.id]);
+    if (!u || typeof password !== 'string' || !(await bcrypt.compare(password, u.password_hash))) return res.status(403).json({ error: 'wrong current password' });
+    const second = await checkSecondFactor(u, req.body || {});
+    if (second === 'required' || second === 'invalid') return res.status(400).json({ error: second === 'required' ? 'totp_required' : 'totp_invalid' });
+    await pool.query('update users set totp_secret = null, totp_enabled_at = null, totp_last_step = null, totp_recovery = null where id = $1', [u.id]);
+    await audit(req.user, 'totp_disabled');
+    telegram.notify(`🔓 <b>Второй фактор выключен</b>\n${telegram.esc(req.user.email)} — вход снова только по паролю.`);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }
@@ -566,6 +686,7 @@ router.get('/me', (req, res) => {
     termsAccepted: req.user.terms_version === TERMS_VERSION,
     payEnabled: xpay.enabled(),
     dashUrl: dashUrlFor(req.user),
+    totpEnabled: !!req.user.totp_enabled_at,
   });
 });
 

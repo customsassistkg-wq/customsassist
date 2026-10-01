@@ -107,7 +107,7 @@ const app = require('../src/index');
       await page.click('#accMenuBtn');
       await page.waitForFunction(() => !document.getElementById('accMailBadge').hidden);
       assert.deepEqual(await items(page), ['Администрирование', 'Пользователи', 'Журнал AI-ассистента', 'Оплаты и расходы', 'Обращения3', 'Дашборд',
-        'Аккаунт', 'Мои коды', 'Сменить пароль', 'Написать в поддержку', 'Выйти']);
+        'Аккаунт', 'Мои коды', 'Двухфакторный вход', 'Сменить пароль', 'Написать в поддержку', 'Выйти']);
       assert.equal(await page.getAttribute('#accMenu a[href="https://dash.test.local"]', 'target'), '_blank');
       await page.keyboard.press('Escape');
       assert.equal(await page.isVisible('#accMenu'), false, 'Escape закрывает меню');

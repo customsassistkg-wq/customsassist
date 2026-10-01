@@ -3795,6 +3795,91 @@ function openChangePasswordModal(){
     }catch(e){fail('Нет связи с сервером');btn.disabled=false;}
   };
 }
+// ─── Двухфакторный вход администратора (01.10.2026) ───
+// Включить: «Включить» → сервер выдаёт секрет (QR-код и ключ для ручного ввода), первый код из приложения его
+// подтверждает, коды восстановления показываются один раз. Выключить: пароль и код (или код восстановления) — с
+// чужой открытой вкладки второй фактор не снять. Состояние — currentUser.totpEnabled (вход и /me), подпись в меню —
+// #accTotpState. Сервер — routes/auth.js, /api/auth/totp/*.
+function totpStateLabel(){const el=document.getElementById('accTotpState');if(el)el.textContent=currentUser&&currentUser.totpEnabled?'включён':'выключен';}
+function openTotpModal(){
+  if(!currentUser||currentUser.role!=='admin')return;
+  const g=id=>document.getElementById(id);
+  const head='<h2>Двухфакторный вход</h2><div id="tfError" class="calc-warn w-red" style="display:none" role="alert"></div>';
+  if(currentUser.totpEnabled){
+    openModal(head
+      +'<p class="cp-note">Включён: при входе на сайт и на дашборд нужен код из приложения-аутентификатора.</p>'
+      +'<div id="tfForm">'
+      +'<div class="calc-field"><label for="tfPass">Пароль</label><input id="tfPass" type="password" autocomplete="current-password"></div>'
+      +'<div class="calc-field"><label for="tfCode">Код из приложения или код восстановления</label><input id="tfCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="11"></div>'
+      +'<div class="modal-actions"><button class="calc-btn ghost" type="button" id="tfCancel">Отмена</button><button class="calc-btn" type="button" id="tfOff">Выключить</button></div>'
+      +'</div>');
+    const err=g('tfError'),fail=t=>{err.textContent=t;err.style.display='block';};
+    g('tfCancel').onclick=closeModal;
+    g('tfPass').focus();
+    g('tfOff').onclick=async()=>{
+      err.style.display='none';
+      const password=g('tfPass').value,v=g('tfCode').value.trim();
+      if(!password||!v){fail('Введите пароль и код');return;}
+      const second=/^[0-9\s]{6,7}$/.test(v)?{totp:v.replace(/\s/g,'')}:{recovery:v};
+      const btn=g('tfOff');btn.disabled=true;
+      try{
+        const res=await apiFetch('/api/auth/totp/disable',{method:'POST',body:JSON.stringify({password,...second})});
+        if(res.status===401)return;
+        const d=await res.json().catch(()=>({}));
+        if(!res.ok){fail(d.error==='wrong current password'?'Пароль указан неверно':d.error==='totp_invalid'?'Неверный код':res.status===429?'Слишком много попыток. Попробуйте позже.':'Не удалось выключить ('+res.status+')');btn.disabled=false;return;}
+        currentUser.totpEnabled=false;totpStateLabel();
+        g('tfForm').innerHTML='<div class="calc-warn auth-ok" style="display:block">Второй фактор выключен: вход снова только по паролю.</div><div class="modal-actions"><button class="calc-btn" type="button" id="tfDone">Готово</button></div>';
+        g('tfDone').onclick=closeModal;
+      }catch(e){fail('Нет связи с сервером');btn.disabled=false;}
+    };
+    return;
+  }
+  openModal(head
+    +'<p class="cp-note">После включения вход на сайт и на дашборд требует, кроме пароля, шестизначный код из приложения-аутентификатора на телефоне (Google Authenticator, Microsoft Authenticator, 1Password и другие). Утёкший пароль без телефона вход не откроет.</p>'
+    +'<div id="tfForm"><div class="modal-actions"><button class="calc-btn ghost" type="button" id="tfCancel">Отмена</button><button class="calc-btn" type="button" id="tfStart">Включить</button></div></div>');
+  const err=g('tfError'),fail=t=>{err.textContent=t;err.style.display='block';};
+  g('tfCancel').onclick=closeModal;
+  g('tfStart').onclick=async()=>{
+    err.style.display='none';
+    const start=g('tfStart');start.disabled=true;
+    let d;
+    try{
+      const res=await apiFetch('/api/auth/totp/setup',{method:'POST',body:'{}'});
+      if(res.status===401)return;
+      d=await res.json().catch(()=>({}));
+      if(!res.ok||!d.qr){fail('Не удалось начать ('+res.status+')');start.disabled=false;return;}
+    }catch(e){fail('Нет связи с сервером');start.disabled=false;return;}
+    g('tfForm').innerHTML='<ol class="tf-steps"><li>Откройте приложение-аутентификатор и отсканируйте QR-код или введите ключ вручную.</li><li>Введите шестизначный код, который покажет приложение.</li></ol>'
+      +'<div class="tf-qr"><img id="tfQr" alt="QR-код для приложения-аутентификатора" width="200" height="200"></div>'
+      +'<div class="calc-field"><label>Ключ для ручного ввода</label><code id="tfKey" class="tf-key"></code></div>'
+      +'<div class="calc-field"><label for="tfCode">Код из приложения</label><input id="tfCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7"></div>'
+      +'<div class="modal-actions"><button class="calc-btn ghost" type="button" id="tfCancel2">Отмена</button><button class="calc-btn" type="button" id="tfOn">Подтвердить</button></div>';
+    g('tfQr').src=d.qr;
+    g('tfKey').textContent=String(d.secret||'').replace(/(.{4})/g,'$1 ').trim();
+    g('tfCancel2').onclick=closeModal;
+    g('tfCode').focus();
+    g('tfOn').onclick=async()=>{
+      err.style.display='none';
+      const code=g('tfCode').value.replace(/\s/g,'');
+      if(!/^\d{6}$/.test(code)){fail('Введите шесть цифр из приложения');return;}
+      const btn=g('tfOn');btn.disabled=true;
+      try{
+        const res=await apiFetch('/api/auth/totp/enable',{method:'POST',body:JSON.stringify({code})});
+        if(res.status===401)return;
+        const r=await res.json().catch(()=>({}));
+        if(!res.ok){fail(r.error==='totp_invalid'?'Неверный код. Проверьте, что время на телефоне точное, и введите новый код.':res.status===429?'Слишком много попыток. Попробуйте позже.':'Не удалось включить ('+res.status+')');btn.disabled=false;return;}
+        currentUser.totpEnabled=true;totpStateLabel();
+        g('tfForm').innerHTML='<div class="calc-warn auth-ok" style="display:block">Второй фактор включён.</div>'
+          +'<p class="cp-note"><b>Коды восстановления</b> — каждый открывает вход один раз, если телефона нет под рукой. Сохраните их сейчас (в менеджере паролей или на бумаге): больше они не покажутся.</p>'
+          +'<pre id="tfRecovery" class="tf-rec"></pre>'
+          +'<div class="modal-actions"><button class="calc-btn ghost" type="button" id="tfCopy">Скопировать</button><button class="calc-btn" type="button" id="tfDone">Коды сохранены</button></div>';
+        g('tfRecovery').textContent=(r.recovery||[]).join('\n');
+        g('tfCopy').onclick=()=>{if(navigator.clipboard)navigator.clipboard.writeText(g('tfRecovery').textContent).then(()=>{g('tfCopy').textContent='Скопировано';},()=>{});};
+        g('tfDone').onclick=closeModal;
+      }catch(e){fail('Нет связи с сервером');btn.disabled=false;}
+    };
+  };
+}
 
 function openCreateUserModal(){
   openModal(
