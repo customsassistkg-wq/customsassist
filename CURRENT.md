@@ -18,8 +18,8 @@ Short, current, replaceable. Long-term rules go to `CLAUDE.md`/`docs/`, history 
 ## Current production state
 
 - Site live at `https://customsassist.trade` (VPS 65.109.170.170, Hetzner Helsinki; Ubuntu 26.04.1, nginx 1.28.3, Node 22.23.2, server time UTC). `ts.customsassist.trade` is a different project on another server.
-- **Production = `main` = `44cae24`** for all application files: SHA256 of 16 files (page, legal pages, manifest, `base.js`, `checker.js`, `dash.js`, dashboard page, `index.js`, `assistant.js`, `engine.js`, `auth.js`, `routes/assistant.js`, the prompt, `watch-sources.js`) compared from the server on 01.10.2026 06:53 UTC; the Nginx site config equals the repo's (checked 06:05 UTC).
-- Last deploy: 01.10.2026 06:35 UTC by «выложи» from Telegram — branch `claude/watch-20261001-0558`, commit `44cae24` (`base.js`: beef benefit 7.1.82 checked against Council Decision № 18; `watch-sources.js`), backup `/root/deploy_backups/20261001_063508_telegram/`, tests passed on the server, API restarted, `main` moved on GitHub. Before it: 30.09.2026 17:35 UTC, `d1183d0`.
+- **Production = `main` = `08aa579`** for all application files (GitHub and the mirror `/srv/git/tnved.git` pushed; served page, `privacy.html` and the footer mark equal the commit by SHA256; Nginx config installed from the commit).
+- Last deploy: 01.10.2026 07:19–07:20 UTC, commit `08aa579` (manual, at the owner's word): Nginx (HTTP/2), footer mark, `index.js`, `routes/engine.js`, `routes/clientError.js`, `routes/auth.js`, `routes/assistant.js`, `services/assistant.js`, `services/userAgent.js`, `base.js`, `checker.js`, `privacy.html`, page; backup `/root/deploy_backups/20261001_071906_engine-errors/`. Before it: 01.10.2026 06:35 UTC by «выложи» from Telegram — `44cae24` (beef benefit 7.1.82, Council № 18).
 - Health on 01.10.2026: `tnved`, `nginx`, `postgresql`, `tnved-deploy.path` active, no failed units; the API journal of 24.09–01.10 holds only eight НБКР timeouts; no 5xx in the retained Nginx logs (scanners' `.env` probes get 404); daily backup with restore check ok (`users=18/18` on 01.10); off-site pull marker 30.09 06:00 UTC; 38 API restarts on 29.09–01.10 (deploys).
 - Database migrations `0001`–`0018` applied (by hand at deploy, no migrations table).
 - Accounts on 01.10.2026: 18 — one administrator, 15 users without a subscription term (grandfathered), two expired trials, none with a running term.
@@ -27,7 +27,7 @@ Short, current, replaceable. Long-term rules go to `CLAUDE.md`/`docs/`, history 
 
 ## Current task
 
-**Изменения 01.10.2026 — в рабочем дереве, не закоммичены и не выложены** (слово владельца на коммит и выкладку не получено). Сделано поверх `44cae24`, проверено полным списком тестов (раздел «Last verified»):
+No task is in progress. **Изменения 01.10.2026 выложены** (`08aa579`, 07:20 UTC, по слову владельца «закоммить и выложи … 3 меняй на новый, 4 пока не трогай»; Claude для помощника — не трогать):
 
 1. **Счётчики перебора `/api/engine` переживают перезапуск** — `server/var/engine-usage.json`, метки HMAC вместо текста, права 600, вчерашние сутки стираются; SIGTERM сохраняет и выходит (`routes/engine.js`, `index.js`). До этого каждая выкладка обнуляла сутки.
 2. **Ошибки в браузере видны администраторам** — `<script data-errors>` первым скриптом страницы → `POST /api/client-error` (очистка кодов, почты, параметров адреса; лимиты; строка журнала, на дашборде; одно сообщение в Telegram на ошибку в сутки); **`GET /api/health`** для внешнего монитора; **вход администратора — сообщение в Telegram**.
@@ -38,7 +38,7 @@ Short, current, replaceable. Long-term rules go to `CLAUDE.md`/`docs/`, history 
 6. **HTTP/2** в `nginx.conf` (`nginx -t` той же версии 1.28.3 — ok, h2 на всех трёх именах).
 7. **Тесты**: общий запуск браузера `tests/browser.js` (`PLAYWRIGHT_CHANNEL`), новый `client-error.test.js`; расширены `engine`, `static-assets`, `lookup-filter` (дата по умолчанию на часах 20:00 UTC), `telegram`, `assistant`.
 
-**Выкладка, когда владелец скажет** (порядок [server/CHECKER.md](server/CHECKER.md)): дату редакции в `privacy.html` (сейчас 01.10.2026) — на день выкладки; `nginx.conf` → `nginx -t` → reload; `assets/footer-logo.webp`; `src/index.js`, `routes/engine.js`, `routes/clientError.js`, `routes/auth.js`, `routes/assistant.js`, `services/assistant.js`, `services/userAgent.js`, `private/base.js`, `private/checker.js`; перезапуск `tnved`; страница и `privacy.html` последними. После — SHA256 снаружи; `/api/health` 200; `/api/client-error` 403 без Origin; через 5 с после первого поиска появился `server/var/engine-usage.json` (600, `tnved`).
+**Выложено и проверено** 01.10.2026 07:19–07:22 UTC (подробно — `session.md`, «Выкладка `08aa579`»): SHA256 на стадии и снаружи = коммит, `nginx -t` и HTTP/2 на трёх именах, `/api/health` 200, `/api/client-error` 403 без Origin и 204 с ним, `engine-usage.json` создан (tnved, 600); живой сайт после входа (одноразовая сессия, удалена) — поиск, дата по Бишкеку, новый знак подвала, без ошибок; монитор отработал на GitHub в 07:22:26 UTC.
 
 ## Recently completed
 
@@ -78,8 +78,8 @@ Short, current, replaceable. Long-term rules go to `CLAUDE.md`/`docs/`, history 
 
 ## Next steps
 
-- Uptime monitor: after the first push confirm that it runs (`grep customsassist-uptime /var/log/nginx/access.log`); owner, optionally — Telegram alerts from it: repository secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALERT_CHAT_ID` (copying the bot token to GitHub is the owner's decision).
-- **08.10.2026 — ETT split 8112 92 410 0 → 410 1 / 410 9** (Collegium № 112, Council № 100): the ready commit is on `claude/ett-8112-split` (`964e414`, grown from `7c754ed`); `main` has moved since (`44cae24`, and this session's commit), so it goes as a fresh routine branch or a rebase — the deploy service takes only a branch grown from the current `main`. The watcher reminds daily until it is in.
+- Uptime monitor runs (first run on GitHub 01.10.2026 07:22:26 UTC, both checks 200); is it still running — `grep customsassist-uptime /var/log/nginx/access.log` (requests from GitHub's Azure addresses every 30 minutes). Owner, optionally — Telegram alerts from it: repository secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALERT_CHAT_ID` (copying the bot token to GitHub is the owner's decision); without them alerts come as a GitHub issue and mail.
+- **08.10.2026 — ETT split 8112 92 410 0 → 410 1 / 410 9** (Collegium № 112, Council № 100): the ready commit is on `claude/ett-8112-split` (`964e414`, grown from `7c754ed`); `main` has moved since (`44cae24`, `08aa579`), so it goes as a fresh routine branch or a rebase — the deploy service takes only a branch grown from the current `main`. The watcher reminds daily until it is in.
 - Merge or close `claude/watch-20260930-1649` (its `session.md` entry on bill 6-16490/26; its `CURRENT.md` line is already in «Open issues»). Delete the merged `claude/customsassistkg-ux-audit-erht3z` and `feature/ai-assistant`.
 - Claude for the assistant: an Anthropic key on the server as `ANTHROPIC_API_KEY`, then `EVAL_MODEL=claude-sonnet-5-5 AI_THINKING=between_tools node tests/assistant-eval.js` and the same with `claude-haiku-4-5` / `claude-opus-5-5` against DeepSeek (several runs each); the eval has no document cases yet — add redacted dossier texts before deciding.
 - Next development steps proposed on 01.10.2026: «Назад» and links to a result (`history.pushState`; the app creates no history entries, so the Android back button most likely leaves the app — inferred from the code, not checked on a device), two-factor login for administrators.
@@ -102,6 +102,8 @@ Short, current, replaceable. Long-term rules go to `CLAUDE.md`/`docs/`, history 
 - `AGENTS.md` is generated from `CLAUDE.md`; «кыргызский», never «киргизский».
 
 ## Last verified
+
+- 01.10.2026 07:19–07:23 UTC — deploy of `08aa579` verified (see Current task and `session.md`); production = GitHub `main` = mirror `main` = `08aa579`; uptime monitor ran on GitHub at 07:22:26 UTC.
 
 - 01.10.2026 ~07:20 UTC, working tree on `44cae24` (details in `session.md`, 01.10.2026): `node --check` of 13 files; `tools/base-sweep.js` — 43 988 codes, 0 new findings; all 25 tests of the `CLAUDE.md` list (with the new `client-error.test.js`) plus `assistant-browser.test.js` — exit 0, no SKIP; browser parts ran in Playwright's Chromium 153 on Linux (fonts DejaVu/Liberation/Noto/WenQuanYi), not in Edge. Not run: `reset-password.test.js` (needs a disposable DB), the paid `assistant-eval.js`. Big files: page 29/1, `checker.js` 4/3, `base.js` 2/2 lines; LF-only line counts equal HEAD, no NUL or U+FFFD. Nginx config: `nginx -t` of 1.28.3 on a copy — ok, h2 negotiated.
 - 01.10.2026 06:53 UTC — production = `44cae24` by SHA256 of 16 files (read from the server).
