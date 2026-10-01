@@ -45,7 +45,10 @@ function load() {
     + 'TNVED_MAP,parseRateInfo,itemDuty,ettRateOn,ettTempNote,vatFreeHits,customsFeeGoods,findExcise,calcWarnings,'
     + 'BAN_DB,ANTIDUMP_DB,LK_IN_FORCE,SOURCE_AUDIT,AUDIT_REV,UNIMEAS_ASOF,QUOTA_DB,PREF_FTA,UNIMEAS_DB,'
     // Поиск по коду идёт через корзины первых четырёх знаков; tests/base-index.test.js сверяет его с прямым просмотром этих перечней.
-    + 'norm,findTREAEU,findEEC30,findETT,findETTUAE,TR_EAEU_DB,NTM_DB,ETT_UAE_DB,NTM_BAN_DIR,ntmDir,ntmRegime})').runInContext(sb);
+    + 'norm,findTREAEU,findEEC30,findETT,findETTUAE,TR_EAEU_DB,NTM_DB,ETT_UAE_DB,NTM_BAN_DIR,ntmDir,ntmRegime,'
+    + 'head4Items,codeCands,actCands,ACT_LEGACY,actCodeNote,legacyMapFor,legacyAppliesTo,findTROIS,TROIS_DB,NKS,NBNDS_DB,'
+    + 'SERT_CODES,MED_CODES,LS_CODES,POST131_APP6_VET_CODES,MAT_CODES,ART299_CODES,EEC_WASTE,ART297_P20_VIE_CODES,'
+    + 'ART297_P26_SPORT_CODES,ART297_PERECHEN_LISTS,ART298_LISTS})').runInContext(sb);
   info.loadedAt = new Date().toISOString();
   info.loadMs = Date.now() - t0;
   return ctx;

@@ -2827,6 +2827,32 @@ function head4Candidates(idx,qn){
   const a=idx.byHead.get(qn.slice(0,4));
   return a?(idx.shorts.length?a.concat(idx.shorts):a):idx.shorts;
 }
+// То же для перечней-словарей «код → …» (Object.entries) и массивов строк: head4Items отдаёт записи, которые МОГУТ
+// совпасть с запросом qn (от четырёх знаков), в прежнем порядке перечня. Цикл вызывающей функции остаётся прежним и сам
+// проверяет совпадение, поэтому результат тот же, что при полном просмотре. always(код) — записи, которые кандидаты при любом
+// запросе (null — таких нет): для вызывающих actCodeNote это код прежней номенклатуры из TNVED_MAP, которого нет в действующем
+// ЕТТ (он сравнивается по преемникам), для НКС — код, отнесённый к прежней редакции ЕТТ (legacyMapFor). Один массив — один
+// способ отбора: индекс запоминается по массиву.
+const HEAD4_ITEMS=new WeakMap(),ENTRIES_OF=new WeakMap();
+function entriesOf(obj){let e=ENTRIES_OF.get(obj);if(!e){e=Object.entries(obj);ENTRIES_OF.set(obj,e)}return e}
+function head4Items(items,keyOf,always,qn){
+  let ix=HEAD4_ITEMS.get(items);
+  if(!ix){
+    ix={byHead:new Map(),shorts:[]};
+    let i=0; // items — массив или Set (НКС): у Set.forEach первый аргумент — значение, поэтому номер считается сам
+    for(const it of items){
+      const cn=keyOf(it);
+      if(always&&always(cn))ix.shorts.push([i,it]);
+      else head4Add(ix,cn,[i,it]);
+      i++;
+    }
+    HEAD4_ITEMS.set(items,ix);
+  }
+  return head4Candidates(ix,qn).slice().sort((a,b)=>a[0]-b[0]).map(r=>r[1]);
+}
+const ACT_LEGACY=cn=>TNVED_MAP[cn]&&!ettPrefixSet().has(cn);
+const codeCands=(obj,qn)=>head4Items(entriesOf(obj),e=>norm(e[0]),null,qn);
+const actCands=(obj,qn)=>head4Items(entriesOf(obj),e=>norm(e[0]),ACT_LEGACY,qn);
 // Позиции перечней ТР ЕАЭС вместе с кодами, уже приведёнными norm(): раньше каждый запрос заново разбирал
 // все коды всех перечней. Строится при первом обращении, когда база загружена целиком.
 let TR_EAEU_FLAT=null;
@@ -2870,7 +2896,7 @@ function findTREAEU(q){
 function findSert(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const seen=new Set(),res=[];
-  for(const [code,name] of Object.entries(SERT_CODES)){
+  for(const [code,name] of codeCands(SERT_CODES,qn)){
     const cn=norm(code);
     if(cn.startsWith(qn)||qn.startsWith(cn.slice(0,Math.min(qn.length,10)))){
       if(!seen.has(name)){seen.add(name);res.push({code,name})}
@@ -2895,7 +2921,7 @@ const MED_CODES={'3005100000':'Перевязочный материал: ват
 function findMed(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const seen=new Set(),res=[];
-  for(const [code,name] of Object.entries(MED_CODES)){
+  for(const [code,name] of codeCands(MED_CODES,qn)){
     const cn=norm(code);
     if(cn.startsWith(qn)||qn.startsWith(cn.slice(0,Math.min(qn.length,10)))){
       if(!seen.has(name)){seen.add(name);res.push({code,name})}
@@ -2915,7 +2941,7 @@ const MAT_CODES={'1108120000':'Крахмал кукурузный','1108130000'
 function findMat(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const seen=new Set(),res=[];
-  for(const [code,name] of Object.entries(MAT_CODES)){
+  for(const [code,name] of codeCands(MAT_CODES,qn)){
     const cn=norm(code);
     if(cn.startsWith(qn)||qn.startsWith(cn.slice(0,Math.min(qn.length,10)))){
       if(!seen.has(name)){seen.add(name);res.push({code,name})}
@@ -3044,7 +3070,7 @@ function findArt297Perechen(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const res=[];
   for(const list of ART297_PERECHEN_LISTS){
-    for(const [code,name] of Object.entries(list.codes)){
+    for(const [code,name] of actCands(list.codes,qn)){
       const note=actCodeNote(norm(code),qn);
       if(note!==false){
         res.push({p:list.p,app:list.app,title:list.title,unver:!!list.unver,code,name:name+note});
@@ -3057,7 +3083,7 @@ function findArt298(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const res=[];
   for(const list of ART298_LISTS){
-    for(const [code,name] of Object.entries(list.codes)){
+    for(const [code,name] of actCands(list.codes,qn)){
       const note=actCodeNote(norm(code),qn);
       if(note!==false){
         res.push({app:list.app,title:list.title,code,name:name+note});
@@ -3069,7 +3095,7 @@ function findArt298(q){
 function findArt299(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const res=[];
-  for(const [code,name] of Object.entries(ART299_CODES)){
+  for(const [code,name] of codeCands(ART299_CODES,qn)){
     const cn=norm(code);
     if(cn.startsWith(qn)||qn.startsWith(cn.slice(0,Math.min(qn.length,10)))){
       res.push({code,name});
@@ -3080,7 +3106,7 @@ function findArt299(q){
 function findApp6Vet(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const res=[];
-  for(const [code,name] of Object.entries(POST131_APP6_VET_CODES)){
+  for(const [code,name] of codeCands(POST131_APP6_VET_CODES,qn)){
     const cn=norm(code);
     if(cn.startsWith(qn)||qn.startsWith(cn.slice(0,Math.min(qn.length,10)))){
       res.push({code,name});
@@ -3444,7 +3470,7 @@ const ART297_P30_JEWEL_CODES={
 function findArt297P20(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const res=[];
-  for(const [code,name] of Object.entries(ART297_P20_VIE_CODES)){
+  for(const [code,name] of actCands(ART297_P20_VIE_CODES,qn)){
     const note=actCodeNote(norm(code),qn);
     if(note!==false){
       res.push({code,name:name+note});
@@ -3455,7 +3481,7 @@ function findArt297P20(q){
 function findArt297P26(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const res=[];
-  for(const [code,name] of Object.entries(ART297_P26_SPORT_CODES)){
+  for(const [code,name] of actCands(ART297_P26_SPORT_CODES,qn)){
     const note=actCodeNote(norm(code),qn);
     if(note!==false){
       res.push({code,name:name+note});
@@ -3604,7 +3630,7 @@ const EEC_WASTE={
 function findEECWaste(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const seen=new Set(),res=[];
-  for(const [code,val] of Object.entries(EEC_WASTE)){
+  for(const [code,val] of codeCands(EEC_WASTE,qn)){
     const cn=norm(code);
     if(cn.startsWith(qn)||qn.startsWith(cn.slice(0,Math.min(qn.length,cn.length)))){
       // Код, общий для нескольких строк раздела 1.2 (3825, 3825 61 000 0, 7204 …), хранит
@@ -4811,17 +4837,33 @@ function troisNameHtml(qq,list){
   const tg=nAct>0?'<span class="tag t-srt">🛡️ Товарный знак в ТРОИС</span>':'<span class="tag t-usir">🛡️ ТРОИС — записи недействующие</span>';
   return `<div class="card c-srt"><div class="rh"><div class="ico">🛡️</div><div><div class="rc">${esc(qq)}</div></div></div><div class="rn">В таможенном реестре ОИС найдено записей по названию: ${list.length}${nAct>0?', из них действующих: '+nAct:' (действующих нет)'}</div><div class="tags">${tg}</div><div class="usir-list">${rows}${more}</div>${troisDetHtml()}</div>`;
 }
+// Коды записей ТРОИС по корзинам первых четырёх знаков (см. head4Add); запись индекса — [номер записи, номер кода, код без
+// пометки «…>», код как записан]. Двузначные (глава) и короче четырёх знаков коды просматриваются при любом запросе.
+let TROIS_IDX=null;
+function troisIndex(){
+  if(!TROIS_IDX){
+    TROIS_IDX={byHead:new Map(),shorts:[]};
+    TROIS_DB.forEach((rec,ri)=>rec[9].forEach((raw,k)=>{
+      const gt=raw.indexOf('>'),c=gt<0?raw:raw.slice(gt+1);
+      head4Add(TROIS_IDX,c,[ri,k,c,raw]);
+    }));
+  }
+  return TROIS_IDX;
+}
 function findTROIS(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
-  const res=[];
-  for(const rec of TROIS_DB){
-    let hit='';
-    for(const raw of rec[9]){
-      const gt=raw.indexOf('>'),c=gt<0?raw:raw.slice(gt+1);
-      if(c.length===2){if(qn.slice(0,2)===c){hit=raw;break}continue}
-      if(c.startsWith(qn)||qn.startsWith(c)){hit=raw;break}
+  const first=new Map(); // запись → её первый подходящий код
+  for(const e of head4Candidates(troisIndex(),qn)){
+    const c=e[2];
+    if(c.length===2?qn.slice(0,2)===c:(c.startsWith(qn)||qn.startsWith(c))){
+      const p=first.get(e[0]);
+      if(p===undefined||e[1]<p[1])first.set(e[0],e);
     }
-    if(hit)res.push({rec:rec,code:hit});
+  }
+  const res=[];
+  for(const ri of [...first.keys()].sort((a,b)=>a-b)){
+    const hit=first.get(ri)[3];
+    if(hit)res.push({rec:TROIS_DB[ri],code:hit});
   }
   res.sort((x,y)=>(y.rec[4]-x.rec[4])||(x.rec[0]<y.rec[0]?-1:1));
   return res;
@@ -5419,7 +5461,7 @@ function findNKS(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const legacy=legacyMapFor(NKS,c=>c);
   const byList=new Map();
-  for(const c of NKS){
+  for(const c of head4Items(NKS,c=>c,c=>legacy.has(c),qn)){
     let at=null,isLegacy=false;
     if(!(c.startsWith(qn)||qn.startsWith(c.slice(0,Math.min(qn.length,10))))){
       const L=legacy.get(c);
@@ -5492,7 +5534,7 @@ function findNBNDS(q){
   const qn=norm(q).replace(/[^0-9]/g,'');
   if(!qn||qn.length<4)return[];
   const res=[];
-  for(const r of NBNDS_DB){
+  for(const r of head4Items(NBNDS_DB,r=>r[1],ACT_LEGACY,qn)){
     // код перечня по прежней редакции ЕТТ (1101 00 110 0 разделён на 110 1 и 110 9) — через TNVED_MAP
     const n=actCodeNote(r[1],qn);
     if(n!==false)res.push(n?[r[0],r[1],r[2]+n,r[3],r[4]]:r);
@@ -5953,7 +5995,7 @@ function findByName(q){
 function findLS(q){
   const qn=norm(q);if(!qn||qn.length<4)return[];
   const res=[];
-  for(const [code,names] of Object.entries(LS_CODES)){
+  for(const [code,names] of codeCands(LS_CODES,qn)){
     const cn=norm(code);
     if(cn.startsWith(qn)||qn.startsWith(cn.slice(0,Math.min(qn.length,10)))){
       res.push({code,names});
@@ -6009,7 +6051,7 @@ function renderHtml(q,dateIso){dateIso=/^\d{4}-\d\d-\d\d$/.test(dateIso||'')?dat
 
   // Десять цифр, которых нет в ЕТТ: меры ниже найдены по началу кода, и об этом надо сказать первым.
   {const qd=qt.replace(/\D/g,'');
-    if(/^[\d\s]+$/.test(qt)&&qd.length===10&&!ETT_DB.some(r=>r[0]===qd)){
+    if(/^[\d\s]+$/.test(qt)&&qd.length===10&&!ettRowByCode(qd)){
       const hint=specNotFoundHint(qd);
       html+=`<div class="card c-ok" data-nocode="1"><div class="rh"><div class="ico">❓</div><div><div class="rc">${esc(fmtCode(qd))}</div></div></div><div class="rn">Такого кода нет в действующем ЕТТ ЕАЭС</div><div class="tags"><span class="tag t-eec-dual">❓ Кода нет в ЕТТ</span></div><div class="det"><div>${esc(hint.charAt(0).toUpperCase()+hint.slice(1))}. Карточки ниже найдены по совпадению начала кода с позициями перечней и относятся к товарной позиции, а не к этому коду.</div></div></div>`;
     }}
@@ -6807,7 +6849,7 @@ function calcWarnings(code){
   // само соглашение. Слова тут нужны разные, иначе одни из них будут неверны.
   const qList=findQuota(cn10);
   if(qList.length){
-    const qRec=ETT_DB.find(r=>r[0]===cn10);
+    const qRec=ettRowByCode(cn10);
     const qIn=!!(qRec&&/в порядке, указанном в дополнительном примечании|в порядке тарифной квоты/i.test(qRec[1]));
     const qLines=qList.slice(0,3).map(r=>{
       const v=r[4]&&r[4].KG;
@@ -6827,7 +6869,7 @@ function calcWarnings(code){
   // подсубпозиции сам по себе задаёт период ввоза, а у части позиций — ещё и
   // биржевую цену. Проверить это по коду нельзя, поэтому предупреждаем.
   if(cn10.slice(0,4)==='1701'){
-    const rec1701=ETT_DB.find(r=>r[0]===cn10);
+    const rec1701=ettRowByCode(cn10);
     if(rec1701&&parseRateInfo(rec1701[3]).type==='usd'){
       warns.push({level:'blue',text:'ℹ️ Ставка по этой подсубпозиции задана в долларах США за 1000 кг, и сам код кодирует условия её применения: период ввоза, а у части позиций — ещё и среднемесячную цену сахара-сырца на Нью-Йоркской товарно-сырьевой бирже. Проверить это по коду нельзя — убедитесь, что выбранная подсубпозиция соответствует месяцу ввоза и фактической биржевой цене. Количество вводится в единицах по 1000 кг, то есть в тоннах нетто.'});
     }
@@ -7227,7 +7269,7 @@ function calcCodeList(q){
 function codeBundle(codes){
   const out={};
   for(const code of codes){
-    const rec=ETT_DB.find(r=>r[0]===code);
+    const rec=ettRowByCode(code);
     const now=rec?ettRateOn(code):null;
     out[code]=rec?{rec:now.temp?[rec[0],rec[1],rec[2],now.rate]:rec,warns:calcWarnings(code),
       pref:findPref(code).filter(p=>!p.ex.length).map(p=>({sec:p.sec})),
@@ -7261,7 +7303,7 @@ function lkRates(codes,ctyTxt,date){
   const cty=lkCountry(ctyTxt),out={};
   if(!cty||!(cty.pref||cty.cis))return out;
   for(const code of codes){
-    const r=ETT_DB.find(x=>x[0]===code);
+    const r=ettRowByCode(code);
     const ett=r?ettRateOn(code,date).rate:null;
     out[code]={ett:ett,opts:lkPrefRates(code,ett,cty,date)};
   }
