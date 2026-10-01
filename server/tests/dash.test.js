@@ -146,7 +146,7 @@ const pageHtml = fs.readFileSync(path.join(root, 'server/dash/index.html'), 'utf
       await new Promise((r) => fserver.once('listening', r));
       const origin = 'http://127.0.0.1:' + frontPort;
       process.env.DASH_ORIGIN = origin; // браузер шлёт Host этого адреса: вход здесь — вход на дашборд
-      browser = await require(process.env.PLAYWRIGHT_MODULE).chromium.launch({ channel: 'msedge', headless: true });
+      browser = await require('./browser').launch();
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       const errors = [], csps = [];
       page.on('pageerror', (e) => errors.push(e.message));

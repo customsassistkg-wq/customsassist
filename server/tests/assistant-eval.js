@@ -5,7 +5,17 @@
 // Это не юнит-тест: ответ модели недетерминирован, поэтому проверяются только
 // устойчивые признаки — нужный код, нужный инструмент, отсутствие воды.
 // Новые случаи берите из ответов с 👎 в «Журнале помощника».
+// Сравнение с Claude, не трогая модель сайта: EVAL_MODEL=claude-sonnet-5-5 node tests/assistant-eval.js — ключ
+// берётся из ANTHROPIC_API_KEY в .env (ключ в командной строке остался бы в истории оболочки), AI_EFFORT — глубина.
 require('dotenv').config({ path: require('node:path').join(__dirname, '../.env') });
+if (process.env.EVAL_MODEL) {
+  if (/^claude-/.test(process.env.EVAL_MODEL)) {
+    if (!process.env.ANTHROPIC_API_KEY) { console.error('нет ANTHROPIC_API_KEY в .env'); process.exit(2); }
+    process.env.AI_BASE_URL = 'https://api.anthropic.com';
+    process.env.AI_API_KEY = process.env.ANTHROPIC_API_KEY;
+  }
+  process.env.AI_MODEL = process.env.EVAL_MODEL;
+}
 const fs = require('node:fs');
 const { ask } = require('../src/services/assistant');
 
@@ -53,7 +63,7 @@ const CASES = [
 (async () => {
   const filter = process.argv[2];
   const results = [];
-  let passed = 0, total = 0, tokens = 0;
+  let passed = 0, total = 0, tokens = 0, cost = 0;
   for (const c of CASES.filter((x) => !filter || x.id.includes(filter))) {
     const steps = [];
     const started = Date.now();
@@ -69,11 +79,12 @@ const CASES = [
     if (r.unverified && r.unverified.length) fails.push('не подтверждены коды ' + r.unverified.join(','));
     total++; if (!fails.length) passed++;
     tokens += (r.usage?.input || 0) + (r.usage?.output || 0);
+    cost += r.usage?.costUsd || 0;
     const ms = Date.now() - started;
     console.log(`${fails.length ? '✗' : '✓'} ${c.id} (${(ms / 1000).toFixed(0)} с, ${steps.map((s) => s.tool).join('>')})${fails.length ? ' — ' + fails.join('; ') : ''}`);
     results.push({ id: c.id, q: c.q, ok: !fails.length, fails, ms, steps, answer: r.answer, usage: r.usage });
   }
   const out = process.env.EVAL_OUT || 'assistant-eval-result.json';
-  fs.writeFileSync(out, JSON.stringify({ model: process.env.AI_MODEL || 'deepseek-chat', at: new Date().toISOString(), passed, total, tokens, results }, null, 1));
-  console.log(`\nИтого: ${passed}/${total}, токенов ${tokens}. Ответы — ${out}`);
+  fs.writeFileSync(out, JSON.stringify({ model: process.env.AI_MODEL || 'deepseek-chat', effort: process.env.AI_EFFORT || null, at: new Date().toISOString(), passed, total, tokens, cost, results }, null, 1));
+  console.log(`\nИтого: ${passed}/${total}, токенов ${tokens}, $${cost.toFixed(4)}. Ответы — ${out}`);
 })();

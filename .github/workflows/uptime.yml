@@ -1,0 +1,105 @@
+# Монитор доступности customsassist.trade (01.10.2026): проверка снаружи раз в 30 минут.
+#
+# Сервер сам сообщает о своих сбоях (tnved-alert@, Telegram), но не о том, что недоступен целиком: упавший VPS,
+# Nginx или сеть никто бы не заметил, пока не сказал пользователь. Этот запуск идёт на машине GitHub и проверяет:
+#   - /api/health — 200 и "ok":true (API отвечает, база ТН ВЭД разобрана, PostgreSQL отвечает);
+#   - / — 200 и сама страница сайта, а не заглушка;
+#   - сертификат — действует ещё не меньше 14 дней (certbot продлевает за 30).
+# Каждая проверка — до трёх попыток с паузой 20 с: единичный сбой сети тревогой не считается.
+#
+# Тревога: открывается issue «🔴 customsassist.trade: …» (уведомление владельцу репозитория) и запуск помечается
+# упавшим (GitHub пишет письмо тому, кто последним менял расписание в этом файле). Пока issue открыт, новых не
+# создаётся, запуск зелёный, а раз в 6 часов в issue дописывается состояние. Восстановление — комментарий и закрытие.
+# Telegram — только если в Settings → Secrets and variables → Actions заданы TELEGRAM_BOT_TOKEN и
+# TELEGRAM_ALERT_CHAT_ID (по желанию владельца: токен бота сейчас хранится только в .env на сервере).
+# Код репозитория запуск не скачивает. Минуты: 48 запусков в сутки — около 1 440 минут в месяц из 2 000
+# бесплатных у приватного репозитория. Запросы монитора видны в журнале Nginx по User-Agent customsassist-uptime.
+name: uptime
+
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/uptime.yml']
+
+permissions:
+  issues: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Проверка сайта
+        env:
+          SITE: https://customsassist.trade
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TG_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TG_CHAT: ${{ secrets.TELEGRAM_ALERT_CHAT_ID }}
+        run: |
+          set -u
+          UA='customsassist-uptime (github actions)'
+          problems=()
+          # probe <что> <адрес> <строка, которая должна быть в ответе>
+          probe() {
+            local out code
+            for attempt in 1 2 3; do
+              out=$(curl -sS --max-time 25 -A "$UA" -w $'\n%{http_code}' "$2" 2>&1) || true
+              code=${out##*$'\n'}
+              if [ "$code" = 200 ] && grep -qF -- "$3" <<<"${out%$'\n'*}"; then return 0; fi
+              [ "$attempt" -lt 3 ] && sleep 20
+            done
+            problems+=("$1: HTTP ${code:-нет ответа}")
+          }
+          probe 'API /api/health' "$SITE/api/health" '"ok":true'
+          probe 'страница /' "$SITE/" '<title>Customs Assist KG'
+          if [[ "$SITE" == https://* ]]; then
+            host=${SITE#https://}; host=${host%%/*}
+            end=$(openssl s_client -connect "$host:443" -servername "$host" </dev/null 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
+            if [ -z "$end" ]; then
+              problems+=('сертификат: не прочитан')
+            else
+              days=$(( ($(date -d "$end" +%s) - $(date +%s)) / 86400 ))
+              [ "$days" -lt 14 ] && problems+=("сертификат истекает через $days дн. ($end)")
+            fi
+          fi
+
+          api() { curl -sS --max-time 20 -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' "$@"; }
+          tg() { if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then curl -sS --max-time 15 -o /dev/null -d chat_id="$TG_CHAT" --data-urlencode text="$1" "https://api.telegram.org/bot$TG_TOKEN/sendMessage" || true; fi; }
+          PREFIX='🔴 customsassist.trade'
+          issue=$(api "https://api.github.com/repos/$REPO/issues?state=open&creator=github-actions%5Bbot%5D&per_page=50" \
+            | jq -r --arg p "$PREFIX" 'if type == "array" then ([.[] | select(.title | startswith($p))][0].number // empty) else empty end' 2>/dev/null || true)
+          when="$(date -u '+%d.%m.%Y %H:%M UTC'), $(TZ=Asia/Bishkek date '+%H:%M') по Бишкеку"
+
+          if [ ${#problems[@]} -eq 0 ]; then
+            echo "Сайт отвечает: $when"
+            if [ -n "$issue" ]; then
+              api -o /dev/null -X POST "https://api.github.com/repos/$REPO/issues/$issue/comments" -d "$(jq -n --arg b "🟢 Снова работает — $when. $RUN_URL" '{body: $b}')"
+              api -o /dev/null -X PATCH "https://api.github.com/repos/$REPO/issues/$issue" -d '{"state":"closed"}'
+              tg "🟢 customsassist.trade снова работает — $when"
+            fi
+            exit 0
+          fi
+
+          text=$(printf '%s\n' "${problems[@]}")
+          echo "::error::$(printf '%s; ' "${problems[@]}")"
+          if [ -z "$issue" ]; then
+            body=$(printf 'Проверка %s:\n\n%s\n\nЗапуск: %s\n\nIssue закроется сам, когда проверка пройдёт. Где смотреть: docs/backend-ops.md, «Монитор доступности».' "$when" "$text" "$RUN_URL")
+            api -o /dev/null -X POST "https://api.github.com/repos/$REPO/issues" -d "$(jq -n --arg t "$PREFIX: сайт не отвечает как надо" --arg b "$body" '{title: $t, body: $b}')"
+            tg "$(printf '🔴 customsassist.trade — %s\n%s\n%s' "$when" "$text" "$RUN_URL")"
+            exit 1
+          fi
+          # Уже открыт: состояние раз в 6 часов, запуск зелёный — письмо о падении приходит один раз, а не каждые 30 минут.
+          if [ $(( 10#$(date -u +%H) % 6 )) -eq 0 ] && [ "$(date -u +%M)" -lt 30 ]; then
+            api -o /dev/null -X POST "https://api.github.com/repos/$REPO/issues/$issue/comments" -d "$(jq -n --arg b "$(printf 'Всё ещё не работает — %s:\n%s\n%s' "$when" "$text" "$RUN_URL")" '{body: $b}')"
+            tg "$(printf '🔴 customsassist.trade всё ещё не работает — %s\n%s' "$when" "$text")"
+          fi
+          echo "::warning::Сайт по-прежнему не работает, issue #$issue открыт"

@@ -71,7 +71,11 @@ const engine = require('../src/routes/engine');
   // слово с цифрами по-прежнему набирается одной текстовой позицией
   const n = { id: 'mixed', email: 'n@example.test' };
   for (const q of ['болт м', 'болт м1', 'болт м12', 'болт м1234', 'болт м12345']) assert.equal(engine.account(n, 'renderHtml', [q]), null);
-  assert.deepEqual([...engine.usage.get('mixed').keys].sort(), ['h1234', 'tболт м12345']);
+  assert.deepEqual([...engine.usage.get('mixed').keys].sort(), ['h1234', 'tболт м12345'].map(engine.tag).sort());
+  // две строки одной позиции в одном запросе — одна новая позиция и у предела
+  const b = { id: 'bundle', email: 'b@example.test' };
+  assert.equal(engine.account(b, 'codeBundle', [['8517130000', '8517120000']]), null);
+  assert.equal(engine.usage.get('bundle').keys.size, 1);
   console.log('PASS: позиции — код по товарной позиции, слово по продолжению набора');
 }
 
@@ -95,6 +99,83 @@ const engine = require('../src/routes/engine');
     assert.ok(wide.every((x) => x.html.includes('&lt;b&gt;wide&lt;/b&gt;') && !x.html.includes('<b>wide</b>')));
     console.log('PASS: лимиты — минута, позиции за сутки; письмо администраторам одно на повод, адрес экранирован');
   });
+}
+
+// ── Счётчики переживают перезапуск: файл, метки вместо текста, сутки по Бишкеку ──
+{
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'engine-usage-'));
+  const file = path.join(dir, 'engine-usage.json');
+  process.env.ENGINE_STATE_FILE = file;
+  process.env.SESSION_SECRET = 'test-session-secret';
+  // «Перезапуск» — тот же модуль, прочитанный заново: свой usage, тот же файл и тот же ключ меток.
+  const restart = () => {
+    delete require.cache[require.resolve('../src/routes/engine')];
+    return require('../src/routes/engine');
+  };
+  const day1 = Date.UTC(2026, 9, 1, 3, 0); // 09:00 1 октября в Бишкеке
+  const r = { id: 'restart-user', email: 'restart@example.test' };
+  const e1 = restart();
+  for (const q of ['0101', '0201', '0301', 'Смартфон']) assert.equal(e1.account(r, 'renderHtml', [q], day1), null);
+  assert.equal(e1.saveState(day1), true);
+  assert.equal(e1.saveState(day1 + 1000), false, 'без новых запросов файл не переписывается');
+  const saved = fs.readFileSync(file, 'utf8');
+  assert.ok(!/0101|0201|0301|смартфон|restart@/i.test(saved), 'в файле нет ни кодов, ни фраз, ни адреса');
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.deepEqual(fs.readdirSync(dir), ['engine-usage.json'], 'временный файл не остаётся');
+
+  const e2 = restart();
+  assert.equal(e2.loadState(day1 + 60e3), 1);
+  assert.equal(e2.usage.get('restart-user').keys.size, 4);
+  assert.equal(e2.usage.get('restart-user').calls, 4);
+  assert.equal(e2.account(r, 'renderHtml', ['0101 10'], day1 + 120e3), null);
+  assert.equal(e2.usage.get('restart-user').keys.size, 4, 'открытая до перезапуска позиция новой не считается');
+  // предел (8 в этом тесте) отсчитывается от сохранённых позиций, а не с нуля
+  const more = ['0401', '0501', '0601', '0701', '0801'].map((h) => e2.account(r, 'renderHtml', [h], day1 + 180e3));
+  assert.deepEqual(more, [null, null, null, null, 'engine_limit_day']);
+  assert.equal(e2.saveState(day1 + 240e3), true);
+
+  // письма «много» и «лимит» уже ушли — после ещё одного перезапуска не повторяются
+  const e3 = restart();
+  assert.equal(e3.loadState(day1 + 300e3), 1);
+  assert.equal(e3.account(r, 'renderHtml', ['0901'], day1 + 360e3), 'engine_limit_day');
+  assert.equal(e3.account(r, 'renderHtml', ['0101'], day1 + 360e3), null, 'открытые позиции после предела доступны');
+  setImmediate(() => {
+    assert.equal(mails.filter((x) => /restart@/.test(x.subject)).length, 2, 'по письму на повод за сутки, перезапуски не в счёт');
+  });
+
+  // новые сутки в Бишкеке (00:30 2 октября): вчерашний файл не читается, сохранение стирает вчерашнее
+  const day2 = Date.UTC(2026, 9, 1, 18, 30);
+  assert.equal(restart().loadState(day2), 0);
+  assert.equal(e3.saveState(day1 + 400e3), true);
+  assert.equal(e3.saveState(day1 + 500e3), false);
+  assert.equal(e3.saveState(day2), true, 'смена суток переписывает файл и без новых запросов');
+  assert.equal(e3.usage.has('restart-user'), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { v: 1, day: '2026-10-02', users: [] });
+  // битый файл и чужой формат — ноль, без исключения
+  fs.writeFileSync(file, '{oops');
+  assert.equal(restart().loadState(day1), 0);
+  fs.writeFileSync(file, JSON.stringify({ v: 1, day: '2026-10-01', users: [[42, { keys: ['x'] }], ['ok', { keys: [1, 'y'], calls: 'z' }]] }));
+  const e4 = restart();
+  assert.equal(e4.loadState(day1), 1);
+  assert.deepEqual([...e4.usage.get('ok').keys], ['y']);
+  assert.equal(e4.usage.get('ok').calls, 0);
+  // запросы, пришедшие раньше чтения файла, складываются с сохранёнными
+  const e5 = restart();
+  e5.account({ id: 'ok', email: 'ok@example.test' }, 'renderHtml', ['0101'], day1);
+  e5.loadState(day1);
+  assert.deepEqual([e5.usage.get('ok').calls, e5.usage.get('ok').keys.size], [1, 2]);
+  // init() читает файл и сохраняет по таймеру; tick — то же, что делает остановка процесса
+  fs.rmSync(file);
+  const e6 = restart();
+  const tick = e6.init();
+  e6.account({ id: 'tick', email: 't@example.test' }, 'renderHtml', ['8517']);
+  tick();
+  e6.stop();
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).users[0][0], 'tick');
+  fs.rmSync(dir, { recursive: true, force: true });
+  delete process.env.ENGINE_STATE_FILE;
+  console.log('PASS: счётчики переживают перезапуск — метки вместо текста, права 600, предел и письма от сохранённого, вчерашнее стирается');
 }
 
 // ── Маршрут ──

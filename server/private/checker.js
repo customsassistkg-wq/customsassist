@@ -2922,7 +2922,7 @@ const AI_ERR={rate_limited:'Дневной лимит вопросов исче�
   ai_balance:'Ассистент временно недоступен: закончился баланс API.',
   assistant_disabled:'Ассистент не настроен на сервере.',
   assistant_budget:'Ассистент временно недоступен: исчерпан суточный бюджет сервиса. Попробуйте завтра.',
-  ai_unavailable:'Сервис модели не ответил. Попробуйте ещё раз.',
+  ai_unavailable:'Сервис модели не ответил. Попробуйте ещё раз.',ai_refused:'Модель отказалась отвечать: сработал фильтр безопасности её поставщика. Переформулируйте вопрос о товаре и коде ТН ВЭД.',
   bad_image:'Изображение не принято: нужен JPG, PNG или WebP.',
   too_many_images:'Не больше 8 изображений за один вопрос.',
   bad_doc:'Документ не принят: в нём не нашлось текста.',
@@ -4133,9 +4133,10 @@ if(appInitialized)return;
 appInitialized=true;
 document.body.dataset.page='search';
 document.body.dataset.mode='code';
-// Условия поиска: дата — сегодня, список стран — те, о которых база может ответить,
+// Условия поиска: дата — сегодня по Бишкеку, как у базы (toISOString — дата UTC: с 00:00 до 06:00 по Бишкеку
+// поле показывало вчерашний день, и поиск проверял меры на вчера), список стран — те, о которых база может ответить,
 // смена условия перезапускает текущий запрос.
-document.getElementById('lookupDate').value=new Date().toISOString().slice(0,10);
+document.getElementById('lookupDate').value=new Date(Date.now()+6*3600e3).toISOString().slice(0,10);
 document.getElementById('lkCtyList').innerHTML=lkCountryOptions();
 document.getElementById('lookupDir').addEventListener('change',()=>{lkDirChanged();rerunSearch()});
 document.getElementById('lookupDate').addEventListener('change',rerunSearch);

@@ -202,7 +202,8 @@ router.post('/', async (req, res) => {
       send({ id, answer: r.answer, searched: r.searched, unverified: r.unverified, quota: await quotaFor(req.user).catch(() => null) });
     } catch (err) {
       console.error('assistant:', err.message);
-      const error = /balance/i.test(err.message) ? 'ai_balance' : 'ai_unavailable';
+      // ai_refused — отказ фильтра безопасности модели (Claude, services/assistant.js postModel): вопрос не списывается.
+      const error = err.code === 'ai_refused' ? 'ai_refused' : /balance/i.test(err.message) ? 'ai_balance' : 'ai_unavailable';
       await logQuestion({ userId: req.user.id, question, error: err.message.slice(0, 500), usage: err.usage, ms: Date.now() - started });
       send({ error });
     }
@@ -247,7 +248,7 @@ router.post('/read', async (req, res) => {
     } catch (err) {
       console.error('assistant read:', err.message);
       await logQuestion({ userId: uid, question, error: err.message.slice(0, 500), usage: err.usage, ms: Date.now() - started, kind: 'read' });
-      res.status(502).json({ error: /balance/i.test(err.message) ? 'ai_balance' : 'read_failed' });
+      res.status(502).json({ error: err.code === 'ai_refused' ? 'ai_refused' : /balance/i.test(err.message) ? 'ai_balance' : 'read_failed' });
     }
   } finally {
     const n = (readsInFlight.get(uid) || 1) - 1;

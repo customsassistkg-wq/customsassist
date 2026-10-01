@@ -89,7 +89,7 @@ app.get('/', (req,res)=>res.set('Content-Security-Policy',csp).type('html').send
     }
     assert.equal((await fetch(origin+'/server/private/checker.js')).status,404);
     if(process.env.PLAYWRIGHT_MODULE){
-      browser=await require(process.env.PLAYWRIGHT_MODULE).chromium.launch({channel:'msedge',headless:true});
+      browser=await require('./browser').launch();
       // A visitor without an account never receives checker.js, so registration,
       // resend and password recovery may use only the page's own code. Until
       // 17.09.2026 the register button called EMAIL_RE, declared in checker.js:

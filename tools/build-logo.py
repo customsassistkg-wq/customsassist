@@ -6,7 +6,7 @@
                    Отсюда берётся ТОЛЬКО эмблема: на 48 px подпись — каша.
   logo_wide.png  — горизонтальный локап, целиком.
 
-Что переписывается: assets/icons/*.png, assets/email-logo.jpg и один data-URI внутри
+Что переписывается: assets/icons/*.png, assets/email-logo.jpg, assets/footer-logo.webp и один data-URI внутри
 tnved_checker.html — фавиконка в <head>. Логотип экрана входа с 18.09.2026 — файлы
 assets/login-logo-*.webp из tools/split-app-bg.py, а не base64 в странице (до 20.09.2026
 скрипт искал прежний .auth-logo-img и падал на assert, уже перезаписав иконки).
@@ -69,6 +69,15 @@ for name, size, frac in [('icon-192', 192, .86), ('icon-512', 512, .86),
 # Логотип для писем: JPEG (WebP в почте до сих пор небезопасен), 220 px @2x.
 plate(wide, 440, 12).save(os.path.join(OUT, 'email-logo.jpg'), 'JPEG', quality=90, optimize=True)
 
+# Знак подвала страницы (01.10.2026): лупа из горизонтального локапа — тот же знак, что в шапке и на экране
+# входа, — на белом квадрате 120 px (подвал показывает его в 40 px, телефоны — до 3×). До этого в подвале стояла
+# эмблема старого образца (флаг, контейнеры) — PNG 420 px в base64 внутри страницы. Ручка лупы заходит под первую
+# букву названия, поэтому край буквы (x ≥ 353, y < 285 внутри WIDE_BOX) забеливается до того, как взять рамку знака.
+lens = wide.crop((0, 0, 405, wide.height))
+lens.paste(WHITE, (353, 0, 405, 285))
+lens = lens.crop(lens.convert('L').point(lambda v: 255 if v < 235 else 0).getbbox())
+square(lens, 120, .86).save(os.path.join(OUT, 'footer-logo.webp'), 'WEBP', quality=88, method=6)
+
 fav_b64 = b64(square(mark, 128, .88), 'PNG', optimize=True)
 
 page = os.path.join(ROOT, 'tnved_checker.html')
@@ -78,4 +87,4 @@ src, n_fav = re.subn(r'<link rel="icon" type="image/png" href="data:image/png;ba
 assert n_fav == 1, n_fav
 open(page, 'w', encoding='utf-8', newline='').write(src)
 
-print('фавиконка %d КБ base64; assets/icons и assets/email-logo.jpg перезаписаны' % (len(fav_b64) // 1024))
+print('фавиконка %d КБ base64; assets/icons, assets/email-logo.jpg и assets/footer-logo.webp перезаписаны' % (len(fav_b64) // 1024))

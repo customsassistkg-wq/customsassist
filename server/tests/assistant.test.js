@@ -497,6 +497,39 @@ const a = require('../src/services/assistant');
   assert.equal(a.roundCost(undefined, 'x', peak), 0);
   console.log('PASS: стоимость — пик, вне пика, выходные, кэш, pro');
 
+  // ── Claude: цена без пиков, запись в кэш, параметры по модели ──
+  const uw = { input_tokens: 1e6, cache_read_input_tokens: 1e6, cache_creation_input_tokens: 1e6, output_tokens: 1e6 };
+  assert.equal(a.roundCost(uw, 'claude-haiku-4-5', off).toFixed(3), (1 + 0.10 + 1.25 + 5).toFixed(3));
+  assert.equal(a.roundCost(uw, 'claude-sonnet-5-5', off).toFixed(3), (2 + 0.20 + 2.50 + 10).toFixed(3));
+  assert.equal(a.roundCost(uw, 'claude-opus-5-5', peak).toFixed(3), (4 + 0.20 + 5 + 20).toFixed(3));
+  assert.deepEqual(a.modelProfile('deepseek-v4-flash').body, { thinking: { type: 'disabled' } });
+  assert.equal(a.modelProfile('deepseek-v4-flash').body.cache_control, undefined);
+  assert.equal(a.roundCost(uw, 'claude-fable-5-1', off).toFixed(3), (10 + 0.25 + 12.5 + 50).toFixed(3));
+  assert.equal(a.roundCost(uw, 'claude-mythos-5-1', off).toFixed(3), (10 + 0.25 + 12.5 + 50).toFixed(3));
+  const ds = a.modelProfile('deepseek-v4-flash');
+  assert.deepEqual([ds.systemCache, ds.timeoutMs, ds.forceTool], [false, 90000, true]);
+  const haiku = a.modelProfile('claude-haiku-4-5');
+  assert.deepEqual([haiku.forceTool, haiku.body.thinking, haiku.body.cache_control, haiku.body.output_config, haiku.systemCache, haiku.headers],
+    [true, undefined, { type: 'ephemeral' }, undefined, true, {}]); // effort у Haiku 4.5 — ошибка
+  for (const m of ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1', 'claude-opus-5', 'claude-sonnet-5']) {
+    const p = a.modelProfile(m);
+    assert.equal(p.forceTool, false, m);              // tool_choice 'tool' у этих моделей — 400 (у Opus 5 / Sonnet 5 — при размышлении)
+    assert.equal(p.body.thinking, undefined, m);      // {type:'disabled'} — 400
+    assert.ok(p.body.output_config.effort && p.minTokens >= 16000 && p.timeoutMs >= 180000 && p.systemCache, m);
+    // переадресация отказа — у Fable 5.1, Opus 5.x и Sonnet 5.5 (у Sonnet 5 её нет)
+    const fb = m !== 'claude-sonnet-5';
+    assert.deepEqual([p.body.fallbacks, p.headers['anthropic-beta']], fb ? ['default', 'server-side-fallback-2026-07-01'] : [undefined, undefined], m);
+  }
+  // самое «тихое» размышление Sonnet 5.5 — только по настройке и только у неё
+  process.env.AI_THINKING = 'between_tools';
+  assert.deepEqual(a.modelProfile('claude-sonnet-5-5').body.thinking, { type: 'between_tools' });
+  assert.equal(a.modelProfile('claude-opus-5-5').body.thinking, undefined);
+  process.env.AI_EFFORT = 'low';
+  assert.equal(a.modelProfile('claude-sonnet-5-5').body.output_config.effort, 'low');
+  delete process.env.AI_THINKING;
+  delete process.env.AI_EFFORT;
+  console.log('PASS: Claude — цены без пиков, запись в кэш, параметры Haiku / Sonnet 5.5 / Opus 5.5 / Fable 5.1, between_tools, effort');
+
   // ── служебные проверки ответа ──
   assert.deepEqual([...a.codesIn('8517 13 000 0 и 0207142001, но не 12345678901 и 8517 13')], ['8517130000', '0207142001']);
   assert.equal(a.keepKnownLinks('[ЕТТ](https://customs.gov.kg) и [№30](https://docs.eaeunion.org/d/1/)', 'текст [№30](https://docs.eaeunion.org/d/1/)'),
@@ -1171,4 +1204,59 @@ const a = require('../src/services/assistant');
   assert.doesNotMatch(h, /<img/);
   assert.doesNotMatch(h, /href="javascript/);
   console.log('PASS: Markdown ответа экранируется, коды кликабельны');
+}
+
+// Запрос к Claude Opus 5.5: модель берётся при загрузке модуля, поэтому — отдельным процессом. Без принудительного
+// tool_choice и без thinking:disabled (у Opus/Sonnet 5.5 оба — 400), с кэшем, effort и запасом max_tokens на размышление.
+{
+  const { execFileSync } = require('node:child_process');
+  const out = execFileSync(process.execPath, ['-e', `
+    process.env.AI_API_KEY = 'test';
+    const a = require('./src/services/assistant');
+    const calls = [];
+    global.fetch = async (url, opts) => {
+      calls.push({ url, headers: opts.headers, body: JSON.parse(opts.body) });
+      const content = calls.length === 1 ? [{ type: 'tool_use', id: 't1', name: 'search_base', input: { query: '8517130000' } }] : [{ type: 'text', text: 'Код 8517 13 000 0.' }];
+      return { ok: true, json: async () => ({ model: 'claude-opus-5-5', content, usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 100 } }) };
+    };
+    a.ask([{ role: 'user', content: 'Какая пошлина на смартфон?' }]).then((r) => console.log(JSON.stringify({ calls, cost: r.usage.costUsd })));
+  `], { cwd: require('node:path').join(__dirname, '..'), env: { ...process.env, AI_MODEL: 'claude-opus-5-5', AI_BASE_URL: 'https://api.anthropic.com' } }).toString();
+  const { calls, cost } = JSON.parse(out.trim().split('\n').pop());
+  assert.equal(calls[0].url, 'https://api.anthropic.com/v1/messages');
+  const today = new Date(Date.now() + 6 * 3600e3).toISOString().slice(0, 10);
+  for (const c of calls) {
+    assert.equal(c.body.thinking, undefined);
+    assert.ok(!c.body.tool_choice || c.body.tool_choice.type === 'none');
+    assert.deepEqual(c.body.cache_control, { type: 'ephemeral' });
+    assert.equal(c.body.output_config.effort, 'medium');
+    assert.ok(c.body.max_tokens >= 16000);
+    assert.equal(c.headers['anthropic-beta'], 'server-side-fallback-2026-07-01');
+    // метка кэша на системном промте: инструменты и промт читаются из кэша и следующим вопросом
+    assert.equal(c.body.system.length, 1);
+    assert.deepEqual(c.body.system[0].cache_control, { type: 'ephemeral' });
+    assert.ok(c.body.system[0].text.includes(`Сегодня ${today}.`), 'дата по Бишкеку');
+  }
+  // системный промт одинаков во всех раундах вопроса — иначе блоки размышления прежних раундов недействительны
+  assert.equal(new Set(calls.map((c) => JSON.stringify(c.body.system))).size, 1);
+  assert.ok(cost > 0);
+  console.log('PASS: запрос к Claude Opus 5.5 — без принудительного инструмента и thinking:disabled, кэш промта и переписки, effort, max_tokens, один промт на вопрос');
+}
+
+// Отказ фильтра безопасности (stop_reason 'refusal', HTTP 200): ошибка ai_refused с расходом раунда, а не пустой ответ;
+// чтение страницы с отказом — тоже ошибка, и её расход учтён.
+{
+  const { execFileSync } = require('node:child_process');
+  const out = execFileSync(process.execPath, ['-e', `
+    process.env.AI_API_KEY = 'test';
+    const a = require('./src/services/assistant');
+    global.fetch = async () => ({ ok: true, json: async () => ({ model: 'claude-sonnet-5-5', stop_reason: 'refusal',
+      stop_details: { type: 'refusal', category: 'bio' }, content: [], usage: { input_tokens: 1000, output_tokens: 0 } }) });
+    a.ask([{ role: 'user', content: 'Какая пошлина на смартфон?' }])
+      .then(() => console.log(JSON.stringify({ ok: true })))
+      .catch((e) => console.log(JSON.stringify({ code: e.code, message: e.message, cost: e.usage && e.usage.costUsd })));
+  `], { cwd: require('node:path').join(__dirname, '..'), env: { ...process.env, AI_MODEL: 'claude-sonnet-5-5', AI_BASE_URL: 'https://api.anthropic.com' } }).toString();
+  const r = JSON.parse(out.trim().split('\n').pop());
+  assert.deepEqual([r.code, r.message], ['ai_refused', 'AI refusal: bio']);
+  assert.ok(r.cost > 0, 'расход раунда с отказом записан');
+  console.log('PASS: отказ модели — ошибка ai_refused с расходом раунда, а не пустой ответ');
 }

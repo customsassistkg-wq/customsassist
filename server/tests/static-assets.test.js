@@ -34,6 +34,13 @@ for (const [file, text] of [['tnved_checker.html', page], ['manifest.webmanifest
 const missing = [...all].filter(([r]) => !fs.existsSync(path.join(ROOT, r.slice(1))));
 assert.equal(missing.length, 0, 'нет файла для ссылок: ' + missing.map(([r, f]) => `${r} (${f})`).join(', '));
 
+// 1а. Картинки — файлами, а не base64 в странице: до 01.10.2026 логотип подвала (PNG 420×420, показ 40×40)
+// занимал 207 КБ из 481 КБ страницы, и каждый вход скачивал его заново. Остаётся только фавиконка
+// (tools/build-logo.py, ~21 КБ).
+const inline = [...page.matchAll(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/g)].map((m) => m[0].length);
+assert.ok(inline.reduce((a, b) => a + b, 0) <= 32 * 1024, `картинки base64 в странице: ${inline.join(' + ')} знаков — больше 32 КБ, вынесите в assets/`);
+assert.ok(Buffer.byteLength(page) < 300 * 1024, `страница ${Buffer.byteLength(page)} байт: без картинок она меньше 300 КБ`);
+
 // 2. Картинки лежат в assets/ — одна папка на все картинки сайта (см. CLAUDE.md).
 const images = [...all.keys()].filter((r) => /\.(webp|png|jpe?g|svg|gif|ico)$/i.test(r));
 assert.ok(images.length >= 12, 'ожидались ссылки на картинки, найдено ' + images.length);

@@ -5949,7 +5949,7 @@ function renderHtml(q,dateIso){dateIso=/^\d{4}-\d\d-\d\d$/.test(dateIso||'')?dat
     // всегда только текущий год — остальные загромождали карточку. Год берём
     // по реальной дате зрителя, а не хардкодим: index 0..6 = 2026..2032,
     // index 7 ("2033+") — любой год 2033 и позже.
-    const nowY=new Date().getFullYear();
+    const nowY=+new Date(Date.now()+6*3600e3).toISOString().slice(0,4); // год в Бишкеке: сервер живёт по UTC
     const curIdx=Math.min(Math.max(nowY-2026,0),yearsHdr.length-1);
     const curYearLbl=yearsHdr[curIdx];
     let rows='';
@@ -6972,7 +6972,7 @@ function lkLowerOf(listRate,ettRate,act){
 function lkPrefRates(code,ettRate,cty,dateIso){
   const out=[];
   if(!cty)return out;
-  const date=dateIso||new Date().toISOString().slice(0,10);
+  const date=dateIso||new Date(Date.now()+6*3600e3).toISOString().slice(0,10);
   // Зона свободной торговли СНГ (LK_CIS в checker.js): изъятий у Кыргызской Республики нет — 0% по любому коду.
   if(cty.cis){
     const x=cty.cis,o={rate:'0%',flag:x.flag,who:x.bilateral?'Соглашение о свободной торговле КР–'+x.n:'ЗСТ СНГ ('+x.n+')',basis:'ввозная пошлина не применяется — '+x.act,note:'при подтверждении происхождения: '+x.orig};

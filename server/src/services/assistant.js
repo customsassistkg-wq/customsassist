@@ -701,7 +701,7 @@ function footnotesFor(code, dateIso) {
   const db = footnotesDb();
   const entry = db && db.codes[code];
   if (!entry) return [];
-  const today = dateIso || new Date().toISOString().slice(0, 10);
+  const today = dateIso || bishkekToday();
   const iso = (d) => d.split('.').reverse().join('-');
   const out = [];
   for (const n of entry.rate) {
@@ -819,13 +819,56 @@ function tools() {
   return list;
 }
 
-// Цены DeepSeek, $ за 1 млн токенов, в часы пик (api-docs.deepseek.com/quick_start/pricing,
-// 16.09.2026). Вне пика — половина. Меняются — задать AI_PRICES в .env тем же JSON:
-// стоимость пишется в журнал в момент вопроса, прошлые записи не пересчитываются.
+// Цены, $ за 1 млн токенов. DeepSeek — в часы пик (api-docs.deepseek.com/quick_start/pricing, 16.09.2026), вне пика
+// половина. Claude — без пиков, по справочнику Anthropic на 25.09.2026 (Haiku 4.5, Sonnet 5.5, Opus 5.5, Fable 5.1;
+// старшие версии семейства считаются по этим ценам); запись в кэш дороже ввода в 1,25 раза.
+// Меняются — задать AI_PRICES в .env тем же JSON: стоимость пишется в журнал в момент вопроса, прошлые записи не
+// пересчитываются.
 const PRICES = Object.assign({
   flash: { cacheHit: 0.006, cacheMiss: 0.30, output: 1.20 },
   pro: { cacheHit: 0.044, cacheMiss: 1.32, output: 3.96 },
+  'claude-haiku': { cacheHit: 0.10, cacheMiss: 1.00, cacheWrite: 1.25, output: 5.00 },
+  'claude-sonnet': { cacheHit: 0.20, cacheMiss: 2.00, cacheWrite: 2.50, output: 10.00 },
+  'claude-opus': { cacheHit: 0.20, cacheMiss: 4.00, cacheWrite: 5.00, output: 20.00 },
+  'claude-fable': { cacheHit: 0.25, cacheMiss: 10.00, cacheWrite: 12.50, output: 50.00 },
 }, process.env.AI_PRICES ? JSON.parse(process.env.AI_PRICES) : {});
+
+// Claude и DeepSeek говорят на одном формате (AI_BASE_URL=https://api.anthropic.com, AI_MODEL=claude-…), но
+// параметры у них разные (справочник Anthropic на 25.09.2026):
+// - DeepSeek: размышление выключается явно, кэш — автоматически, принудительный tool_choice работает.
+// - Claude Haiku 4.5 и модели до 5-го поколения: без thinking размышления нет, принудительный tool_choice работает;
+//   кэш — только по cache_control.
+// - Fable 5.x, Opus 5.5, Sonnet 5.5 (размышление всегда включено) и Opus 5, Sonnet 5 (включено по умолчанию):
+//   {type:'disabled'} — 400 (у Opus 5 — выше effort high), принудительный tool_choice ('tool'/'any') — 400, поэтому
+//   первый раунд идёт с auto, искать велит промт. Глубину задаёт effort (AI_EFFORT, по умолчанию medium);
+//   у Sonnet 5.5 самое «тихое» размышление — thinking {type:'between_tools'} (AI_THINKING=between_tools, только при
+//   effort не выше high). Размышление идёт в счёт max_tokens — пределы не ниже 16 000, и вызов дольше — таймаут 3 мин.
+// - Отказ классификатора безопасности (stop_reason 'refusal') у Fable 5.1, Opus 5.x и Sonnet 5.5 сервер Anthropic
+//   переадресует другой модели (fallbacks:'default', бета server-side-fallback-2026-07-01); остальные отказы
+//   postModel превращает в ошибку ai_refused — пользователь видит, что модель отказалась, а вопрос не списывается.
+// Кэш у Claude: метка на системном промте (systemCache) — общая часть всех вопросов (инструменты и промт, ~8 тыс.
+// токенов) читается из кэша и следующим вопросом, а cache_control запроса (автоматическая метка в конце) — растущая
+// переписка внутри одного вопроса.
+function modelProfile(model = MODEL) {
+  const m = String(model);
+  if (!/^claude-/.test(m)) {
+    return { body: { thinking: { type: 'disabled' } }, forceTool: true, minTokens: 0, headers: {}, systemCache: false, timeoutMs: 90000 };
+  }
+  const cache = { cache_control: { type: 'ephemeral' } };
+  if (!/^claude-(fable|mythos|opus|sonnet)-5/.test(m)) {
+    return { body: cache, forceTool: true, minTokens: 0, headers: {}, systemCache: true, timeoutMs: 90000 };
+  }
+  const body = { ...cache, output_config: { effort: process.env.AI_EFFORT || 'medium' } };
+  if (/^claude-sonnet-5-5/.test(m) && process.env.AI_THINKING === 'between_tools') body.thinking = { type: 'between_tools' };
+  const fallback = /^claude-(fable-5-1|opus-5|sonnet-5-5)/.test(m);
+  if (fallback) body.fallbacks = 'default';
+  return { body, forceTool: false, minTokens: 16000, headers: fallback ? { 'anthropic-beta': 'server-side-fallback-2026-07-01' } : {},
+    systemCache: true, timeoutMs: 180000 };
+}
+const PROFILE = modelProfile();
+// «Сегодня» для промта и сносок — по Бишкеку, как у базы: сервер живёт по UTC, и с 00:00 до 06:00 по Бишкеку
+// toISOString давал вчерашний день.
+const bishkekToday = (now = Date.now()) => new Date(now + 6 * 3600e3).toISOString().slice(0, 10);
 // Пик — 01:00–04:00 и 06:00–10:00 UTC с понедельника по пятницу.
 function isPeak(d) {
   const day = d.getUTCDay(), h = d.getUTCHours();
@@ -833,22 +876,31 @@ function isPeak(d) {
 }
 function roundCost(u, model, at = new Date()) {
   if (!u) return 0;
-  const p = PRICES[/pro/i.test(String(model || MODEL)) ? 'pro' : 'flash'];
-  const k = isPeak(at) ? 1 : 0.5;
-  return k * ((u.input_tokens || 0) * p.cacheMiss + (u.cache_read_input_tokens || 0) * p.cacheHit + (u.output_tokens || 0) * p.output) / 1e6;
+  const m = String(model || MODEL);
+  const claude = m.match(/^claude-(haiku|sonnet|opus|fable|mythos)/i);
+  const family = claude && (claude[1].toLowerCase() === 'mythos' ? 'fable' : claude[1].toLowerCase());
+  const p = claude ? PRICES['claude-' + family] || PRICES['claude-opus'] : PRICES[/pro/i.test(m) ? 'pro' : 'flash'];
+  const k = claude || isPeak(at) ? 1 : 0.5;
+  return k * ((u.input_tokens || 0) * p.cacheMiss + (u.cache_read_input_tokens || 0) * p.cacheHit
+    + (u.cache_creation_input_tokens || 0) * (p.cacheWrite || p.cacheMiss) + (u.output_tokens || 0) * p.output) / 1e6;
 }
 
-async function callModel(messages, toolChoice) {
+// today — один на весь вопрос: системный промт не меняется между раундами (у Claude с размышлением правка системного
+// промта посреди переписки делает недействительными блоки размышления прежних раундов, и запрос получает 400).
+async function callModel(messages, toolChoice, today = bishkekToday()) {
+  // Принудительный выбор инструмента там, где модель его не принимает, становится обычным: промт и так велит искать.
+  if (toolChoice && toolChoice.type !== 'none' && !PROFILE.forceTool) toolChoice = null;
+  // Напоминание в самом конце: flash-модель лучше держит последние строки промта,
+  // и без него в ответах оставались «в базе не приведено», «не требуется».
+  const system = PROMPT + `\n\n---\nСегодня ${today}.\n`
+    + 'Перед отправкой удали из ответа каждую строку о том, чего нет, что не найдено, не требуется или не применяется, и каждую меру, не относящуюся к направлению перемещения.';
   return postModel({
-      model: MODEL, max_tokens: 4000, tools: tools(), messages,
+      model: MODEL, max_tokens: Math.max(4000, PROFILE.minTokens), tools: tools(), messages,
       // deepseek-v4-pro по умолчанию «думает», а в этом режиме принудительный
       // tool_choice отвергается (400). flash параметр принимает без последствий.
-      thinking: { type: 'disabled' },
+      ...PROFILE.body,
       ...(toolChoice ? { tool_choice: toolChoice } : {}),
-      // Напоминание в самом конце: flash-модель лучше держит последние строки промта,
-      // и без него в ответах оставались «в базе не приведено», «не требуется».
-      system: PROMPT + `\n\n---\nСегодня ${new Date().toISOString().slice(0, 10)}.\n`
-        + 'Перед отправкой удали из ответа каждую строку о том, чего нет, что не найдено, не требуется или не применяется, и каждую меру, не относящуюся к направлению перемещения.',
+      system: PROFILE.systemCache ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }] : system,
   });
 }
 
@@ -862,9 +914,9 @@ async function postModel(payload) {
     try {
       res = await fetch(API_URL, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': process.env.AI_API_KEY, 'anthropic-version': '2023-06-01' },
+        headers: { 'content-type': 'application/json', 'x-api-key': process.env.AI_API_KEY, 'anthropic-version': '2023-06-01', ...PROFILE.headers },
         body,
-        signal: AbortSignal.timeout(90000),
+        signal: AbortSignal.timeout(PROFILE.timeoutMs),
       });
       break;
     } catch (e) {
@@ -876,6 +928,15 @@ async function postModel(payload) {
   if (!res.ok) {
     const err = new Error(`AI API ${res.status}: ${data.error?.message || 'unknown'}`);
     err.status = res.status;
+    throw err;
+  }
+  // Отказ классификатора безопасности Claude приходит с HTTP 200 и без текста ответа: это не пустой ответ, а ошибка
+  // вызова (чтение страницы уходит на запасной путь, вопрос — ошибкой ai_refused и не списывается). Расход такого
+  // раунда — в err.round: отказ до ответа может быть платным. У DeepSeek такого stop_reason нет.
+  if (data.stop_reason === 'refusal') {
+    const err = new Error(`AI refusal: ${data.stop_details?.category || 'no category'}`);
+    err.code = 'ai_refused';
+    err.round = data;
     throw err;
   }
   return data;
@@ -911,10 +972,15 @@ const addUsage = (u, x) => {
 };
 // Предел ответа на чтение — 16 000 токенов: плотная страница на 55 строк заняла 2 137, но упаковочный лист
 // на сотню строк при прежних 4 000 обрезался бы молча. Обрезанная расшифровка помечается.
+// Вызов модели для чтения страницы: расход — в usage, в том числе у отказа модели (err.round, см. postModel).
+const roundUsage = (d) => ({ input: d.usage?.input_tokens, output: d.usage?.output_tokens, cacheRead: d.usage?.cache_read_input_tokens,
+  costUsd: roundCost(d.usage, d.model || MODEL) });
+const postCounted = (payload, usage) => postModel(payload).then(
+  (d) => { addUsage(usage, roundUsage(d)); return d; },
+  (e) => { if (e.round) addUsage(usage, roundUsage(e.round)); throw e; });
 async function readImage(media_type, data, prompt, maxTokens, usage) {
-  const res = await postModel({ model: MODEL, max_tokens: maxTokens, thinking: { type: 'disabled' },
-    messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type, data } }, { type: 'text', text: prompt }] }] });
-  addUsage(usage, { input: res.usage?.input_tokens, output: res.usage?.output_tokens, cacheRead: res.usage?.cache_read_input_tokens, costUsd: roundCost(res.usage, res.model) });
+  const res = await postCounted({ model: MODEL, max_tokens: Math.max(maxTokens, PROFILE.minTokens), ...PROFILE.body,
+    messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type, data } }, { type: 'text', text: prompt }] }] }, usage);
   const text = (res.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
   return maxTokens > 100 && res.stop_reason === 'max_tokens' ? text + '\n[расшифровка обрезана: страница длиннее предела ответа]' : text;
 }
@@ -1378,12 +1444,10 @@ const REBUILD_PROMPT = 'Ниже — текст страницы докумен�
   + 'построчно, как «графа: значение», таблицу из него не строй. Ничего не додумывай: нет значения — оставь '
   + 'пусто; непонятный обрывок оставь как есть. Печати, штампы и подписи обозначь одним словом в скобках.';
 async function rebuildFromText(text, usage) {
-  const res = await postModel({
-    model: MODEL, max_tokens: 16000, thinking: { type: 'disabled' },
+  const res = await postCounted({
+    model: MODEL, max_tokens: 16000, ...PROFILE.body,
     messages: [{ role: 'user', content: [{ type: 'text', text: REBUILD_PROMPT + '\n\n' + text }] }],
-  });
-  addUsage(usage, { input: res.usage?.input_tokens, output: res.usage?.output_tokens,
-    cacheRead: res.usage?.cache_read_input_tokens, costUsd: roundCost(res.usage, MODEL) });
+  }, usage);
   return (res.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n').trim();
 }
 
@@ -1937,6 +2001,7 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   docs = docs.map((d) => ({ ...d, name: redactPersonal(d.name, stems), text: redactPersonal(d.text, stems) }));
   const messages = history.map((m) => ({ role: m.role, content: m.content }));
   const usage = { input: 0, output: 0, cacheRead: 0, costUsd: 0 };
+  const today = bishkekToday();
   // Текст документов разговора — то, с чем сверяются числа ответа (unknownNumbers).
   const docTexts = docs.map((d) => `${d.name}\n${d.text}`);
   // Документы диалога — текст PDF, расшифровки страниц, таблицы — стоят в первой реплике перед её текстом:
@@ -2063,8 +2128,14 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
     const choice = round === 0 ? { type: 'tool', name: 'search_base' } : (round === maxRounds ? { type: 'none' } : null);
     let data;
     // Упавший на середине вопрос уже стоил денег: расход прошлых раундов уходит с ошибкой в журнал.
+    const count = (d) => {
+      usage.input += d.usage?.input_tokens || 0;
+      usage.output += d.usage?.output_tokens || 0;
+      usage.cacheRead += d.usage?.cache_read_input_tokens || 0;
+      usage.costUsd += roundCost(d.usage, d.model);
+    };
     try {
-      data = await callModel(messages, choice);
+      data = await callModel(messages, choice, today);
     } catch (e) {
       // Поиск, сделанный сервером, модель ещё не видела: если API отверг такую переписку,
       // вопрос идёт прежним путём — с принудительного поиска моделью.
@@ -2075,13 +2146,11 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
         round = -1;
         continue;
       }
+      if (e.round) count(e.round); // отказ модели: раунд мог стоить денег
       e.usage = usage;
       throw e;
     }
-    usage.input += data.usage?.input_tokens || 0;
-    usage.output += data.usage?.output_tokens || 0;
-    usage.cacheRead += data.usage?.cache_read_input_tokens || 0;
-    usage.costUsd += roundCost(data.usage, data.model);
+    count(data);
     const content = data.content || [];
     const uses = content.filter((b) => b.type === 'tool_use');
     if (!uses.length) {
@@ -2161,4 +2230,4 @@ async function ask(history, { onStep = () => {}, images = [], docs = [] } = {}) 
   throw Object.assign(new Error('no answer after tool rounds'), { usage });
 }
 
-module.exports = { ask, redactPersonal, readPage, pageUnreliable, reconcileReadings, reconcileWords, reconcileIds, missedNumbers, fixVins, fixHomoglyphs, surnameStems, flatNumbers, searchBase, calcPayments, groupNotes, sumCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, unknownNumbers, checker, roundCost };
+module.exports = { ask, redactPersonal, readPage, pageUnreliable, reconcileReadings, reconcileWords, reconcileIds, missedNumbers, fixVins, fixHomoglyphs, surnameStems, flatNumbers, searchBase, calcPayments, groupNotes, sumCheck, cardsToText, splitDivs, codesIn, keepKnownLinks, unknownNumbers, checker, roundCost, modelProfile };

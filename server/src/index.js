@@ -52,6 +52,24 @@ const jsonDefault = express.json();
 const jsonAssistant = express.json({ limit: '15mb' });
 app.use((req, res, next) => (ASSISTANT_PATH.test(req.path) || MAIL_INBOUND_PATH.test(req.path) ? next() : jsonDefault(req, res, next)));
 
+// Для внешнего монитора доступности (docs/backend-ops.md, «Монитор доступности»): API отвечает, база
+// ТН ВЭД разобрана, PostgreSQL отвечает. Наружу — только да/нет, без версий, чисел и причин. До сессии:
+// проверка не создаёт и не читает сессий.
+app.get('/api/health', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const baseOk = !!require('./services/base').info.loadedAt;
+  let dbOk = false, timer;
+  try {
+    await Promise.race([pool.query('select 1'), new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 3000); })]);
+    dbOk = true;
+  } catch {
+    // PostgreSQL недоступна или не ответила за 3 с
+  } finally {
+    clearTimeout(timer);
+  }
+  res.status(baseOk && dbOk ? 200 : 503).json({ ok: baseOk && dbOk });
+});
+
 app.use(
   session({
     store: new PgSession({ pool, createTableIfMissing: true }),
@@ -146,6 +164,8 @@ app.use('/api/pay', require('./routes/pay'));
 app.use('/api/watch', require('./routes/watch'));
 // Разбор находок дозора из Telegram: команды боту и отчёт рутины Claude Code, каждый по своему секрету.
 app.use('/api/ops', require('./routes/ops'));
+// Ошибки программы в браузере — в журнал и администраторам; вход не нужен (экран входа — тоже код).
+app.use('/api/client-error', require('./routes/clientError'));
 // Дашборд администраторов: код интерфейса и данные — только администратору (requireAdmin).
 const dash = require('./routes/dash');
 app.get('/api/dash.js', dash.script);
@@ -195,6 +215,16 @@ if (require.main === module) {
   require('./services/reminders').init();
   require('./services/watch').init();
   require('./routes/ops').init();
+  // Счётчики перебора базы за сутки — из файла: перезапуск (каждая выкладка) их не обнуляет.
+  const saveEngineUsage = require('./routes/engine').init();
+  // Остановка (systemctl restart при выкладке) — сначала сохранить счётчики, потом выйти. Вопросы помощнику
+  // в работе обрываются, как и раньше: ожидание их ответа держало бы порт закрытым до минуты.
+  for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.once(signal, () => {
+      saveEngineUsage();
+      process.exit(0);
+    });
+  }
   // База грузится до открытия порта: первый поиск пользователя не ждёт разбора 12 МБ.
   require('./services/base').load();
   const port = process.env.PORT || 3000;

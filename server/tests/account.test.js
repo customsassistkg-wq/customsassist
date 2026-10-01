@@ -8,7 +8,9 @@ const assert = require('node:assert/strict');
 const bcrypt = require('bcrypt');
 
 // Порт известен заранее: браузер шлёт Origin своего адреса, а список origin читается при загрузке.
-const PORT = 40000 + Math.floor(Math.random() * 2000);
+// Вне диапазона временных портов и Linux (32768–60999), и Windows (49152–65535): в нём порт иногда занят
+// исходящим соединением, и тест падал с EADDRINUSE (01.10.2026, после браузерных тестов).
+const PORT = 21000 + Math.floor(Math.random() * 1000);
 process.env.APP_ORIGIN = 'https://test.local,http://127.0.0.1:' + PORT;
 process.env.SESSION_SECRET = 'local-check-only';
 process.env.DASH_ORIGIN = 'https://dash.test.local';
@@ -83,7 +85,7 @@ const app = require('../src/index');
     console.log('PASS: перебор текущего пароля упирается в лимит (429)');
 
     if (!process.env.PLAYWRIGHT_MODULE) { console.log('SKIP: браузерная часть — нужен PLAYWRIGHT_MODULE'); return; }
-    const browser = await require(process.env.PLAYWRIGHT_MODULE).chromium.launch({ channel: 'msedge', headless: true });
+    const browser = await require('./browser').launch();
     try {
       const open = async (email, password, width) => {
         const ctx = await browser.newContext({ viewport: { width, height: 900 } });

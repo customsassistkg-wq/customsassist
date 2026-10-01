@@ -8,7 +8,9 @@ const assert = require('node:assert/strict');
 const bcrypt = require('bcrypt');
 
 // Порт известен заранее: браузер шлёт Origin своего адреса, а список origin читается при загрузке.
-const PORT = 38000 + Math.floor(Math.random() * 2000);
+// Вне диапазона временных портов и Linux (32768–60999), и Windows (49152–65535): в нём порт иногда занят
+// исходящим соединением, и тест падал с EADDRINUSE (01.10.2026, после браузерных тестов).
+const PORT = 22000 + Math.floor(Math.random() * 1000);
 process.env.APP_ORIGIN = 'https://test.local,http://127.0.0.1:' + PORT;
 process.env.SESSION_SECRET = 'local-check-only';
 delete process.env.NODE_ENV;
@@ -249,7 +251,7 @@ const { extendedUntil } = require('../src/routes/admin');
       return;
     }
     xp.on = true;
-    const browser = await require(process.env.PLAYWRIGHT_MODULE).chromium.launch({ channel: 'msedge', headless: true });
+    const browser = await require('./browser').launch();
     const shots = process.env.PAY_SHOTS_DIR;
     try {
       users.push(mk('55555555-5555-4555-8555-555555555555', 'guest-pay@test.local', '2026-01-01T23:59:59.999Z'));

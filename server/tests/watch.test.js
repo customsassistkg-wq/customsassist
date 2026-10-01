@@ -8,7 +8,9 @@
 const assert = require('node:assert/strict');
 const bcrypt = require('bcrypt');
 
-const PORT = 42000 + Math.floor(Math.random() * 2000);
+// Вне диапазона временных портов и Linux (32768–60999), и Windows (49152–65535): в нём порт иногда занят
+// исходящим соединением, и тест падал с EADDRINUSE (01.10.2026, после браузерных тестов).
+const PORT = 23000 + Math.floor(Math.random() * 1000);
 process.env.APP_ORIGIN = 'https://test.local,http://127.0.0.1:' + PORT;
 process.env.SESSION_SECRET = 'local-check-only';
 process.env.RESEND_API_KEY = 'test-key';
@@ -127,7 +129,7 @@ const CODE = '6810119000';
     console.log('PASS: задача — раз в сутки с 9:00, одно письмо на пользователя, «изменилось» по коду; истёкшему доступу — без письма');
 
     if (!process.env.PLAYWRIGHT_MODULE) { console.log('SKIP: браузерная часть — нужен PLAYWRIGHT_MODULE'); return; }
-    const browser = await require(process.env.PLAYWRIGHT_MODULE).chromium.launch({ channel: 'msedge', headless: true });
+    const browser = await require('./browser').launch();
     try {
       const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
       const errors = [];

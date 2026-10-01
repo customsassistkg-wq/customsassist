@@ -8,6 +8,7 @@ const { endUserSessions } = require('../services/sessions');
 const { issueVerification } = require('../services/verification');
 const xpay = require('../services/xpay');
 const telegram = require('../services/telegram');
+const { browserOf } = require('../services/userAgent');
 const PAY_SESSION_MS = 3600e3;
 
 const router = express.Router();
@@ -212,6 +213,12 @@ router.post('/login', async (req, res, next) => {
     // и основного сайта — два разных круга: вход в один не трогает другой.
     await endUserSessions(user.id, 'replaced', undefined, { dash });
     await pool.query('update users set last_login_at=now(), last_seen_at=now() where id=$1', [user.id]);
+    // Вход администратора — сообщение администраторам в Telegram (01.10.2026): второго фактора у входа нет, и вход
+    // по угаданному или утёкшему паролю иначе никто бы не заметил. Вход пользователей не сообщается.
+    if (user.role === 'admin') {
+      telegram.notify(`🔐 <b>Вход администратора</b>\n${telegram.esc(user.email)} · ${dash ? 'дашборд' : 'сайт'} · IP ${telegram.esc(req.ip)} · `
+        + `${telegram.esc(browserOf(req.get('user-agent')))}\nЕсли это были не вы — смените пароль в меню аккаунта и проверьте журнал администрирования.`);
+    }
 
     req.session.regenerate((err) => {
       if (err) return next(err);

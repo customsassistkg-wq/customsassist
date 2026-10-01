@@ -128,7 +128,7 @@ app.get('/', (q, r) => r.set('Content-Security-Policy', csp).type('html').send(h
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
   const origin = 'http://127.0.0.1:' + server.address().port;
-  const browser = await require(process.env.PLAYWRIGHT_MODULE).chromium.launch({ channel: 'msedge', headless: true });
+  const browser = await require('./browser').launch();
   try {
     for (const w of [1280, 420]) {
       const page = await browser.newPage({ viewport: { width: w, height: 900 } });

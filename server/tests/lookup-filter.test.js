@@ -306,7 +306,7 @@ app.get('/', (req,res)=>res.type('html').send(html));
   const server=app.listen(0,'127.0.0.1');
   await new Promise(resolve=>server.once('listening',resolve));
   const origin='http://127.0.0.1:'+server.address().port;
-  const browser=await require(process.env.PLAYWRIGHT_MODULE).chromium.launch({channel:'msedge',headless:true});
+  const browser=await require('./browser').launch();
   try{
     const page=await browser.newPage({viewport:{width:1280,height:900}});
     const errors=[];
@@ -472,6 +472,21 @@ app.get('/', (req,res)=>res.type('html').send(html));
 
     assert.deepEqual(errors,[]);
     console.log('PASS: браузер — порядок полей, три направления, страна происхождения, ЕАЭС');
+
+    // Дата условий по умолчанию — сегодня по Бишкеку, как у базы. До 01.10.2026 она бралась по UTC, и с 00:00
+    // до 06:00 по Бишкеку поле показывало вчерашний день: 20:00 UTC 1 октября — это 02:00 2 октября.
+    const night=await browser.newPage({viewport:{width:1280,height:900}});
+    if(night.clock){
+      await night.clock.setFixedTime(new Date('2026-10-01T20:00:00Z'));
+      await night.goto(origin);
+      await night.locator('#authEmail').fill('test@example.test');
+      await night.locator('#authPassword').fill('valid');
+      await night.locator('#authSubmit').click();
+      await night.locator('#appWrap').waitFor({state:'visible'});
+      assert.equal(await night.inputValue('#lookupDate'),'2026-10-02');
+      console.log('PASS: браузер — дата условий по умолчанию — сегодня по Бишкеку (в 02:00 2 октября — 2 октября, а не 1-е по UTC)');
+    }else console.log('SKIP: дата условий по умолчанию — в этой версии Playwright нет page.clock');
+    await night.close();
   }finally{
     await browser.close();
     await new Promise(resolve=>server.close(resolve));
