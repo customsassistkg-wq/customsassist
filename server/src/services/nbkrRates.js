@@ -14,7 +14,30 @@ const FETCH_TIMEOUT_MS = 15 * 1000;
 // (кроме rates) — на них уже завязан фронт, и ломать их ради красоты незачем.
 const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB', 'KZT'];
 
-let cache = null; // { date, usd, eur, rates: { USD, EUR, CNY, RUB, KZT } }
+let cache = null; // последний полученный: { date, usd, eur, rates: { USD, EUR, CNY, RUB, KZT } }
+// Курс, действующий в день, — а не последний полученный. НБКР публикует курс на завтра уже вечером (02.10.2026 в 17:40 по Бишкеку
+// daily.xml нёс Date="03.10.2026", параметр ?date= он игнорирует), а таможня берёт курс на день регистрации декларации: с вечера
+// до полуночи калькулятор считал бы по завтрашнему курсу. Поэтому помнятся последние десять полученных курсов, и getRates() отдаёт
+// тот, чья дата — наибольшая из не позже нужного дня (по умолчанию сегодня по Бишкеку). Первый запуск вечером, когда вчерашнего
+// курса ещё нет, отдаёт имеющийся, а не отказ. История лежит и в файле на диске.
+const HISTORY_MAX = 10;
+let history = [];
+const isoOf = (d) => { const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(d || '')); return m ? m[3] + '-' + m[2] + '-' + m[1] : null; };
+const bishkekToday = (now = Date.now()) => new Date(now + 6 * 3600e3).toISOString().slice(0, 10);
+function pushHistory(list, entry) {
+  return list.filter((r) => r.date !== entry.date).concat(entry)
+    .sort((a, b) => String(isoOf(a.date)).localeCompare(String(isoOf(b.date)))).slice(-HISTORY_MAX);
+}
+function effective(forIso = bishkekToday()) {
+  if (!cache) return null;
+  const all = history.length ? history : [cache];
+  let pick = null;
+  for (const r of all) {
+    const iso = isoOf(r.date);
+    if (iso && iso <= forIso && (!pick || iso > isoOf(pick.date))) pick = r;
+  }
+  return pick || all[0];
+}
 // Последний удачный ответ НБКР лежит на диске (server/var/nbkr-rates.json, каталог состояния — как у счётчиков перебора и разбора
 // находок). Без него перезапуск службы — а перезапуск это каждая выкладка и каждое обновление ОС — при недоступном nbkr.kg оставлял
 // калькулятор и помощника без курсов до возвращения сайта. Файл нужен только как запасной: сперва всегда спрашивается НБКР, и курс
@@ -27,7 +50,7 @@ let fromDisk = false;
 let failingSince = null;
 function saveRates() {
   try {
-    ops.writeJson(STATE_FILE, { v: 1, savedAt: new Date().toISOString(), ...cache });
+    ops.writeJson(STATE_FILE, { v: 2, savedAt: new Date().toISOString(), ...cache, history });
   } catch (err) {
     console.error('nbkr-rates: не удалось сохранить курс на диск', err.message);
   }
@@ -35,10 +58,18 @@ function saveRates() {
 function loadRates() {
   const j = ops.readJson(STATE_FILE);
   const ok = (x) => typeof x === 'number' && Number.isFinite(x) && x > 0;
-  if (!j || j.v !== 1 || !j.rates || !ok(j.rates.USD) || !ok(j.rates.EUR) || !ok(j.usd) || !ok(j.eur)) return null;
-  const rates = {};
-  for (const c of CURRENCIES) if (ok(j.rates[c])) rates[c] = j.rates[c];
-  return { date: typeof j.date === 'string' ? j.date : null, usd: j.usd, eur: j.eur, rates };
+  const entry = (x) => {
+    if (!x || !x.rates || !ok(x.rates.USD) || !ok(x.rates.EUR) || !ok(x.usd) || !ok(x.eur)) return null;
+    const rates = {};
+    for (const c of CURRENCIES) if (ok(x.rates[c])) rates[c] = x.rates[c];
+    return { date: typeof x.date === 'string' ? x.date : null, usd: x.usd, eur: x.eur, rates };
+  };
+  if (!j || (j.v !== 1 && j.v !== 2)) return null;
+  const latest = entry(j);
+  if (!latest) return null;
+  let list = [];
+  if (j.v === 2 && Array.isArray(j.history)) for (const h of j.history.slice(-HISTORY_MAX)) { const e = entry(h); if (e && isoOf(e.date)) list = pushHistory(list, e); }
+  return { latest, history: pushHistory(list, latest) };
 }
 let refreshing = null;
 // Когда курс в последний раз обновился и чем кончилась последняя неудача — для
@@ -104,6 +135,7 @@ async function refresh() {
       // документ (страница ошибки, смена формата), и кэш лучше не трогать.
       if (rates.USD && rates.EUR) {
         cache = { date: dateMatch ? dateMatch[1] : null, usd: rates.USD, eur: rates.EUR, rates };
+        if (isoOf(cache.date)) history = pushHistory(history, cache);
         updatedAt = new Date().toISOString();
         lastError = null;
         failingSince = null;
@@ -122,9 +154,10 @@ async function refresh() {
       if (!cache) {
         const d = loadRates();
         if (d) {
-          cache = d;
+          cache = d.latest;
+          history = d.history;
           fromDisk = true;
-          console.warn('nbkr-rates: nbkr.kg не отвечает, взят курс с диска от ' + (d.date || 'неизвестной даты'));
+          console.warn('nbkr-rates: nbkr.kg не отвечает, взят курс с диска от ' + (d.latest.date || 'неизвестной даты'));
         }
       }
       refreshing = null;
@@ -133,9 +166,10 @@ async function refresh() {
   return refreshing;
 }
 
-async function getRates() {
+// forIso — день, на который нужен курс (YYYY-MM-DD; по умолчанию сегодня по Бишкеку).
+async function getRates(forIso) {
   if (!cache) await refresh();
-  return cache;
+  return effective(forIso);
 }
 
 function init() {
@@ -144,7 +178,7 @@ function init() {
 }
 
 function status() {
-  return { date: cache ? cache.date : null, usd: cache ? cache.usd : null, eur: cache ? cache.eur : null, updatedAt, lastError, fromDisk, failingSince: failingSince ? new Date(failingSince).toISOString() : null };
+  return { date: cache ? cache.date : null, usd: cache ? cache.usd : null, eur: cache ? cache.eur : null, effectiveDate: effective() ? effective().date : null, updatedAt, lastError, fromDisk, failingSince: failingSince ? new Date(failingSince).toISOString() : null };
 }
 
 module.exports = { init, getRates, refresh, status };
