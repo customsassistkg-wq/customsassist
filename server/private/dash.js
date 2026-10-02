@@ -221,7 +221,7 @@
       const r = sv.nbkr, ageH = r.updatedAt ? (new Date(d.now) - new Date(r.updatedAt)) / 3600e3 : null;
       tiles.push(tile('Курс НБКР', r.usd ? esc(fmt.num(r.usd, 2)) + '<small>сом за $</small>' : '—',
         st(!r.usd ? 'bad' : r.lastError ? 'warn' : ageH != null && ageH < 25 ? 'ok' : 'warn', !r.usd ? 'нет курса' : r.lastError ? 'сбой обновления' : 'обновляется')
-        + ` <span class="small">на ${esc(r.date || '—')}${r.eur ? ' · € ' + esc(fmt.num(r.eur, 2)) : ''}${r.lastError ? ' · ' + esc(r.lastError.message) : ''}</span>`));
+        + ` <span class="small">на ${esc(r.date || '—')}${r.eur ? ' · € ' + esc(fmt.num(r.eur, 2)) : ''}${r.fromDisk ? ' · из файла на диске: nbkr.kg не ответил' : ''}${r.lastError ? ' · ' + esc(r.lastError.message) : ''}</span>`));
     }
     // Классификационные решения
     if (sv.classDecisions) {

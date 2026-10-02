@@ -1,4 +1,5 @@
 const https = require('https');
+const ops = require('./ops');
 
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000; // раз в час проверяем, не сменилась ли дата курса
 // Без таймаута зависший сокет оставляет промис refresh() навсегда
@@ -14,6 +15,31 @@ const FETCH_TIMEOUT_MS = 15 * 1000;
 const CURRENCIES = ['USD', 'EUR', 'CNY', 'RUB', 'KZT'];
 
 let cache = null; // { date, usd, eur, rates: { USD, EUR, CNY, RUB, KZT } }
+// Последний удачный ответ НБКР лежит на диске (server/var/nbkr-rates.json, каталог состояния — как у счётчиков перебора и разбора
+// находок). Без него перезапуск службы — а перезапуск это каждая выкладка и каждое обновление ОС — при недоступном nbkr.kg оставлял
+// калькулятор и помощника без курсов до возвращения сайта. Файл нужен только как запасной: сперва всегда спрашивается НБКР, и курс
+// с диска берётся, лишь когда запрос не удался и в памяти ничего нет; он виден как обычный — с датой НБКР («курс НБКР на 01.10.2026»).
+// Курсы публичные, личных данных в файле нет. Пишет только refresh(); тесты и require из скриптов файла не касаются (OPS_STATE_DIR).
+const STATE_FILE = 'nbkr-rates.json';
+let fromDisk = false;
+// С какого момента запросы к НБКР подряд не удаются (null — последний удался): по нему services/health.js решает, пора ли писать
+// администраторам. Запасной курс с диска сам по себе тревоги не поднимает — он только не даёт калькулятору остановиться.
+let failingSince = null;
+function saveRates() {
+  try {
+    ops.writeJson(STATE_FILE, { v: 1, savedAt: new Date().toISOString(), ...cache });
+  } catch (err) {
+    console.error('nbkr-rates: не удалось сохранить курс на диск', err.message);
+  }
+}
+function loadRates() {
+  const j = ops.readJson(STATE_FILE);
+  const ok = (x) => typeof x === 'number' && Number.isFinite(x) && x > 0;
+  if (!j || j.v !== 1 || !j.rates || !ok(j.rates.USD) || !ok(j.rates.EUR) || !ok(j.usd) || !ok(j.eur)) return null;
+  const rates = {};
+  for (const c of CURRENCIES) if (ok(j.rates[c])) rates[c] = j.rates[c];
+  return { date: typeof j.date === 'string' ? j.date : null, usd: j.usd, eur: j.eur, rates };
+}
 let refreshing = null;
 // Когда курс в последний раз обновился и чем кончилась последняя неудача — для
 // дашборда администраторов (routes/dash.js): курс двухдневной давности при живом
@@ -80,13 +106,27 @@ async function refresh() {
         cache = { date: dateMatch ? dateMatch[1] : null, usd: rates.USD, eur: rates.EUR, rates };
         updatedAt = new Date().toISOString();
         lastError = null;
+        failingSince = null;
+        fromDisk = false;
+        saveRates();
       } else {
         lastError = { at: new Date().toISOString(), message: 'daily.xml без USD/EUR' };
+        failingSince = failingSince || Date.now();
       }
     } catch (err) {
       lastError = { at: new Date().toISOString(), message: err.message };
+      failingSince = failingSince || Date.now();
       console.error('nbkr-rates: refresh failed', err.message);
     } finally {
+      // Запрос не удался и в памяти пусто: последний удачный курс с диска вместо «курсы недоступны».
+      if (!cache) {
+        const d = loadRates();
+        if (d) {
+          cache = d;
+          fromDisk = true;
+          console.warn('nbkr-rates: nbkr.kg не отвечает, взят курс с диска от ' + (d.date || 'неизвестной даты'));
+        }
+      }
       refreshing = null;
     }
   })();
@@ -104,7 +144,7 @@ function init() {
 }
 
 function status() {
-  return { date: cache ? cache.date : null, usd: cache ? cache.usd : null, eur: cache ? cache.eur : null, updatedAt, lastError };
+  return { date: cache ? cache.date : null, usd: cache ? cache.usd : null, eur: cache ? cache.eur : null, updatedAt, lastError, fromDisk, failingSince: failingSince ? new Date(failingSince).toISOString() : null };
 }
 
 module.exports = { init, getRates, refresh, status };

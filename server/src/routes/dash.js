@@ -462,4 +462,4 @@ function script(req, res, next) {
   });
 }
 
-module.exports = { router, script, collect, baseSection, sdTime };
+module.exports = { router, script, collect, baseSection, sdTime, systemSection, systemdSection, certsSection }; // три последних читает и services/health.js

@@ -216,6 +216,8 @@ if (require.main === module) {
   require('./routes/pay').init();
   require('./services/reminders').init();
   require('./services/watch').init();
+  // Тихие поломки (диск, ночная копия базы, сертификат, курс НБКР) — сообщением в Telegram, а не только строкой на дашборде.
+  require('./services/health').init();
   require('./routes/ops').init();
   // Счётчики перебора базы за сутки — из файла: перезапуск (каждая выкладка) их не обнуляет.
   const saveEngineUsage = require('./routes/engine').init();
