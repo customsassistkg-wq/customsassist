@@ -180,7 +180,7 @@ app.use('/api/dash', dash.router);
 // if the Node process is ever reached directly.
 if (process.env.NODE_ENV !== 'production') {
   const root = path.join(__dirname, '..', '..');
-  app.get(['/', '/tnved_checker.html', '/privacy.html', '/terms.html', '/terms-next.html', '/ai-risk.json', '/manifest.webmanifest'], (req, res) => {
+  app.get(['/', '/tnved_checker.html', '/privacy.html', '/terms.html', '/ai-risk.json', '/manifest.webmanifest'], (req, res) => {
     res.sendFile(path.join(root, req.path === '/' ? 'tnved_checker.html' : req.path.slice(1)));
   });
   // Дашборд администраторов: в продакшене это отдельный хост (dash.customsassist.trade,

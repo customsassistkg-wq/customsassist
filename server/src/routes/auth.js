@@ -45,7 +45,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TRIAL_DAYS = 3;
 // Редакция правил использования (terms.html). Новая редакция — новая дата здесь:
 // у всех, кто принимал прежнюю, страница снова покажет окно «Принимаю».
-const TERMS_VERSION = '2026-09-18';
+const TERMS_VERSION = '2026-11-03';
 const REGISTER_RATE_LIMIT = 5; // attempts
 const REGISTER_RATE_WINDOW_MS = 60 * 60 * 1000; // per IP, per hour
 const LOGIN_RATE_LIMIT = 10; // attempts
