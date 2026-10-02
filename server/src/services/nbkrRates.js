@@ -42,13 +42,18 @@ function effective(forIso = bishkekToday()) {
 // находок). Без него перезапуск службы — а перезапуск это каждая выкладка и каждое обновление ОС — при недоступном nbkr.kg оставлял
 // калькулятор и помощника без курсов до возвращения сайта. Файл нужен только как запасной: сперва всегда спрашивается НБКР, и курс
 // с диска берётся, лишь когда запрос не удался и в памяти ничего нет; он виден как обычный — с датой НБКР («курс НБКР на 01.10.2026»).
-// Курсы публичные, личных данных в файле нет. Пишет только refresh(); тесты и require из скриптов файла не касаются (OPS_STATE_DIR).
+// Курсы публичные, личных данных в файле нет. Файл читает и пишет только служба, запущенная через init() (index.js под
+// require.main === module), как и счётчики перебора: тесты, дашборд-сборщики и require из скриптов его не касаются — иначе
+// каждый прогон тестов с настоящим getRates() оставлял бы server/var/nbkr-rates.json в рабочем дереве (02.10.2026, ветка правил).
+// Тест файла включает запись явно: setPersist(true).
 const STATE_FILE = 'nbkr-rates.json';
+let persist = false;
 let fromDisk = false;
 // С какого момента запросы к НБКР подряд не удаются (null — последний удался): по нему services/health.js решает, пора ли писать
 // администраторам. Запасной курс с диска сам по себе тревоги не поднимает — он только не даёт калькулятору остановиться.
 let failingSince = null;
 function saveRates() {
+  if (!persist) return;
   try {
     ops.writeJson(STATE_FILE, { v: 2, savedAt: new Date().toISOString(), ...cache, history });
   } catch (err) {
@@ -56,6 +61,7 @@ function saveRates() {
   }
 }
 function loadRates() {
+  if (!persist) return null;
   const j = ops.readJson(STATE_FILE);
   const ok = (x) => typeof x === 'number' && Number.isFinite(x) && x > 0;
   const entry = (x) => {
@@ -173,6 +179,7 @@ async function getRates(forIso) {
 }
 
 function init() {
+  persist = true;
   refresh();
   setInterval(refresh, REFRESH_INTERVAL_MS);
 }
@@ -181,4 +188,4 @@ function status() {
   return { date: cache ? cache.date : null, usd: cache ? cache.usd : null, eur: cache ? cache.eur : null, effectiveDate: effective() ? effective().date : null, updatedAt, lastError, fromDisk, failingSince: failingSince ? new Date(failingSince).toISOString() : null };
 }
 
-module.exports = { init, getRates, refresh, status };
+module.exports = { init, getRates, refresh, status, setPersist: (v) => { persist = !!v; } };

@@ -37,7 +37,7 @@ https.get = (url, opts, cb) => {
 const realNow = Date.now;
 let clock = Date.parse('2026-10-02T06:00:00Z'); // 12:00 по Бишкеку, 02.10
 Date.now = () => clock;
-const fresh = () => { delete require.cache[require.resolve('../src/services/nbkrRates')]; return require('../src/services/nbkrRates'); };
+const fresh = (persist = true) => { delete require.cache[require.resolve('../src/services/nbkrRates')]; const m = require('../src/services/nbkrRates'); m.setPersist(persist); return m; };
 const quiet = { log: console.log, warn: console.warn, error: console.error };
 const mute = () => { console.warn = console.error = () => {}; };
 const unmute = () => { console.warn = quiet.warn; console.error = quiet.error; };
@@ -45,6 +45,20 @@ const feed = async (svc, date, usd, eur) => { mode = 'ok'; body = xml(date, usd,
 
 (async () => {
   try {
+    // 0. Служба без init() (тесты, скрипты) на диск не пишет и с диска не читает.
+    {
+      let svc0 = fresh(false);
+      const r0 = await svc0.getRates();
+      assert.equal(r0.date, '01.10.2026');
+      assert.equal(fs.existsSync(file), false, 'без включённой записи файл не создаётся');
+      fs.writeFileSync(file, JSON.stringify({ v: 2, date: '30.09.2026', usd: 1, eur: 1, rates: { USD: 1, EUR: 1 }, history: [] }));
+      mode = 'down'; mute();
+      svc0 = fresh(false);
+      assert.equal(await svc0.getRates(), null, 'без включённой записи файл не читается');
+      unmute(); mode = 'ok';
+      fs.rmSync(file);
+    }
+
     // 1. Удача: курс в памяти и файл на диске.
     let svc = fresh();
     let r = await svc.getRates();
