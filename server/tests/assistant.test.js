@@ -275,13 +275,36 @@ const a = require('../src/services/assistant');
   t = await a.calcPayments({ code: '8504405500', value: 1000, currency: 'USD' });
   assert.match(t, /НДС 0% \(вид платежа 5010\): 0,00 сом .*основание: ст\. 297 ч\.1 НК КР/);
   console.log('PASS: льготы ст. 297 в расчёте — электромобиль условно, зарядное безусловно');
-  // вывоз скота (досье 21.09.2026): ввозные пошлина и НДС на вывозе не считаются — ни одной позицией, ни пакетом
+  // вывоз скота (досье 21.09.2026): ввозные пошлина и НДС на вывозе не считаются — ни одной позицией, ни пакетом;
+  // считается один сбор за таможенные операции: п.38 Инструкции к Пост. КМ КР № 79 берёт 0,4% на любую процедуру, кроме транзита
+  // (0,25% из ДТ 2023 года — ставка до Пост. КМ № 349 от 03.07.2024). 4350 × 87,45 = 380 407,50 сом → 1 521,63 сом.
   for (const input of [{ code: '0102299900', value: 4350, currency: 'USD', direction: 'ex' },
     { direction: 'export', currency: 'USD', total: 4350, items: [{ code: '0102299900', value: 4350 }] }]) {
     t = await a.calcPayments(input);
     assert.match(t, /^Это расчёт ввозных платежей: при вывозе ввозные пошлина и НДС не взимаются/);
-    assert.doesNotMatch(t, /Ввозная пошлина|сом/);
+    assert.doesNotMatch(t, /Ввозная пошлина \(|НДС 12%|Всего к уплате|\nИтого: /);
+    assert.match(t, /Таможенная стоимость: 4350 USD × 87\.45 .* = 380\s407,50 сом/);
+    assert.match(t, /Сбор за таможенные операции при вывозе: 1\s521,63 сом — 0,4% от таможенной стоимости, вилка 500–250 000 сом/);
+    assert.match(t, /К уплате при вывозе по этому расчёту: 1\s521,63 сом \(без вывозной пошлины/);
+    assert.match(t, /п\.38 Инструкции к Пост\. КМ КР № 79/);
   }
+  // вилка 5–2500 РП и сбор один на пакет
+  assert.match(await a.calcPayments({ code: '0102299900', value: 10, currency: 'USD', direction: 'ex' }), /Сбор за таможенные операции при вывозе: 500,00 сом/);
+  assert.match(await a.calcPayments({ code: '0102299900', value: 10000000, currency: 'USD', direction: 'ex' }), /Сбор за таможенные операции при вывозе: 250\s000,00 сом/);
+  t = await a.calcPayments({ direction: 'ex', currency: 'USD', total: 4300, items: [{ code: '4101200000', value: 3300 }, { code: '7204210000', value: 1000 }] });
+  assert.equal((t.match(/Сбор за таможенные операции при вывозе:/g) || []).length, 1, 'сбор при вывозе один на декларацию');
+  assert.match(t, /Сумма стоимостей позиций совпадает с итогом документа: 4\s300,00 USD/);
+  assert.match(t, /Сбор за таможенные операции при вывозе: 1\s504,14 сом/);                              // 4300 × 87,45 = 376 035 → 0,4%
+  // позиции не сходятся с итогом — суммы сбора нет; нет стоимости — правило без суммы; несколько позиций без total — отказ
+  t = await a.calcPayments({ direction: 'ex', currency: 'USD', total: 4000, items: [{ code: '4101200000', value: 3300 }, { code: '7204210000', value: 1000 }] });
+  assert.match(t, /Расчёт не выполнен: платежи по несходящимся позициям неверны/);
+  assert.doesNotMatch(t, /Сбор за таможенные операции при вывозе: /);
+  t = await a.calcPayments({ direction: 'ex', currency: 'USD', code: '0102299900' });
+  assert.match(t, /Сбор за таможенные операции при вывозе — 0,4% от таможенной стоимости, не менее 500 и не более 250 000 сом/);
+  assert.match(t, /Сумму сбора инструмент назовёт, если передать value/);
+  assert.doesNotMatch(t, /Таможенная стоимость:/);
+  assert.match(await a.calcPayments({ direction: 'ex', currency: 'USD', items: [{ code: '4101200000', value: 3300 }, { code: '7204210000', value: 1000 }] }), /Передай total/);
+  console.log('PASS: вывоз — один сбор 0,4% (п.38 Инструкции к Пост. КМ № 79), вилка 500–250 000 сом, без ввозных платежей');
   assert.match(await a.calcPayments({ code: '8517130000', value: 100, currency: 'USD', country: 'Казахстан' }), /ЕАЭС/);
   assert.match(await a.calcPayments({ code: '0201100001', value: 5000, currency: 'USD', quantity: 1000, country: 'ОАЭ', date: '2026-10-10' }), /ОАЭ: 13,1%/);
   assert.match(await a.calcPayments({ code: '1', value: 1, currency: 'USD' }), /не найден в ЕТТ/);
@@ -866,6 +889,12 @@ const a = require('../src/services/assistant');
     : [{ type: 'text', text: 'Готово.' }]);
   r = await a.ask([{ role: 'user', content: 'Разбери инвойсы' }], { docs: [{ name: 'inv.pdf', pages: 1, text: 'Total 1 100,00 USD' }] });
   assert.match(calls[2].messages[calls[2].messages.length - 1].content, /в расчёте есть непосчитанные позиции — посчитай весь пакет/);
+  // вывоз скота: сбор при вывозе посчитан сервером — вызов считается расчётом (второго раунда с требованием расчёта нет), сумма из выдачи не выдумка
+  calls.length = 0;
+  script = (n) => (n === 1 ? [{ type: 'tool_use', id: 't1', name: 'calc_payments', input: { direction: 'ex', code: '0102299900', value: 4350, currency: 'USD' } }]
+    : [{ type: 'text', text: 'При вывозе платится только сбор за таможенные операции — 1 521,63 сом.' }]);
+  r = await a.ask([{ role: 'user', content: 'Посчитай платежи за вывоз скота на 4350 USD' }]);
+  assert.deepEqual([calls.length, r.answer], [2, 'При вывозе платится только сбор за таможенные операции — 1 521,63 сом.']);
   console.log('PASS: полнота ответа — коды расчёта, пропавшие из таблицы, возвращаются; расчёт, о котором просили, обязателен; итог и входы sum_check — из документов; одна поставка — один расчёт');
 
   // ── чтение страницы: положение, предел ответа, второе распознавание ──

@@ -75,7 +75,7 @@ No task is in progress. **Изменения 01.10.2026 выложены** (`08a
 - Edition history partial: `banPrevOn` (ЕЭК register from 2024) and ETT temporary rates since 01.10.2024; earlier dates answer «база не хранит редакций».
 - CIS: the 2011 Treaty and the 1994 FTA Agreement are not in the Kyrgyz registry; 0 % not shown for Georgia and Turkmenistan (owner's call).
 - Play Console / TestFlight state unknown from public endpoints (`mobile/RELEASE.md`).
-- Document scanner limits found on ten dossiers (21.09.2026): a digit misread by every reader on 100-dpi scans passes with only a low-resolution note; stamped table rows lose their tails; collage pages are not rotated; per-code sums the model adds itself are not caught; the export customs fee (0.25 %) is not in the site.
+- Document scanner limits found on ten dossiers (21.09.2026): a digit misread by every reader on 100-dpi scans passes with only a low-resolution note; stamped table rows lose their tails; collage pages are not rotated; per-code sums the model adds itself are not caught. (The «export customs fee 0.25 %» noted here before was a 2023 declaration: the fee is 0.4 % on any procedure since ПКМ № 349 of 03.07.2024, and since 02.10.2026 the assistant computes it on export.)
 - Account menu after login: the administrator's menu verified on production on 01.10.2026 (one-off session, 1280 and 390 px, with «Двухфакторный вход»); a user's menu is not (no test user account there).
 
 ## Known risks
