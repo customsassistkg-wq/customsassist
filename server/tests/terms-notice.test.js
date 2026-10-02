@@ -46,7 +46,7 @@ const termsNotice = require('../src/services/termsNotice');
 
 // ── маршруты ──
 const user = { id: '22222222-2222-4222-8222-222222222222', email: 'user@test.local', password_hash: bcrypt.hashSync('user-password', 4), role: 'user', active: true,
-  email_verified_at: new Date(), subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base', terms_version: '2026-09-18', totp_secret: null, totp_enabled_at: null };
+  email_verified_at: new Date(), subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base', terms_version: require('./terms-version'), totp_secret: null, totp_enabled_at: null };
 const audit = [];
 let inserts = 0;
 require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async (sql, a = []) => {

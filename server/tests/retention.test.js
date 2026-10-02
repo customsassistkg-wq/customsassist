@@ -13,7 +13,7 @@ delete process.env.RESEND_API_KEY;
 
 const hash = bcrypt.hashSync('right-password', 4);
 const mk = (id, email, role) => ({ id, email, password_hash: hash, role, active: true, email_verified_at: new Date(),
-  subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base', terms_version: '2026-09-18' });
+  subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base', terms_version: require('./terms-version') });
 const admin = mk('11111111-1111-4111-8111-111111111111', 'admin@test.local', 'admin');
 const user = mk('22222222-2222-4222-8222-222222222222', 'user@test.local', 'user');
 const users = [admin, user];

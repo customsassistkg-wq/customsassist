@@ -151,7 +151,7 @@ x`), 'utf8'));
 
   const hash = bcrypt.hashSync('right-password', 4);
   const admin = { id: '11111111-1111-4111-8111-111111111111', email: 'admin@test.local', password_hash: hash, role: 'admin',
-    active: true, email_verified_at: new Date(), subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base', terms_version: '2026-09-18' };
+    active: true, email_verified_at: new Date(), subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base', terms_version: require('./terms-version') };
   const user = { ...admin, id: '22222222-2222-4222-8222-222222222222', email: 'user@test.local', role: 'user' };
   const users = [admin, user];
   const inserted = [];

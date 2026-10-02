@@ -19,7 +19,7 @@ delete process.env.TELEGRAM_BOT_TOKEN;
 
 const hash = bcrypt.hashSync('right-password', 4);
 const mk = (id, email, extra = {}) => ({ id, email, password_hash: hash, role: 'user', active: true, email_verified_at: new Date(),
-  subscription_expires_at: '2099-01-01T23:59:59.999Z', last_seen_at: new Date(), ai_plan: 'base', terms_version: '2026-09-18', ...extra });
+  subscription_expires_at: '2099-01-01T23:59:59.999Z', last_seen_at: new Date(), ai_plan: 'base', terms_version: require('./terms-version'), ...extra });
 const user = mk('22222222-2222-4222-8222-222222222222', 'user@test.local');
 const fresh = mk('44444444-4444-4444-8444-444444444444', 'fresh@test.local', { email_verified_at: null });
 const users = [user, fresh];

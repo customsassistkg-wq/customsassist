@@ -60,7 +60,7 @@ const totp = require('../src/services/totp');
 
 // ── База и маршруты ──
 const mk = (id, email, role, pw, extra = {}) => ({ id, email, password_hash: bcrypt.hashSync(pw, 4), role, active: true, email_verified_at: new Date(),
-  subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base', terms_version: '2026-09-18',
+  subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base', terms_version: require('./terms-version'),
   totp_secret: null, totp_enabled_at: null, totp_last_step: null, totp_recovery: null, ...extra });
 const admin = mk('11111111-1111-4111-8111-111111111111', 'admin@test.local', 'admin', 'admin-password');
 const user = mk('22222222-2222-4222-8222-222222222222', 'user@test.local', 'user', 'user-password');

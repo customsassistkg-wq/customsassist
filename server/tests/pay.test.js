@@ -18,7 +18,7 @@ delete process.env.RESEND_API_KEY;
 
 const hash = bcrypt.hashSync('right-password', 4);
 const mk = (id, email, sub) => ({ id, email, password_hash: hash, role: 'user', active: true, email_verified_at: new Date(),
-  subscription_expires_at: sub, last_seen_at: new Date(), ai_plan: 'base', terms_version: '2026-09-18' });
+  subscription_expires_at: sub, last_seen_at: new Date(), ai_plan: 'base', terms_version: require('./terms-version') });
 const expired = mk('22222222-2222-4222-8222-222222222222', 'expired@test.local', '2026-01-01T23:59:59.999Z');
 const active = mk('33333333-3333-4333-8333-333333333333', 'active@test.local', '2099-01-31T23:59:59.999Z');
 const users = [expired, active];

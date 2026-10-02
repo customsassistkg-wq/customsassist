@@ -29,7 +29,7 @@ delete process.env.TURNSTILE_SECRET_KEY;
 process.env.TERMS_NOTICE = JSON.stringify({ effective: '2099-01-01', url: '/terms-next.html', text: 'С 01.01.2099 вступает в силу новая редакция правил использования: тарифы, оплата и возврат.' });
 
 const user = { id: '22222222-2222-4222-8222-222222222222', email: 'user@test.local', password_hash: bcrypt.hashSync('user-password', 4), role: 'user', active: true,
-  email_verified_at: new Date(), subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base', terms_version: '2026-09-18', totp_secret: null, totp_enabled_at: null };
+  email_verified_at: new Date(), subscription_expires_at: null, last_seen_at: new Date(), ai_plan: 'base', terms_version: require('./terms-version'), totp_secret: null, totp_enabled_at: null };
 require.cache[require.resolve('../src/db')] = { exports: { pool: { query: async (sql, a = []) => {
   if (/from users where (id|email) = \$1/.test(sql)) return { rows: [user].filter((u) => u.id === a[0] || u.email === a[0]) };
   return { rows: [], rowCount: 0 };
