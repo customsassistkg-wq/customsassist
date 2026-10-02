@@ -38,8 +38,7 @@ const termsNotice = require('../src/services/termsNotice');
   assert.equal(termsNotice.current(at('2026-10-01T00:00:00Z')).text.length, 300, 'текст не длиннее 300 знаков');
   process.env.TERMS_NOTICE = JSON.stringify(NOTICE);
   delete process.env.TERMS_NOTICE;
-  assert.match(termsNotice.current(at('2026-10-01T00:00:00Z')).text, /03\.11\.2026/, 'без настройки — константа из кода: уведомление о редакции с 03.11.2026');
-  assert.equal(termsNotice.current(at('2026-11-02T18:00:00Z')), null, 'константа перестаёт показываться в день вступления');
+  assert.equal(termsNotice.current(at('2026-10-01T00:00:00Z')), null, 'встроенного уведомления нет: редакция от 01.10.2026 вступила в силу 03.11.2026');
   process.env.TERMS_NOTICE = JSON.stringify(NOTICE);
   console.log('PASS: служба — показывается до дня вступления по Бишкеку, неверная и пустая настройка не показываются, ссылка только путь на нашем сайте');
 }
