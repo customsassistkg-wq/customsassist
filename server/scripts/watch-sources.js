@@ -100,6 +100,14 @@ const STI_DOCS = (theme) => `https://sti.gov.kg/api/Documents/get-documents-by-t
 const INTERIM_PAGE = 'https://eec.eaeunion.org/comission/department/catr/nontariff/interim.php';
 const KENESH_DOCS = 'https://kenesh.kg/sed/docs?page=0&limit=100';
 const BILL_RE = /таможен|налог|акциз|лицензи|ЕАЭС|Евразийск|свободной торговл|нетарифн|технического регулирования|ветеринар|фитосанитар/i;
+// Законопроекты, которые уже разобраны (session.md): номер → этап прохождения, на котором его читали (passing_stageid;
+// названия этапов — kenesh.kg/sed/stages: 1 регистрация, 2 комитеты, 3 заседание ЖК, 4 на подпись Президенту, 5 Торага).
+// Пока этап тот же — находки нет (законопроект 6-16490/26 приходил каждое утро три дня подряд); сдвинулся — находка с
+// новым этапом: этап 4 значит, что закон вот-вот появится в реестре. Разобрал — подними этап здесь.
+const BILLS_SEEN = {
+  '6-16490/26': { stage: 3, what: 'налогообложение: акциз 2404 и 3811 90 000 0, доля табака 30 %, ст. 297 НК п. 22 и 31, СФИТ «Тамчы»' },
+};
+const BILL_STAGES = { 1: 'регистрация', 2: 'рассмотрение в комитетах', 3: 'рассмотрение на заседании ЖК', 4: 'направлен на подпись Президенту', 5: 'отправлен Торага' };
 const REMEDIES_FIND = 'https://remedies.eaeunion.org/spd2/find?collection=zvr.v_actionsregistry&limit=5000';
 // Решения Коллегии и Совета ЕЭК — раздел «Решения — <год>» правового портала. Id раздела у каждого года свой и заранее
 // неизвестен (2026: Коллегия 463, Совет 461); на год без записи дозор пишет ошибку — добавить id с портала.
@@ -334,9 +342,12 @@ function troisFiles(html) {
 
 // Законопроекты Жогорку Кенеша, зарегистрированные с `since`, по таможне, налогам и торговле —
 // только раннее предупреждение: в базу закон попадает после принятия и опубликования.
-function freshBills(list, since) {
+// Разобранный законопроект (BILLS_SEEN) приходит снова только с новым этапом прохождения.
+function freshBills(list, since, seen = BILLS_SEEN) {
   return (list || []).filter((b) => String(b.vh_dat || '').slice(0, 10) >= since && BILL_RE.test(b.zpNameRus || ''))
-    .map((b) => ({ n: b.vh_nom, d: String(b.vh_dat).slice(0, 10), title: String(b.zpNameRus || '').replace(/\s+/g, ' ').trim() }));
+    .map((b) => ({ n: b.vh_nom, d: String(b.vh_dat).slice(0, 10), title: String(b.zpNameRus || '').replace(/\s+/g, ' ').trim(), stage: b.passing_stageid == null ? null : Number(b.passing_stageid) }))
+    .filter((b) => !(seen[b.n] && seen[b.n].stage === b.stage))
+    .map((b) => ({ ...b, was: seen[b.n] ? seen[b.n].stage : null }));
 }
 
 // Список раздела правового портала ЕАЭС: номер в ссылке, заголовок — в соседнем блоке (docs/legal-sources.md), даты.
@@ -736,7 +747,11 @@ async function collect({ days = 21, log = () => {} } = {}) {
   try {
     const bills = freshBills((JSON.parse(await fetchText(KENESH_DOCS)).content), since);
     log(`Жогорку Кенеш: законопроектов по теме за окно ${bills.length}`);
-    for (const b of bills) findings.push({ kind: 'bill', src: 'Кенеш', text: `${b.n} от ${dmyFromIso(b.d)}: ${b.title.slice(0, 200)}` });
+    for (const b of bills) {
+      const stage = (s) => (s == null ? '—' : BILL_STAGES[s] || `этап ${s}`);
+      const where = b.was == null ? `этап: ${stage(b.stage)}` : `этап изменился: ${stage(b.was)} → ${stage(b.stage)} (разобран на прежнем этапе — поднять BILLS_SEEN)`;
+      findings.push({ kind: 'bill', src: 'Кенеш', text: `${b.n} от ${dmyFromIso(b.d)}: ${b.title.slice(0, 200)} — ${where}` });
+    }
   } catch (err) { errors.push(`Жогорку Кенеш: ${err.message}`); }
 
   // 6. сроки в базе
@@ -829,5 +844,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { TEXT_RE, REG_PENDING, pendingFinding, interimFiles, kgLinkedEditions, parseEecList, refActs, eecNew, EEC_REVIEWED, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
+module.exports = { TEXT_RE, REG_PENDING, pendingFinding, interimFiles, kgLinkedEditions, parseEecList, refActs, eecNew, EEC_REVIEWED, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, BILLS_SEEN, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });

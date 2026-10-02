@@ -225,11 +225,16 @@ const troisHtml = `{"href":"/site/x/_/attachment/inline/7648:8b80/11%20-16%20%D1
 {"href":"/site/x/_/attachment/inline/d550:0e2a/%D0%A1%D0%9E%D0%93%D0%9B%D0%90%D0%A8%D0%95%D0%9D%D0%98%D0%95.pdf"}`;
 assert.deepEqual(w.troisFiles(troisHtml.replace(/"href":/g, '')), ['11 -16 сентября 2026 года ТРОИС ГТС.pdf'], 'только файлы с «ТРОИС» в имени');
 const bills = [
-  { vh_nom: '6-16490/26', vh_dat: '2026-09-23T00:00:00.000Z', zpNameRus: 'О проекте Закона «О внесении изменений … в сфере налогообложения»' },
-  { vh_nom: '6-1/26', vh_dat: '2026-09-20T00:00:00.000Z', zpNameRus: 'О проекте Закона о культуре' },
-  { vh_nom: '6-7473/25', vh_dat: '2025-05-01T00:00:00.000Z', zpNameRus: 'О таможенном регулировании' },
+  { vh_nom: '6-16490/26', vh_dat: '2026-09-23T00:00:00.000Z', zpNameRus: 'О проекте Закона «О внесении изменений … в сфере налогообложения»', passing_stageid: 3 },
+  { vh_nom: '6-1/26', vh_dat: '2026-09-20T00:00:00.000Z', zpNameRus: 'О проекте Закона о культуре', passing_stageid: 2 },
+  { vh_nom: '6-7473/25', vh_dat: '2025-05-01T00:00:00.000Z', zpNameRus: 'О таможенном регулировании', passing_stageid: 4 },
 ];
-assert.deepEqual(w.freshBills(bills, '2026-09-03').map((b) => b.n), ['6-16490/26'], 'в окне и по теме');
+assert.deepEqual(w.freshBills(bills, '2026-09-03', {}).map((b) => b.n), ['6-16490/26'], 'в окне и по теме');
+// разобранный законопроект молчит на том же этапе и приходит снова, когда этап сдвинулся
+assert.deepEqual(w.freshBills(bills, '2026-09-03', { '6-16490/26': { stage: 3 } }), [], 'разобран на этом же этапе — находки нет');
+assert.deepEqual(w.freshBills(bills, '2026-09-03', { '6-16490/26': { stage: 2 } }).map((b) => [b.n, b.was, b.stage]), [['6-16490/26', 2, 3]], 'этап сдвинулся — находка с прежним и новым этапом');
+assert.deepEqual(w.freshBills(bills.map((b) => ({ ...b, passing_stageid: undefined })), '2026-09-03', { '6-16490/26': { stage: 3 } }).map((b) => [b.n, b.stage]), [['6-16490/26', null]], 'без этапа в ответе сайта — находка, а не молчание');
+assert.equal(w.BILLS_SEEN['6-16490/26'].stage, 3, 'налоговый законопроект разобран на этапе 3 (02.10.2026)');
 
 // ── реестр НПА: указы Президента (мораторий на рыбу пришёл указом, а не постановлением) ──
 const ukazReg = { totalResultsCount: 2, data: [
