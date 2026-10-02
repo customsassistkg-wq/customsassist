@@ -7,6 +7,8 @@ description: Deploy tnved_checker changes to the VPS (page, base.js, checker.js,
 
 The order and the checks are in [server/CHECKER.md](../../../server/CHECKER.md) and [docs/backend-ops.md](../../../docs/backend-ops.md); this is the checklist.
 
+**Steps 2, 4, 5 and the outside hash of step 6 are `bash tools/deploy.sh <commit> <label> <file>…`** (`DEPLOY_DRY=1` first if in doubt; `DEPLOY_BASE=<commit>` when what is live is not the commit's parent; nginx and migrations stay by hand). The checklist below is what the script does and what it leaves to you. All tests of step 1: `bash tools/run-checks.sh`.
+
 1. Before anything: all relevant tests pass locally (`CLAUDE.md`, «Verification»); `git diff --numstat` matches the change; the commit exists if the owner asked for one. Know which of the six coupled files changed (`private/base.js`, `private/checker.js`, `src/services/base.js`, `src/routes/engine.js`, `src/services/assistant.js`, `src/index.js`) — they ship together. The administrators' dashboard (`dash/index.html`, `private/dash.js`, `src/routes/dash.js`, `src/services/metrics.js`) ships with `src/` and needs `DASH_ORIGIN` in `.env`; its host, DNS record and certificate expansion are in `docs/backend-ops.md`, «The administrators' dashboard».
 2. On the server: back up the files being replaced to `/root/deploy_backups/<timestamp>/` (outside the web root). If a migration is included, apply it **before** the restart (`psql -f`, once, in order).
 3. If `server/nginx.conf` changed: install, `nginx -t`, reload; check HSTS on `/`, the page, the manifest and an `/api/` route.

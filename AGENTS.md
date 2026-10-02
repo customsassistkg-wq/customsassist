@@ -85,7 +85,7 @@ User-facing strings, card text, `session.md` and commit messages are Russian; in
 
 ## Verification: mandatory after any code change
 
-There is no build/lint/test tooling; these checks stand in for it. Run the syntax checks after every edit and the tests relevant to the change before calling the work done:
+There is no build/lint/test tooling; these checks stand in for it. Run the syntax checks after every edit and the tests relevant to the change before calling the work done: (`bash tools/run-checks.sh` runs the whole list below, reading it from this file, and exits 1 on a failure or a SKIP.)
 
 ```bash
 node --check server/private/base.js

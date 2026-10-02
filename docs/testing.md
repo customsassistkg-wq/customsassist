@@ -6,6 +6,8 @@ Moved out of `CLAUDE.md` on 20.09.2026 without changing the text of the paragrap
 
 There is no build/lint/test tooling. The workflows that stand in for them, established over prior sessions:
 
+**All of it in one command (02.10.2026): `bash tools/run-checks.sh [log-dir]`.** Syntax of the big files and of `server/src` and `server/scripts`, `tools/base-sweep.js`, then every test named in `CLAUDE.md`, «Verification» (read from that file — a new test is added there and the runner picks it up) plus `assistant-browser`; one line per check (`rc`, seconds, `PASS`, `SKIP`), logs per test in the directory (default `/tmp/ca-checks`), exit 1 on any failure **or any SKIP** (a SKIP means the browser environment is missing). About seven minutes. It sources `/tmp/pw/env.sh` when present (`PW_ENV` changes the path). `reset-password.test.js` runs only when `TEST_DATABASE_URL` is set; the paid `assistant-eval.js` never.
+
 **Syntax-check after every edit.** The app code is its own files now, so there is nothing to extract from the page — run the checks directly. `server/private/base.js` is ~12 MB, far too large for an editor to "open and check", which is why this is the gate:
 ```bash
 node --check server/private/base.js
