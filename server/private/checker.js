@@ -796,7 +796,8 @@ function buildResultSummary(container,q){
     head='<div class="vd-prod"><div class="vd-name">'+esc(name||('Код '+codeTxt))+'</div><div class="vd-sub"><span class="vd-code">'+esc(codeTxt)+'</span>'
       +(rateTxt?' · пошлина <b class="vd-rate">'+esc(rateTxt)+'</b>':'')+'<span id="vdPay"></span></div>'
       +(rq.length===10?'<div class="vd-act"><button type="button" class="btn btn-primary" onclick="openCalcFor(\''+rq+'\')">Рассчитать платежи</button><button type="button" class="btn" onclick="copyCodeText(\''+rq+'\',this)">Копировать код</button>'
-      +'<button type="button" class="btn vd-watch" data-watch="'+rq+'" aria-pressed="false" onclick="toggleWatch(this)">☆ Следить за изменениями</button></div>':'')+'</div>';
+      +'<button type="button" class="btn vd-watch" data-watch="'+rq+'" aria-pressed="false" onclick="toggleWatch(this)">☆ Следить за изменениями</button>'
+      +'<button type="button" class="btn vd-report" data-report="'+rq+'" onclick="openReportModal()" title="Нашли ошибку или устаревшее правило? Сообщите администраторам">⚑ Сообщить о неточности</button></div>':'')+'</div>';
   }
   // Запрет: какой именно и относится ли к выбранному направлению.
   const bans=(groups.danger||[]).filter(c=>!c.dataset.partial);
@@ -914,6 +915,46 @@ async function openWatchList(){
   g('wlAdd').onclick=add;
   g('wlCode').addEventListener('keydown',e=>{if(e.key==='Enter')add()});
   draw();
+}
+// «Сообщить о неточности» (02.10.2026): кнопка в шапке результата открывает окно — к какой карточке и что не так. Сервер
+// (routes/feedback.js) кладёт сообщение в «Обращения»; администраторы отвечают на почту учётной записи. К тексту добавляются
+// код, условия поиска и название карточки — больше ничего (privacy.html, «Письма в службу поддержки»).
+function reportErr(status){return status===400?'Опишите подробнее: не короче 10 знаков и не длиннее 1500.':status===429?'Слишком много сообщений за последнее время — попробуйте позже.':status===403?'Сначала подтвердите адрес почты.':'Не удалось отправить, попробуйте позже.'}
+function openReportModal(){
+  const btn=document.querySelector('#resultSummary .vd-report'),box=document.getElementById('result');
+  if(!btn||!box)return;
+  const sc=searchCond(),code=btn.dataset.report||'';
+  const cards=resCards(box).map(cardTitleText).filter(Boolean).slice(0,40);
+  const dirWord={im:'ввоз',ex:'вывоз',tr:'транзит'}[sc.dir]||'ввоз';
+  const ctxTxt=[fmtCode(code),dirWord,sc.ctyTxt||'страна не выбрана',sc.date?'на '+fmtDate(sc.date):'на сегодня'].join(' · ');
+  openModal('<h2>Сообщить о неточности</h2>'
+    +'<p class="cp-note">Нашли ошибку, устаревшее правило или нет нужной меры? Напишите, что не так и как должно быть, — лучше с названием и номером акта. Администраторы проверят по первоисточнику и, если понадобятся детали, ответят на почту вашей учётной записи.</p>'
+    +'<div class="fb-ctx">'+esc(ctxTxt)+'</div>'
+    +'<div id="fbError" class="calc-warn w-red" style="display:none" role="alert"></div>'
+    +'<div id="fbForm">'
+    +'<div class="calc-field"><label for="fbCard">К какой карточке относится</label><select id="fbCard" class="fb-card"><option value="">Ко всему результату или нужной карточки нет</option>'
+    +cards.map((t,i)=>'<option value="'+i+'">'+esc(t.length>110?t.slice(0,107)+'…':t)+'</option>').join('')+'</select></div>'
+    +'<div class="calc-field"><label for="fbText">Что не так</label><textarea id="fbText" maxlength="1500" rows="6" placeholder="Например: по этому коду ставка уже 5 %, а не 10 % — Решение № … от …"></textarea><div class="fb-count" id="fbCount">0 / 1500</div></div>'
+    +'<p class="cp-note">К сообщению добавятся код, условия поиска и адрес вашей учётной записи — больше ничего.</p>'
+    +'<div class="modal-actions"><button class="calc-btn ghost" type="button" id="fbCancel">Отмена</button><button class="calc-btn" type="button" id="fbSend">Отправить</button></div>'
+    +'</div>');
+  const g=id=>document.getElementById(id),err=g('fbError');
+  const fail=t=>{err.textContent=t;err.style.display='block'};
+  g('fbCancel').onclick=closeModal;
+  g('fbText').addEventListener('input',()=>{g('fbCount').textContent=g('fbText').value.length+' / 1500'});
+  g('fbText').focus();
+  g('fbSend').onclick=async()=>{
+    err.style.display='none';
+    const text=g('fbText').value.trim();
+    if(text.length<10){fail('Опишите подробнее: не короче 10 знаков.');return}
+    const sel=g('fbCard').value,send=g('fbSend');send.disabled=true;
+    try{
+      const res=await apiFetch('/api/feedback',{method:'POST',body:JSON.stringify({code,dir:sc.dir,country:sc.ctyTxt,date:sc.date,card:sel===''?'':cards[+sel],text})});
+      if(res.status===401)return;
+      if(!res.ok){fail(reportErr(res.status));send.disabled=false;return}
+      g('fbForm').innerHTML='<div class="calc-warn auth-ok" style="display:block">Спасибо, сообщение отправлено. Мы проверим по первоисточнику; если понадобятся детали, ответим на почту вашей учётной записи.</div><div class="modal-actions"><button class="calc-btn" type="button" onclick="closeModal()">Готово</button></div>';
+    }catch(e){fail('Нет связи с сервером.');send.disabled=false}
+  };
 }
 // НДС и акциз для шапки — тем же ответом сервера, что и калькулятор (codeBundle): кэш общий.
 async function fillVerdictPay(code){
@@ -3513,7 +3554,9 @@ function openModal(html){
   const bd=document.createElement('div');
   bd.className='modal-backdrop';
   bd.id='activeModal';
-  bd.innerHTML='<div class="modal">'+html+'</div>';
+  bd.innerHTML='<div class="modal" role="dialog" aria-modal="true">'+html+'</div>';
+  const mh=bd.querySelector('.modal h2,.modal h3');
+  if(mh){mh.id='activeModalTitle';bd.firstChild.setAttribute('aria-labelledby','activeModalTitle')}
   bd.addEventListener('click',function(e){if(e.target===bd)closeModal();});
   document.addEventListener('keydown',modalEscHandler);
   document.body.appendChild(bd);

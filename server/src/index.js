@@ -162,6 +162,8 @@ app.use('/api/mail', require('./routes/mail'));
 app.use('/api/pay', require('./routes/pay'));
 // «Мои коды»: слежение за изменениями по кодам ТН ВЭД (services/watch.js).
 app.use('/api/watch', require('./routes/watch'));
+// «Сообщить о неточности»: сообщение вошедшего пользователя падает в «Обращения» (таблица inbox), routes/feedback.js.
+app.use('/api/feedback', require('./routes/feedback'));
 // Разбор находок дозора из Telegram: команды боту и отчёт рутины Claude Code, каждый по своему секрету.
 app.use('/api/ops', require('./routes/ops'));
 // Ошибки программы в браузере — в журнал и администраторам; вход не нужен (экран входа — тоже код).

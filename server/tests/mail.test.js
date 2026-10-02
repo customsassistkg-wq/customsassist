@@ -175,6 +175,9 @@ x`), 'utf8'));
     if (/^select \* from inbox where id/.test(sql)) {
       return { rows: args[0] === 1 ? [{ id: 1, direction: 'in', from_email: 'ivan@example.kg', subject: 'Вопрос', body_text: 'текст',
         message_id: '<a1@example.kg>', thread_key: '<a1@example.kg>', to_email: 'info@customsassist.trade', user_id: null }]
+        : args[0] === 2 ? [{ id: 2, direction: 'in', from_email: 'user@test.local', subject: 'Неточность в базе: 8517 13 000 0', body_text: 'текст',
+          message_id: '<report-x@customsassist.trade>', thread_key: '<report-x@customsassist.trade>', to_email: 'info@customsassist.trade',
+          user_id: user.id, auth_results: 'site-form' }]
         : args[0] === 9 ? [{ id: 9, direction: 'out' }] : [] };
     }
     if (/from inbox\s+where thread_key/.test(sql)) return { rows: [] };
@@ -275,6 +278,13 @@ Content-Type: text/plain; charset=utf-8
     assert.equal((await reply(1, { text: 'x'.repeat(20001) })).status, 400);
     assert.equal((await reply(9, { text: 'привет' })).status, 400);
     assert.equal(sent.length, 1, 'лишних писем не ушло');
+    assert.match(sent[0].html, /Это ответ на ваше письмо на адрес info@customsassist\.trade/);
+    // Сообщение «Сообщить о неточности» (routes/feedback.js, auth_results = 'site-form'): ответ в его цепочку и своя фраза, а не «ваше письмо на адрес»
+    assert.equal((await reply(2, { text: 'Исправили, спасибо.' })).status, 201);
+    assert.equal(sent.length, 2);
+    assert.deepEqual([sent[1].to, sent[1].headers['In-Reply-To']], ['user@test.local', '<report-x@customsassist.trade>']);
+    assert.match(sent[1].html, /Это ответ на ваше сообщение о неточности, отправленное из сервиса/);
+    assert.doesNotMatch(sent[1].html, /ваше письмо на адрес/);
 
     // Статус и удаление.
     r = await realFetch(base + '/api/admin/mail/1', { method: 'PATCH',

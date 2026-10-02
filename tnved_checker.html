@@ -926,6 +926,12 @@
   .wl-add{display:flex;gap:8px;margin:0 0 10px}
   .wl-add input{flex:1;min-width:0;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg);color:var(--text);font:inherit;font-size:var(--fs-md);outline:none}
   .wl-add input:focus{border-color:var(--indigo)}
+  /* «Сообщить о неточности» (02.10.2026): окно с выбором карточки и текстом сообщения */
+  .fb-ctx{margin:0 0 14px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:var(--fs-sm);color:var(--muted);overflow-wrap:anywhere}
+  .calc-field select.fb-card{font-family:inherit;font-size:var(--fs-md)}
+  .calc-field textarea{width:100%;min-height:120px;max-height:260px;resize:vertical;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-xs);color:var(--text);font-family:inherit;font-size:var(--fs-md);line-height:1.5;padding:11px 14px;outline:none}
+  .calc-field textarea:focus{border-color:var(--indigo)}
+  .fb-count{margin-top:4px;font-size:var(--fs-sm);color:var(--muted);text-align:right}
   .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .t-admin{background:rgba(155,63,196,.22);color:var(--purple);border:1px solid rgba(155,63,196,.4)}
   .t-user{background:rgba(107,118,144,.16);color:var(--muted);border:1px solid rgba(107,118,144,.35)}
@@ -2152,7 +2158,7 @@ async function doLogin(){
 // заново не отдавал (он отвечает 403), но на экране они были.
 function resetAppView(){
   if(typeof navReset==='function')navReset();
-  if(typeof closePay==='function')closePay();if(typeof closeAdminRowMenu==='function')closeAdminRowMenu();if(typeof resetWatch==='function')resetWatch();
+  if(typeof closePay==='function')closePay();if(typeof closeAdminRowMenu==='function')closeAdminRowMenu();if(typeof resetWatch==='function')resetWatch();if(typeof closeModal==='function')closeModal();
   appViewVersion++;
   if(typeof adminUsers!=='undefined')adminUsers=[];
   const clear=(id)=>{const el=document.getElementById(id); if(el) el.innerHTML='';};

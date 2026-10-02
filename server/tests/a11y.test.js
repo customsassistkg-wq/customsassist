@@ -92,6 +92,11 @@ async function scan(page, label, found) {
       await page.fill('#inp', '8517130000');
       await page.waitForFunction(() => /^8517130000\|/.test(document.getElementById('result').dataset.rq || ''), null, { timeout: 30000 });
       await scan(page, tag + ' результат по коду', found); views++;
+      // окно «Сообщить о неточности» (02.10.2026): поля с подписями, подсказки, контраст приглушённого текста в обеих темах
+      await page.evaluate(() => document.querySelector('#resultSummary .vd-report').click());
+      await page.locator('#fbText').waitFor({ state: 'visible' });
+      await scan(page, tag + ' окно «Сообщить о неточности»', found); views++;
+      await page.evaluate(() => closeModal());
       await page.evaluate(() => { setPage('search'); setSearchMode('calc'); });
       await page.waitForTimeout(300);
       await scan(page, tag + ' калькулятор', found); views++;
@@ -104,7 +109,7 @@ async function scan(page, label, found) {
       await ctx.close();
     }
     assert.deepEqual(found, [], 'нарушения доступности:\n  ' + found.join('\n  '));
-    console.log(`PASS: доступность (axe-core ${JSON.parse(fs.readFileSync(path.join(path.dirname(AXE), 'package.json'), 'utf8')).version}) — ${views} видов (экран входа, регистрация, восстановление, поиск, результат, калькулятор, классификатор, помощник × 1280/390 px × две темы): нарушений нет`);
+    console.log(`PASS: доступность (axe-core ${JSON.parse(fs.readFileSync(path.join(path.dirname(AXE), 'package.json'), 'utf8')).version}) — ${views} видов (экран входа, регистрация, восстановление, поиск, результат, окно «Сообщить о неточности», калькулятор, классификатор, помощник × 1280/390 px × две темы): нарушений нет`);
   } finally {
     await browser.close();
     server.close();

@@ -544,7 +544,8 @@ router.post('/mail/:id/reply', async (req, res, next) => {
     const html = renderEmail({
       title: subject,
       intro: escHtml(text).replace(/\r?\n/g, '<br>'),
-      outro: 'Это ответ на ваше письмо на адрес ' + escHtml(msg.to_email || supportAddress())
+      outro: (msg.auth_results === 'site-form' ? 'Это ответ на ваше сообщение о неточности, отправленное из сервиса'
+        : 'Это ответ на ваше письмо на адрес ' + escHtml(msg.to_email || supportAddress()))
         + '. Можно ответить прямо на это письмо.',
       footNote: 'Служба поддержки ' + escHtml(BRAND) + '.',
     });
