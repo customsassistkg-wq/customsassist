@@ -61,6 +61,7 @@ No task is in progress. **Изменения 01.10.2026 выложены** (`08a
 
 ## Open issues
 
+- **AI assistant answers nobody: the provider balance (DeepSeek) is zero** — a question failed with 402 «Insufficient Balance» on 27.09.2026 16:37 (Bishkek) and again on 02.10.2026 15:33 (found by the live check of the export-fee deploy; usage is ~7 log rows in two weeks, so nobody complained). **Owner: top up the DeepSeek account** (platform.deepseek.com); the assistant works again by itself, no restart. Since 02.10.2026 the administrators get one Telegram message per six hours while it stays empty (`balanceAlert`, `routes/assistant.js`). Daily budget ceiling (`AI_DAILY_BUDGET_USD`, $10) is unrelated.
 - Bill 6-16490/26 (Tax Code amendments; first reading from 01.10.2026; read 30.09 on kenesh.kg by the routine, its entry moved to `main` on 01.10.2026): if passed — 2404 and 3811 90 000 0 into `EXCISE_DB`, tobacco share 30 %, art. 297 item 22 repealed and a new item 31, СФИТ «Тамчы» imports. Wait for the signed law in the registry.
 - Pages the EU path cannot read reliably (1 of 10 on the owner's dossiers) still go to DeepSeek as images; if the share grows, test Google's pretrained invoice processor.
 - **Backups and the database disk are not encrypted at rest** (Hetzner TOMs leave it to the client); needs a key the owner can never lose — owner's decision.

@@ -170,6 +170,31 @@ const a = require('../src/services/assistant');
       assert.deepEqual([r.status, (await r.json()).error], [429, 'busy']);
       gates.forEach((g) => g());
       assert.deepEqual((await Promise.all(four)).map((x) => x.status), [200, 200, 200, 200]);
+      // баланс у провайдера модели закончился (402): пользователю — ai_balance, администраторам — одно сообщение в Telegram на шесть часов,
+      // без текста вопроса, адреса и номера запроса (баланс был нулевым с 27.09.2026 и нашёлся случайно, 02.10)
+      {
+        const tg = require('../src/services/telegram'), tgSent = [], realNotify = tg.notify;
+        tg.notify = (m) => { tgSent.push(m); };
+        try {
+          user.role = 'user'; user.ai_plan = 'base'; used = 0; today = 0; pages = 0; pagesToday = 0; spentAll = 0;
+          askImpl = async () => { throw new Error('AI API 402: Insufficient Balance (request_id: 81102639)'); };
+          for (let k = 0; k < 2; k++) {
+            r = await post();
+            assert.deepEqual((await r.text()).trim().split('\n').map((l) => JSON.parse(l)).pop(), { error: 'ai_balance' });
+          }
+          assert.equal(tgSent.length, 1, 'одно сообщение на шесть часов, а не на каждый вопрос');
+          // страница документа с тем же отказом: окно общее — второго сообщения нет; после его сброса страница сообщает сама
+          readImpl = async () => { throw new Error('AI API 402: Insufficient Balance (request_id: 8c1d133f)'); };
+          r = await read({ image: img });
+          assert.deepEqual([r.status, (await r.json()).error], [502, 'ai_balance']);
+          assert.equal(tgSent.length, 1, 'страница не шлёт второе сообщение в том же окне');
+          route.balanceAlertReset();
+          r = await read({ image: img });
+          assert.equal(tgSent.length, 2, 'после окна страница сообщает о балансе сама');
+          assert.match(tgSent[0], /закончился баланс/);
+          assert.doesNotMatch(tgSent[0], /request_id|81102639|u@x\.kg|\bx\b/);
+        } finally { tg.notify = realNotify; }
+      }
     } finally { server.close(); }
     console.log('PASS: тарифы — день и месяц по Бишкеку, отказ по дню и по месяцу, остаток по меньшему, админ, неизвестный тариф; страницы документов — журнал, поворот, сбой, лимит, занятость; суточный потолок расхода');
   }

@@ -55,6 +55,21 @@ function budgetAlert(spent) {
   })().catch((err) => console.error('assistant budget alert failed:', err.message));
 }
 
+// Баланс у провайдера модели закончился (ответ 402 «Insufficient Balance»): пользователь видит только «временно недоступен»,
+// и владелец узнавал об этом от него — баланс был нулевым с 27.09.2026 (вопрос в 16:37 по Бишкеку упал с 402), и это нашлось 02.10 случайно, при проверке выкладки.
+// Одно сообщение в Telegram на шесть часов, без текста вопросов и без адресов; после пополнения помощник заработает сам.
+const BALANCE_ALERT_EVERY_MS = 6 * 3600e3;
+let balanceAlertAt = 0;
+function balanceAlert() {
+  const now = Date.now();
+  if (now - balanceAlertAt < BALANCE_ALERT_EVERY_MS) return;
+  balanceAlertAt = now;
+  console.error('assistant: provider balance exhausted');
+  telegram.notify('💳 <b>AI-ассистент не отвечает: у провайдера модели закончился баланс</b>\nКаждый вопрос к помощнику получает «закончился баланс API», '
+    + 'страницы документов не читаются. Нужно пополнить счёт у провайдера модели (сейчас DeepSeek, platform.deepseek.com); после пополнения помощник заработает сам. '
+    + 'Это сообщение повторится не раньше чем через шесть часов, если баланс не пополнят.');
+}
+
 const TZ = 6 * 3600e3;
 function bishkekMonth(now = new Date()) {
   const b = new Date(now.getTime() + TZ);
@@ -204,6 +219,7 @@ router.post('/', async (req, res) => {
       console.error('assistant:', err.message);
       // ai_refused — отказ фильтра безопасности модели (Claude, services/assistant.js postModel): вопрос не списывается.
       const error = err.code === 'ai_refused' ? 'ai_refused' : /balance/i.test(err.message) ? 'ai_balance' : 'ai_unavailable';
+      if (error === 'ai_balance') balanceAlert();
       await logQuestion({ userId: req.user.id, question, error: err.message.slice(0, 500), usage: err.usage, ms: Date.now() - started });
       send({ error });
     }
@@ -247,6 +263,7 @@ router.post('/read', async (req, res) => {
       res.json(r.rotate ? { rotate: r.rotate } : { text: redactPersonal(r.text) });
     } catch (err) {
       console.error('assistant read:', err.message);
+      if (err.code !== 'ai_refused' && /balance/i.test(err.message)) balanceAlert();
       await logQuestion({ userId: uid, question, error: err.message.slice(0, 500), usage: err.usage, ms: Date.now() - started, kind: 'read' });
       res.status(502).json({ error: err.code === 'ai_refused' ? 'ai_refused' : /balance/i.test(err.message) ? 'ai_balance' : 'read_failed' });
     }
@@ -300,3 +317,4 @@ module.exports.PLANS = PLANS;
 // Для дашборда администраторов (routes/dash.js): потолок расхода и число вопросов в работе.
 module.exports.DAILY_BUDGET_USD = DAILY_BUDGET_USD;
 module.exports.inFlight = inFlight;
+module.exports.balanceAlertReset = () => { balanceAlertAt = 0; }; // для теста: окно в шесть часов не ждать
