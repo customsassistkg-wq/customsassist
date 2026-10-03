@@ -84,7 +84,7 @@ const KG_SEEN = {
   // (id редакций идут не по времени); refs — число ссылающихся актов: у ПКМ № 94 новый изменяющий акт виден по нему
   // раньше, чем реестр сведёт редакцию. У кодекса ссылок сотни и они растут каждую неделю — там только редакция.
   docs: {
-    159100: { what: 'ПКМ КР № 94, приложение 3 — действующие ставки акциза (EXCISE_APPLIED)', seen: { edition: 44256, refs: 34 } },
+    159100: { what: 'ПКМ КР № 94, приложение 3 — действующие ставки акциза (EXCISE_APPLIED)', seen: { edition: 59576, refs: 35 } },
     112340: { what: 'Налоговый кодекс КР — акциз ст.334/336 (EXCISE_DB), НДС и льготы', seen: { edition: 57656, refs: null } },
     '7-42968': { what: 'ПКМ КР № 385 — учётно-контрольные марки на воду 2201 (MARK_DB m385-water)', seen: { edition: 56661, refs: 3 } },
   },
@@ -117,6 +117,13 @@ const EEC_REVIEWED = {
   '106@2026-09-09': 'Совет: ТР ТС 008/2011 — требование к информации на игрушке; перечень продукции не меняется',
   '115@2026-09-08': 'Коллегия: переходные положения к изменениям ТР ТС 019/2011 (Решение Совета № 40 от 13.03.2026); перечень продукции для декларирования (Коллегия № 79 от 13.06.2012) не меняется',
   '122@2026-09-21': 'Коллегия: классификатор льгот, код ЭК заменён на АК — база и помощник кодов льгот не используют',
+};
+// Акты реестра НПА и gov.kg, разобранные и не меняющие базу: «номер@дата принятия» → почему. Нужно актам, чей заголовок
+// проходит TRADE_RE только названием ведомства («Государственной налоговой службы», «таможенной службы»): без записи
+// такая находка приходит каждый день, пока акт в окне дозора. Акт, который базу меняет, цитируется в base.js и
+// известен по knownActs — сюда не пишется.
+const KG_REVIEWED = {
+  '658@2026-09-30': 'ПКМ: Положение о ГТС (к ПКМ № 592 от 19.09.2025) — адрес службы и функция госзаказчика по стройкам; мер о товарах нет',
 };
 const BASE_PATH = path.join(__dirname, '..', 'private', 'base.js');
 const CHECKER_PATH = path.join(__dirname, '..', 'private', 'checker.js');
@@ -525,6 +532,7 @@ async function collect({ days = 21, log = () => {} } = {}) {
   const since = new Date(Date.parse(today) - days * 864e5).toISOString().slice(0, 10);
   const baseSrc = fs.readFileSync(BASE_PATH, 'utf8');
   const known = knownActs(baseSrc);
+  const isKnown = (key) => known.has(key) || Boolean(KG_REVIEWED[key]);
   const findings = [];
   const errors = [];
 
@@ -543,7 +551,7 @@ async function collect({ days = 21, log = () => {} } = {}) {
       const text = parseGovItem(await fetchText(r.url));
       const trade = TRADE_RE.test(text);
       const key = r.adopted ? `${r.num}@${r.adopted}` : null;
-      const inBase = key ? known.has(key) : false;
+      const inBase = key ? isKnown(key) : false;
       if (trade && !inBase) {
         findings.push({ kind: 'new-act', src: 'gov.kg', text: `ПКМ № ${r.num} от ${r.adopted ? dmyFromIso(r.adopted) : '?'} (опубликовано ${dmyFromIso(r.pub)}), в базе не упомянуто: ${text.slice(0, 220)}… ${r.url}` });
       }
@@ -578,17 +586,17 @@ async function collect({ days = 21, log = () => {} } = {}) {
     let generic = 0;
     for (const a of acts) {
       let trade = TRADE_RE.test(a.title);
-      if (!trade && GENERIC_RE.test(a.title) && a.edition && !(a.num && known.has(`${a.num}@${a.adopted}`))) {
+      if (!trade && GENERIC_RE.test(a.title) && a.edition && !(a.num && isKnown(`${a.num}@${a.adopted}`))) {
         if (++generic > GENERIC_MAX) { if (generic === GENERIC_MAX + 1) errors.push(`реестр НПА: постановлений с общим заголовком больше ${GENERIC_MAX} — остальные не прочитаны`); continue; }
         await sleep(1500);
         try { trade = TEXT_RE.test(strip(JSON.parse(await fetchText(REG_EDITION(a.edition))).contentRu || '')); } catch (err) { errors.push(`реестр НПА, текст ${a.url}: ${err.message}`); }
       }
       if (!trade) continue;
-      if (a.num && known.has(`${a.num}@${a.adopted}`)) continue;
+      if (a.num && isKnown(`${a.num}@${a.adopted}`)) continue;
       findings.push({ kind: 'new-act', src: 'реестр', text: `${a.title.slice(0, 200)} — в базе не упомянуто: ${a.url}` });
     }
     for (const a of ukazes) {
-      if (a.num && known.has(`${a.num}@${a.adopted}`)) continue;
+      if (a.num && isKnown(`${a.num}@${a.adopted}`)) continue;
       // у указов «запрет» в заголовке бывает и о проверках бизнеса (УП № 327) — судит только TEXT_RE
       let trade = TEXT_RE.test(a.title);
       if (!trade && a.edition) {
@@ -601,7 +609,7 @@ async function collect({ days = 21, log = () => {} } = {}) {
     // Закон — шире: налоговые и таможенные слова законопроектов (BILL_RE) плюс торговые.
     for (const a of laws) {
       if (!TRADE_RE.test(a.title) && !BILL_RE.test(a.title)) continue;
-      if (a.num && known.has(`${a.num}@${a.adopted}`)) continue;
+      if (a.num && isKnown(`${a.num}@${a.adopted}`)) continue;
       findings.push({ kind: 'new-act', src: 'реестр, закон', text: `${a.title.slice(0, 220)} — подписан; проверить, меняет ли ставки, льготы, запреты или порядок ввоза: ${a.url}` });
     }
   } catch (err) { errors.push(`реестр НПА: ${err.message}`); }
@@ -829,5 +837,5 @@ async function main() {
   process.exit(res.errors.length ? 2 : res.findings.length ? 1 : 0);
 }
 
-module.exports = { TEXT_RE, REG_PENDING, pendingFinding, interimFiles, kgLinkedEditions, parseEecList, refActs, eecNew, EEC_REVIEWED, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
+module.exports = { TEXT_RE, REG_PENDING, pendingFinding, interimFiles, kgLinkedEditions, parseEecList, refActs, eecNew, EEC_REVIEWED, KG_REVIEWED, docEditions, parseGovList, parseGovItem, parseRegistry, parseGtsCounter, nsiChanges, NSI_WATCH, remediesDiff, dataGaps, ettChanges, ETT_SEEN, troisFiles, freshBills, KG_SEEN, knownActs, baseCounter, datedMeasures, collect, renderText, TRADE_RE, BILL_RE };
 if (require.main === module) main().catch((err) => { console.error(err); process.exit(2); });
