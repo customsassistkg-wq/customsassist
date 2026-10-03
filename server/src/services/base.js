@@ -48,7 +48,9 @@ function load() {
     + 'norm,findTREAEU,findEEC30,findETT,findETTUAE,TR_EAEU_DB,NTM_DB,ETT_UAE_DB,NTM_BAN_DIR,ntmDir,ntmRegime,'
     + 'head4Items,codeCands,actCands,ACT_LEGACY,actCodeNote,legacyMapFor,legacyAppliesTo,findTROIS,TROIS_DB,NKS,NBNDS_DB,'
     + 'SERT_CODES,MED_CODES,LS_CODES,POST131_APP6_VET_CODES,MAT_CODES,ART299_CODES,EEC_WASTE,ART297_P20_VIE_CODES,'
-    + 'ART297_P26_SPORT_CODES,ART297_PERECHEN_LISTS,ART298_LISTS})').runInContext(sb);
+    + 'ART297_P26_SPORT_CODES,ART297_PERECHEN_LISTS,ART298_LISTS,'
+    // Таблицы синонимов поиска по названию и то, чем их проверяет tests/name-search.test.js (каждая фраза стоит хоть в одном наименовании)
+    + 'SEARCH_SYNONYMS,ADJ_SYNONYMS,ettNamesLc,findByNameSources,hasWordAt})').runInContext(sb);
   info.loadedAt = new Date().toISOString();
   info.loadMs = Date.now() - t0;
   return ctx;

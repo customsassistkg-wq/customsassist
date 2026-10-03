@@ -55,7 +55,13 @@ const AUDIT = () => [...document.querySelectorAll('[onclick]')]
       assert.deepEqual(bad, [], label + ': кликабельные элементы без role="button" и tabindex="0"');
       checked.push(label);
     };
-    const search = async (q) => { await page.fill('#inp', q); await page.keyboard.press('Enter'); };
+    // Ждём ответ именно на этот запрос: data-rq ставится последним, после карточек, фильтра и вердикта. Одного селектора мало — его удовлетворяют карточки
+    // прошлого запроса, ещё стоящие на экране: тест фокусировал их, а пришедший ответ перестраивал узлы, и Enter «не открывал» карточку (один раз в общем
+    // прогоне проверок, пока рядом шли тяжёлые расчёты, 04.10.2026; в одиночку и под искусственной нагрузкой не повторялось — причина по ходу событий, не по замеру).
+    const search = async (q, stamped = true) => {
+      await page.fill('#inp', q); await page.keyboard.press('Enter');
+      if (stamped) await page.waitForFunction((s) => (document.getElementById('result').dataset.rq || '').startsWith(s + '|'), q, { timeout: 30000 });
+    };
     const tabTo = async (selector, max = 120) => {
       for (let i = 0; i < max; i++) {
         if (await page.evaluate((s) => !!document.activeElement && document.activeElement.matches(s), selector)) return i;
@@ -155,7 +161,7 @@ const AUDIT = () => [...document.querySelectorAll('[onclick]')]
 
     // 5. Калькулятор: варианты кода из списка выбираются с клавиатуры.
     await page.evaluate(() => { setPage('search'); setSearchMode('calc'); });
-    await search('8517');
+    await search('8517', false);   // в калькуляторе ответ идёт в #calcResult, data-rq у #result не меняется
     await page.waitForSelector('#calcResult .calc-pick[role="button"]', { timeout: 30000 });
     await audit('варианты кода в калькуляторе');
     const pick = await page.evaluate(() => /selectCalcCode\('(\d+)'\)/.exec(document.querySelector('#calcResult .calc-pick').getAttribute('onclick'))[1]);
