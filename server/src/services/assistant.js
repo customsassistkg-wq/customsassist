@@ -281,7 +281,12 @@ function searchBase({ query, country: countryName, date, direction, full } = {},
     const relaxed = found.relaxed
       ? ` — по всем словам сразу ничего не найдено, выдача БЕЗ слова «${found.relaxed.dropped}»: это не совпадение по всем словам, проверьте по наименованию, подходит ли товар, и скажите человеку, что слово не учтено`
       : '';
-    return clip([cardsToText(rest), `Кандидаты по наименованию «${q}»${relaxed} (запросите нужный код отдельно):\n${lines.join('\n')}`]
+    // Слова, которых поиск не использовал (в наименованиях их нет в таком виде — бренд, цвет, другая форма слова): выдача по остальным.
+    const nIgn = found.ignored ? found.ignored.length : 0;
+    const ignored = nIgn
+      ? ` — ${nIgn > 1 ? 'слова' : 'слово'} «${found.ignored.join('», «')}» поиск не учёл (в наименованиях ЕТТ ${nIgn > 1 ? 'их' : 'его'} нет в таком виде): выдача по остальным словам, скажите об этом человеку`
+      : '';
+    return clip([cardsToText(rest), `Кандидаты по наименованию «${q}»${relaxed}${ignored} (запросите нужный код отдельно):\n${lines.join('\n')}`]
       .filter(Boolean).join('\n\n'));
   }
 

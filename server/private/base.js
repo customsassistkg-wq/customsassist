@@ -6169,6 +6169,9 @@ function findByNameWords(wordVariants){
     }
   }
   if(!res.length)return findByNameStems(wordVariants);
+  // слова запроса, которых поиск не использовал (в наименованиях их нет ни целым словом, ни началом слова): карточка и помощник скажут о них
+  const skipped=wordVariants.map((_,i)=>i).filter(i=>!useIdx.includes(i));
+  if(skipped.length)res.ignored=skipped.map(i=>wordVariants[i].self);
   return res;
 }
 // Смягчённый поиск (03.10.2026). Когда по всем словам сразу ничего нет, а слов от двух до четырёх, откидывается одно прилагательное, а по
@@ -6246,6 +6249,8 @@ function findByNameStems(wordVariants){
   for(let ri=0;ri<rows.length;ri++){
     if(use.every(i=>ok(ri,i))){res.push(ETT_DB[ri]);if(res.length>=150)break;}
   }
+  const skipped=stems.map((_,i)=>i).filter(i=>!use.includes(i));
+  if(res.length&&skipped.length)res.ignored=skipped.map(i=>wordVariants[i].self);
   return res;
 }
 function findLS(q){
@@ -7501,6 +7506,9 @@ function nameMatchesHtml(qq,list){
   const shown=list.slice(0,60);
   const rel=list.relaxed; // смягчённый поиск: {dropped — слово, которое не учтено, kept — остальные}
   const dropped=rel?esc(String(qq).split(/\s+/).find(t=>t.toLowerCase().replace(/ё/g,'е')===rel.dropped)||rel.dropped):''; // слово — как его ввёл человек («зелёная», а не «зеленая»)
+  // слова, которых поиск не использовал, — так, как их ввёл человек (список ignored ставит findByNameWords; пусто — карточка прежняя)
+  const typed=w=>esc(String(qq).split(/\s+/).find(t=>t.toLowerCase().replace(/ё/g,'е')===w)||w);
+  const ign=list.ignored&&list.ignored.length?`. Не учтено: ${list.ignored.map(w=>'«'+typed(w)+'»').join(', ')} — в наименованиях ЕТТ нет ${list.ignored.length>1?'слов':'слова'} в таком виде, поиск шёл без ${list.ignored.length>1?'них':'него'}`:'';
   let rows='';
   for(const r of shown){
     const [code,name,unit,rate]=r;
@@ -7509,7 +7517,7 @@ function nameMatchesHtml(qq,list){
       +`<div class="uu">Ставка: ${esc(String(fmtRate(rate)))}${unit?' · Ед.изм.: '+esc(unit):''}</div></div>`;
   }
   const more=list.length>shown.length?`<div class="ett-more">Показаны первые ${shown.length} из ${list.length} — уточните запрос</div>`:'';
-  return `<div class="card c-ett"><div class="rh"><div class="ico">📝</div><div><div class="rc">${esc(qq)}</div></div></div><div class="rn">${rel?`По всем словам сразу ничего не найдено. Найдено товаров по наименованию без слова «${dropped}»: ${list.length}`:`Найдено товаров по наименованию: ${list.length}`} — нажмите строку, чтобы открыть карточку кода</div><div class="tags"><span class="tag t-ett">📝 Поиск по наименованию</span>${rel?`<span class="tag">без слова «${dropped}»</span>`:''}</div><div class="usir-list">${rows}</div>${more}</div>`;
+  return `<div class="card c-ett"><div class="rh"><div class="ico">📝</div><div><div class="rc">${esc(qq)}</div></div></div><div class="rn">${rel?`По всем словам сразу ничего не найдено. Найдено товаров по наименованию без слова «${dropped}»: ${list.length}`:`Найдено товаров по наименованию: ${list.length}`} — нажмите строку, чтобы открыть карточку кода${ign}</div><div class="tags"><span class="tag t-ett">📝 Поиск по наименованию</span>${rel?`<span class="tag">без слова «${dropped}»</span>`:''}</div><div class="usir-list">${rows}</div>${more}</div>`;
 }
 
 // ═══════════════════════════════════════════
