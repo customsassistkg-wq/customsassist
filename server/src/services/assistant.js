@@ -270,12 +270,18 @@ function searchBase({ query, country: countryName, date, direction, full } = {},
   // а у соседних кодов (8517 13 и 8517 14) первые 110 знаков совпадают — модель
   // выбирала код вслепую. Здесь названия полные.
   if (/Найдено товаров по наименованию/.test(html) && !/data-dir=/.test(html)) {
-    const list = c.findByName(q).slice(0, 40);
+    const found = c.findByName(q);
+    const list = found.slice(0, 40);
     const rest = splitDivs(html).map((d) => html.slice(d.start, d.end))
       .filter((b) => !/Найдено товаров по наименованию/.test(b)).join('');
     const lines = list.map((r) => `${c.fmtCode(r[0])} — ${r[1]} — ставка ${c.fmtRate(r[3])}`
       + (c.TNVED_MAP[r[0]] ? ' (кода нет в действующем ЕТТ)' : ''));
-    return clip([cardsToText(rest), `Кандидаты по наименованию «${q}» (запросите нужный код отдельно):\n${lines.join('\n')}`]
+    // Смягчённый поиск: по всем словам сразу не нашлось, выдача — без одного слова. Это подсказка, а не совпадение: модель должна
+    // сказать человеку, что слово не учтено, и не выдавать кандидата за найденный по всем признакам.
+    const relaxed = found.relaxed
+      ? ` — по всем словам сразу ничего не найдено, выдача БЕЗ слова «${found.relaxed.dropped}»: это не совпадение по всем словам, проверьте по наименованию, подходит ли товар, и скажите человеку, что слово не учтено`
+      : '';
+    return clip([cardsToText(rest), `Кандидаты по наименованию «${q}»${relaxed} (запросите нужный код отдельно):\n${lines.join('\n')}`]
       .filter(Boolean).join('\n\n'));
   }
 

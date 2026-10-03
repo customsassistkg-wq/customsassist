@@ -6022,9 +6022,16 @@ function findByName(q){
   if(filtered.length>0)words=filtered; // отбрасываем предлоги/союзы, если после фильтрации что-то остаётся
   // для каждого слова запроса — само слово ИЛИ (все слова одной из синоним-фраз)
   const wordVariants=words.map(w=>{
-    const phrases=(SEARCH_SYNONYMS[w]||[]).map(p=>p.replace(/ё/g,'е').split(/\s+/));
+    // свои ключи таблицы, а не унаследованные: запрос «constructor» не должен находить функцию Object (до 03.10.2026 он ронял поиск)
+    const phrases=(Object.prototype.hasOwnProperty.call(SEARCH_SYNONYMS,w)?SEARCH_SYNONYMS[w]:[]).map(p=>p.replace(/ё/g,'е').split(/\s+/));
     return {self:w,phrases};
   });
+  const res=findByNameWords(wordVariants);
+  if(res.length||wordVariants.length<2||wordVariants.length>4)return res;
+  return findByNameRelaxed(wordVariants);
+}
+// Поиск по всем словам запроса сразу — строгий, при пустом результате по основам слов (до 03.10.2026 это была вся findByName).
+function findByNameWords(wordVariants){
   const wordMatches=(name,{self,phrases})=>
     hasWordAt(name,self)||phrases.some(ph=>ph.every(pw=>hasWordAt(name,pw)));
   // слово считается "значимым", если оно совпадает хоть с одной записью базы ГДЕ УГОДНО.
@@ -6117,6 +6124,54 @@ function findByName(q){
   if(!res.length)return findByNameStems(wordVariants);
   return res;
 }
+// Смягчённый поиск (03.10.2026). Когда по всем словам сразу ничего нет, а слов от двух до четырёх, откидывается одно прилагательное, а по
+// остальным словам поиск идёт как обычно (строгий, затем по основам): прилагательное лишь уточняет товар, и без него остаётся его род
+// («аккумулятор автомобильный» — аккумуляторы, «игрушка мягкая» — игрушки). Существительное не откидывается никогда («бытовая химия» не
+// становится «бытовой техникой»), поэтому без существительного, как и без прилагательного, поиск не смягчается. Из нескольких прилагательных
+// первым откидывается самое далёкое от существительного: ближайшее обычно образует с ним название товара («электрический мобильный
+// телефон» — «мобильный телефон»). Берётся первая попытка, давшая строки, где оставшееся слово есть настоящим словом, а не только началом
+// другого слова («химия» — это не «химически чистый сахар»). Слова, которых база не знает, не трогаются: они и так не влияют на выдачу, а
+// проверка стоит целого поиска. Результат несёт пометку relaxed — какое слово не учтено: карточка и помощник обязаны сказать об этом,
+// потому что это не совпадение по всем словам, а подсказка. Найденное обычным поиском не меняется.
+const NAME_ADJ_END=/(?:ый|ий|ой|ая|яя|ое|ее|ые|ие|ого|его|ых|их|ому|ему|ым|им|ую|юю)$/;
+const NAME_NOUN_IE=/(?:ени|ани|стви|ти|ли|ри)е$/; // «оборудование», «изделие», «покрытие» — существительные, хоть и на «-ие»
+const NAME_NOUN_IY=/^(?:алюминий|кальций|натрий|калий|магний|литий|стронций|барий|иттрий|цезий|рубидий|кремний|германий|таллий|индий|галлий|цирконий|ниобий|рений|родий|иридий|осмий|палладий|бериллий|кадмий|аммоний|гелий)$/; // металлы и элементы: на «-ий», но существительные
+const nameAdjLike=w=>w.length>=5&&NAME_ADJ_END.test(w)&&!NAME_NOUN_IE.test(w)&&!NAME_NOUN_IY.test(w);
+// Какие слова запроса база знает: слово или его основа начинает слово наименования ЕТТ, либо у слова есть синонимы.
+function nameWordsKnown(wordVariants){
+  const namesLc=ettNamesLc(),toks=ettNameStems(),stems=wordVariants.map(v=>stemRu(v.self));
+  const known=wordVariants.map(v=>v.phrases.length>0);
+  for(let ri=0;ri<namesLc.length&&!known.every(Boolean);ri++){
+    for(let i=0;i<known.length;i++){
+      if(!known[i]&&(hasWordAt(namesLc[ri],wordVariants[i].self)||toks[ri].some(t=>t.startsWith(stems[i]))))known[i]=true;
+    }
+  }
+  return known;
+}
+// Слово запроса стоит в наименовании целым словом, в другой форме (та же основа) или по фразе синонима — а не лишь началом другого слова.
+function nameHasForm(name,v){
+  if(hasExactWordAt(name,v.self))return true;
+  const st=stemRu(v.self);
+  if(name.split(/[^а-яa-z0-9]+/).some(t=>t&&stemRu(t)===st))return true;
+  return v.phrases.some(ph=>ph.every(pw=>hasWordAt(name,pw)));
+}
+function findByNameRelaxed(wordVariants){
+  const known=nameWordsKnown(wordVariants);
+  const cand=wordVariants.map((_,i)=>i).filter(i=>known[i]);
+  const adj=cand.filter(i=>nameAdjLike(wordVariants[i].self));
+  const head=cand.find(i=>!adj.includes(i)); // существительное, которое остаётся: первое из известных слов, не похожих на прилагательное
+  if(head===undefined||!adj.length)return[];
+  const order=adj.sort((x,y)=>Math.abs(y-head)-Math.abs(x-head)||y-x);
+  for(const drop of order){
+    const rest=wordVariants.filter((_,i)=>i!==drop);
+    const res=findByNameWords(rest);
+    if(res.length&&res.some(r=>{const n=(r[1]||'').toLowerCase().replace(/ё/g,'е');return rest.some(v=>nameHasForm(n,v));})){
+      res.relaxed={dropped:wordVariants[drop].self,kept:rest.map(v=>v.self)};
+      return res;
+    }
+  }
+  return[];
+}
 // Запасной поиск по основам слов (02.10.2026). Строгий поиск выше требует, чтобы слово запроса было началом слова наименования, и не
 // находит «рубашка» (в ЕТТ «рубашки»), «легковые» («легковых»), «лекарство» («лекарственные»), «автомобиль» («автомобили»). Он включается,
 // ТОЛЬКО когда строгий ничего не нашёл, — найденное строгим не меняется. Основа — слово без одного окончания (не короче трёх знаков
@@ -6175,6 +6230,7 @@ function renderHtml(q,dateIso){dateIso=/^\d{4}-\d\d-\d\d$/.test(dateIso||'')?dat
     // Запрос не похож ни на один известный код — пробуем как название товара,
     // чтобы поиск по коду и по наименованию работали из одного поля.
     const nameList=findByName(qt);
+    const nameStrict=nameList.relaxed?[]:nameList; // смягчённая выдача стоит только на своей карточке-списке: под карточкой знака, страны или СНГ она была бы лишней
     // Товарный знак ищется по названию, а не по коду: пользователь знает бренд.
     // Карточка реестра идёт первой — запрос «VENTANA» относится именно к ней,
     // а совпадения по наименованию товара в ЕТТ здесь побочные.
@@ -6187,10 +6243,10 @@ function renderHtml(q,dateIso){dateIso=/^\d{4}-\d\d-\d\d$/.test(dateIso||'')?dat
     if(prefCountries.length||cisHit){
       return {cards:false,html:(cisHit?cisCountryHtml(cisHit):'')+(prefCountries.length?prefCountryHtml(qt,prefCountries):'')
         +(troisNames.length?troisNameHtml(qt,troisNames):'')
-        +(nameList.length?nameMatchesHtml(qt,nameList):'')};
+        +(nameStrict.length?nameMatchesHtml(qt,nameStrict):'')};
     }
     if(troisNames.length){
-      return {cards:false,html:troisNameHtml(qt,troisNames)+(nameList.length?nameMatchesHtml(qt,nameList):'')};
+      return {cards:false,html:troisNameHtml(qt,troisNames)+(nameStrict.length?nameMatchesHtml(qt,nameStrict):'')};
     }
     if(nameList.length){
       // Не сворачиваем: единственная карточка тут — это и есть кликабельный
@@ -7396,6 +7452,8 @@ function speciesHtml(q){
 // render() как запасной вариант, когда запрос не совпал ни с одним кодом.
 function nameMatchesHtml(qq,list){
   const shown=list.slice(0,60);
+  const rel=list.relaxed; // смягчённый поиск: {dropped — слово, которое не учтено, kept — остальные}
+  const dropped=rel?esc(String(qq).split(/\s+/).find(t=>t.toLowerCase().replace(/ё/g,'е')===rel.dropped)||rel.dropped):''; // слово — как его ввёл человек («зелёная», а не «зеленая»)
   let rows='';
   for(const r of shown){
     const [code,name,unit,rate]=r;
@@ -7404,7 +7462,7 @@ function nameMatchesHtml(qq,list){
       +`<div class="uu">Ставка: ${esc(String(fmtRate(rate)))}${unit?' · Ед.изм.: '+esc(unit):''}</div></div>`;
   }
   const more=list.length>shown.length?`<div class="ett-more">Показаны первые ${shown.length} из ${list.length} — уточните запрос</div>`:'';
-  return `<div class="card c-ett"><div class="rh"><div class="ico">📝</div><div><div class="rc">${esc(qq)}</div></div></div><div class="rn">Найдено товаров по наименованию: ${list.length} — нажмите строку, чтобы открыть карточку кода</div><div class="tags"><span class="tag t-ett">📝 Поиск по наименованию</span></div><div class="usir-list">${rows}</div>${more}</div>`;
+  return `<div class="card c-ett"><div class="rh"><div class="ico">📝</div><div><div class="rc">${esc(qq)}</div></div></div><div class="rn">${rel?`По всем словам сразу ничего не найдено. Найдено товаров по наименованию без слова «${dropped}»: ${list.length}`:`Найдено товаров по наименованию: ${list.length}`} — нажмите строку, чтобы открыть карточку кода</div><div class="tags"><span class="tag t-ett">📝 Поиск по наименованию</span>${rel?`<span class="tag">без слова «${dropped}»</span>`:''}</div><div class="usir-list">${rows}</div>${more}</div>`;
 }
 
 // ═══════════════════════════════════════════
