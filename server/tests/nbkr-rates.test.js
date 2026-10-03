@@ -3,7 +3,7 @@
 // (здесь — во временный каталог), после «перезапуска» при недоступном nbkr.kg берётся курс с диска, с датой НБКР и пометкой fromDisk,
 // возвращение сайта заменяет его свежим, негодный файл не принимается; (2) курс на день — НБКР вечером публикует курс на завтра
 // (02.10 в 17:40 по Бишкеку daily.xml нёс 03.10), а таможня берёт курс на день регистрации, поэтому getRates() отдаёт курс с
-// наибольшей датой не позже сегодняшней по Бишкеку, история из десяти курсов переживает перезапуск. Сеть и часы подменены.
+// наибольшей датой не позже сегодняшней по Бишкеку, история из десяти курсов переживает перезапуск. Сеть и часы подменены. (3) Расписание (03.10.2026): курс меняется раз в сутки, поэтому обновление — раз в сутки в 00:02 по Бишкеку (nextRefreshInMs), при обрыве — повтор через 15 минут, при несменившейся дате — через час; опроса по часам нет.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -164,6 +164,77 @@ const feed = async (svc, date, usd, eur) => { mode = 'ok'; body = xml(date, usd,
     assert.deepEqual([hist[0], hist[9]], ['06.10.2026', '15.10.2026']);
     assert.equal(new Set(hist).size, 10);
     console.log('PASS: курс на день — вечером до полуночи курс текущего дня, а не завтрашний; явный день; история из десяти курсов в файле переживает перезапуск; одно и то же число заменяется');
+    // 10. Расписание обновлений (03.10.2026, слово владельца: курс меняется раз в сутки, хватает одного обновления после полуночи):
+    // следующее обновление — в 00:02 по Бишкеку; запрос не удался — повтор через 15 минут; ответ пришёл, а НБКР ещё не сменил дату —
+    // через час; опроса по часам больше нет.
+    {
+      const bk = (day, hms) => Date.parse(day + 'T' + hms + '+06:00'); // момент по Бишкеку
+      const MIN = 60e3, HOUR = 3600e3;
+      fs.rmSync(file, { force: true });
+      clock = bk('2026-10-03', '10:00:00');
+      svc = fresh();
+      await feed(svc, '03.10.2026', '87,45', '98,3813');            // курс на сегодня получен
+      assert.equal(svc.nextRefreshInMs(clock), 14 * HOUR + 2 * MIN, 'в 10:00 следующее обновление — в 00:02 следующих суток');
+      assert.equal(svc.nextRefreshInMs(bk('2026-10-03', '23:59:59')), 2 * MIN + 1e3, 'перед полуночью — через две минуты и секунду');
+      assert.equal(svc.nextRefreshInMs(bk('2026-10-03', '00:01:00')), 1 * MIN, 'до 00:02 того же дня — через минуту');
+      assert.equal(svc.nextRefreshInMs(bk('2026-10-03', '00:02:00')), 24 * HOUR, 'ровно в 00:02 — на следующие сутки, а не немедленно');
+      // Утром курс нового дня: обновление в 00:02:30 принесло 04.10 — следующее в 00:02 через сутки без полминуты.
+      clock = bk('2026-10-04', '00:02:30');
+      await feed(svc, '04.10.2026', '87,45', '98,3813');
+      assert.equal(svc.nextRefreshInMs(clock), 24 * HOUR - 30e3);
+      // НБКР дату ещё не сменил: пришёл тот же 04.10, а наступило 05.10 — курса на сегодня нет, спрашиваем раз в час.
+      clock = bk('2026-10-05', '00:02:30');
+      await feed(svc, '04.10.2026', '87,45', '98,3813');
+      assert.equal(svc.nextRefreshInMs(clock), HOUR, 'курса на сегодня нет — через час');
+      // Запрос не удался — через 15 минут, при любой истории.
+      mode = 'down'; mute(); await svc.refresh(); unmute();
+      assert.equal(svc.nextRefreshInMs(clock), 15 * MIN, 'обрыв — повтор через 15 минут');
+      assert.equal(svc.nextRefreshInMs(bk('2026-10-04', '12:00:00')), 15 * MIN);
+      mode = 'ok';
+      await feed(svc, '05.10.2026', '87,6', '98,5');               // вернулся — расписание снова суточное
+      assert.equal(svc.nextRefreshInMs(clock), 24 * HOUR - 30e3);
+
+      // Таймеры службы: при запуске — запрос сразу, затем один таймер на следующее 00:02; сработал — запрос, новый таймер; обрыв — 15 минут.
+      const timers = [];
+      const realST = global.setTimeout, realCT = global.clearTimeout, realSI = global.setInterval;
+      global.setTimeout = (fn, ms) => { const t = { fn, ms, cleared: false }; timers.push(t); return t; };
+      global.clearTimeout = (t) => { if (t) t.cleared = true; };
+      global.setInterval = () => { throw new Error('опрос по интервалу (раз в час) вернулся'); };
+      const settle = async (n) => { for (let i = 0; i < 40 && timers.length < n; i++) await new Promise((r) => setImmediate(r)); };
+      try {
+        fs.rmSync(file, { force: true });
+        clock = bk('2026-10-03', '10:00:00'); mode = 'ok'; body = xml('03.10.2026', '87,45', '98,3813'); calls = 0;
+        svc = fresh();
+        svc.init();
+        await settle(1);
+        assert.equal(calls, 1, 'при запуске курс спрашивается сразу');
+        assert.equal(timers.length, 1);
+        assert.equal(timers[0].ms, 14 * HOUR + 2 * MIN, 'один таймер — на 00:02 следующих суток');
+        clock = bk('2026-10-04', '00:02:05'); body = xml('04.10.2026', '87,45', '98,3813');   // таймер сработал
+        timers[0].fn();
+        await settle(2);
+        assert.equal(calls, 2, 'таймер сработал — один запрос');
+        assert.equal((await svc.getRates()).date, '04.10.2026');
+        assert.equal(timers.length, 2);
+        assert.equal(timers[1].ms, 24 * HOUR - 5e3, 'и снова на 00:02 через сутки');
+        clock = bk('2026-10-05', '00:02:05'); mode = 'down'; mute();                         // следующая ночь: сайт не отвечает
+        timers[1].fn();
+        await settle(3);
+        unmute();
+        assert.equal(calls, 3);
+        assert.equal(timers[2].ms, 15 * MIN, 'обрыв — повтор через 15 минут, а не через сутки');
+        mode = 'ok'; body = xml('05.10.2026', '87,6', '98,5'); clock += 15 * MIN;
+        timers[2].fn();
+        await settle(4);
+        assert.equal(calls, 4);
+        assert.equal(timers[3].ms, 24 * HOUR - 15 * MIN - 5e3, 'удалось (в 00:17:05) — снова раз в сутки, к 00:02');
+        assert.equal(svc.status().failingSince, null);
+      } finally {
+        global.setTimeout = realST; global.clearTimeout = realCT; global.setInterval = realSI;
+        unmute();
+      }
+      console.log('PASS: расписание курса — раз в сутки в 00:02 по Бишкеку (граница 00:02:00 — на следующие сутки), обрыв — повтор через 15 минут, дата ещё не сменилась — через час, опроса по часам нет');
+    }
   } finally {
     Date.now = realNow;
     unmute();

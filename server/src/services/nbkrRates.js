@@ -1,7 +1,13 @@
 const https = require('https');
 const ops = require('./ops');
 
-const REFRESH_INTERVAL_MS = 60 * 60 * 1000; // раз в час проверяем, не сменилась ли дата курса
+// Курс НБКР меняется раз в сутки (слово владельца, 03.10.2026): хватает одного обновления сразу после полуночи по Бишкеку — курс нового
+// дня НБКР публикует накануне вечером, и в 00:02 daily.xml уже несёт его. Часовой опрос (до 03.10.2026) был лишним: 24 запроса в сутки
+// ради одного нужного, и каждый обрыв nbkr.kg попадал в журнал. Зато обрыв в 00:02 не должен оставить сутки без курса дня, поэтому пока
+// запрос не удаётся — повтор каждые 15 минут, а если ответ пришёл, но НБКР ещё не сменил дату (курса на сегодня в истории нет), — раз в час.
+const REFRESH_AFTER_MIDNIGHT_MS = 2 * 60 * 1000;
+const RETRY_AFTER_FAILURE_MS = 15 * 60 * 1000;
+const RETRY_NO_RATE_FOR_TODAY_MS = 60 * 60 * 1000;
 // Без таймаута зависший сокет оставляет промис refresh() навсегда
 // неразрешённым; поскольку все последующие вызовы возвращают этот же промис
 // (см. переменную refreshing ниже), обновление курса после этого не
@@ -178,14 +184,33 @@ async function getRates(forIso) {
   return effective(forIso);
 }
 
+// Через сколько миллисекунд обновлять курс в следующий раз. Запрос не удался — через 15 минут (последний удачный курс с диска или из
+// памяти тем временем служит, а тревога health.js поднимается только после суток неудач подряд). Запрос удался, но курса на сегодня в
+// истории нет (НБКР ещё не сменил дату) — через час. Иначе — на 00:02 следующих суток по Бишкеку (UTC+6, перехода на летнее время нет).
+function nextRefreshInMs(now = Date.now()) {
+  if (failingSince) return RETRY_AFTER_FAILURE_MS;
+  const today = bishkekToday(now);
+  const haveToday = history.some((r) => isoOf(r.date) === today) || (cache && isoOf(cache.date) === today);
+  if (!haveToday) return RETRY_NO_RATE_FOR_TODAY_MS;
+  const DAY = 24 * 3600e3, local = now + 6 * 3600e3;
+  let at = Math.floor(local / DAY) * DAY + REFRESH_AFTER_MIDNIGHT_MS;
+  if (at <= local) at += DAY;
+  return at - local;
+}
+
+let timer = null;
+function schedule() {
+  clearTimeout(timer);
+  timer = setTimeout(() => refresh().then(schedule, schedule), nextRefreshInMs());
+}
+
 function init() {
   persist = true;
-  refresh();
-  setInterval(refresh, REFRESH_INTERVAL_MS);
+  refresh().then(schedule, schedule); // при запуске — всегда сразу (выкладка — это перезапуск), дальше раз в сутки после полуночи
 }
 
 function status() {
   return { date: cache ? cache.date : null, usd: cache ? cache.usd : null, eur: cache ? cache.eur : null, effectiveDate: effective() ? effective().date : null, updatedAt, lastError, fromDisk, failingSince: failingSince ? new Date(failingSince).toISOString() : null };
 }
 
-module.exports = { init, getRates, refresh, status, setPersist: (v) => { persist = !!v; } };
+module.exports = { init, getRates, refresh, status, nextRefreshInMs, setPersist: (v) => { persist = !!v; } };
