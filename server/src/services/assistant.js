@@ -288,7 +288,12 @@ function searchBase({ query, country: countryName, date, direction, full } = {},
     const ignored = nIgn
       ? ` — ${nIgn > 1 ? 'слова' : 'слово'} «${found.ignored.join('», «')}» поиск не учёл (в наименованиях ЕТТ ${nIgn > 1 ? 'их' : 'его'} нет в таком виде): выдача по остальным словам, скажите об этом человеку`
       : '';
-    return clip([cardsToText(rest), `Кандидаты по наименованию «${q}»${relaxed}${ignored} (запросите нужный код отдельно):\n${lines.join('\n')}`]
+    // Числа и единицы измерения (модель, размер, объём) поиск не требует — иначе «смартфон 128 гб» не находил бы ничего; строки, где они есть, стоят выше.
+    const nNum = found.ignoredNums ? found.ignoredNums.length : 0;
+    const numbers = nNum
+      ? ` — числа и единицы измерения «${found.ignoredNums.join(' ')}» поиск не требовал (модель, размер, объём): выдача по словам, строки с ними выше; сверьте размер и модель по наименованию и скажите об этом человеку`
+      : '';
+    return clip([cardsToText(rest), `Кандидаты по наименованию «${q}»${relaxed}${ignored}${numbers} (запросите нужный код отдельно):\n${lines.join('\n')}`]
       .filter(Boolean).join('\n\n'));
   }
 
