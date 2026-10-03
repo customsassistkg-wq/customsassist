@@ -487,3 +487,40 @@ assert.match(c.renderHtml('акумулятор').html, /Исправлено: �
 assert.match(c.renderHtml('Акумулятор автомобильный').html, /Исправлено: «Акумулятор» → «аккумулятор»/);
 assert.doesNotMatch(c.renderHtml('аккумулятор').html, /Исправлено/);
 console.log('PASS: опечатки — ' + TYPOS.length + ' запросов исправлены и находят свою позицию, исправление названо на карточке, короткие слова, страны, прилагательные и чистые слова не трогаются');
+
+// Английские слова счетов-фактур (04.10.2026): NAME_EN переводит слово на русское, которое поиск уже знает («laptop» → «ноутбук»), и перевод назван на карточке (res.translated).
+// Раньше английский запрос не находил ничего (из 202 слов — одно). Каждое слово таблицы даёт те же строки, что и русский мост, а мосты проверены по ожидаемой позиции (228 из 229).
+// В таблице нет брендов и двусмысленных слов («apple», «orange», «iron», «air», «max», «pro», «mini»), нет «men's», «women's», «kids» (пол и возраст различают лишь часть позиций).
+{
+  const bad = [];
+  for (const [en, ru] of Object.entries(c.NAME_EN)) {
+    const a = c.findByName(en), b = c.findByName(ru);
+    if (!a.length || a.map((r) => r[0]).join() !== b.map((r) => r[0]).join()) bad.push(en + ' → ' + ru + ' (' + a.length + '/' + b.length + ')');
+  }
+  assert.deepEqual(bad, [], 'английские слова, которые не равны русскому мосту');
+  assert.ok(Object.keys(c.NAME_EN).length >= 200);
+  // мост — слова без предлогов: после перевода они идут в поиск как есть, а предлог в запросе отбрасывается раньше («запчасти для автомобиля» ≠ «запчасти автомобиля»)
+  assert.deepEqual(Object.entries(c.NAME_EN).filter(([, ru]) => /(^| )(для|из|на|и|с|со|в|во|по|от|без|при)( |$)/.test(ru)).map(([en]) => en), []);
+}
+const EN_CASES = [
+  ['smartphone', ['8517']], ['laptop', ['8471']], ['refrigerator', ['8418']], ['washing machine', ['8450']], ['t-shirt', ['6109']], ['jeans', ['6203', '6204']], ['sneakers', ['6402', '6404']],
+  ['sugar', ['1701']], ['cement', ['2523']], ['car', ['8703']], ['tires', ['4011']], ['toys', ['9503']], ['sofa', ['9401']], ['perfume', ['3303']], ['olive oil', ['1509']],
+  ["Men's cotton T-shirt", ['6109', '6207']], ['Stainless steel pipe', ['7304', '7305', '7306']], ['LED light bulb', ['8539']], ['Plastic bottle', ['3923', '7010']], ["Women's leather handbag", ['4202']],
+  ['Laptop computer', ['8471']], ['USB flash drive 64GB', ['8523']], ['Glass bottle', ['7010']], ['Wooden table', ['9403']], ['Car tires', ['4011']], ['frozen chicken', ['0207']],
+  ['power bank 10000mah', ['8507']], ['Aluminum profile', ['7604']], ['steel pipes', ['7304']], ['dresses', ['6204']], ['cotton fabric', ['5209']], ['Samsung Galaxy S24 smartphone', ['8517']],
+];
+for (const [q, want] of EN_CASES) {
+  const r = c.findByName(q);
+  assert.ok(r.translated && r.translated.length >= 1, q + ': нет пометки о переводе');
+  assert.ok(want.some((w) => heads(r.slice(0, SHOWN)).has(w)), q + ': нет ' + want.join('/') + ' (' + [...heads(r)].slice(0, 6).join(' ') + ')');
+}
+// Бренды, цвета и двусмысленные слова не переводятся; русские запросы не трогаются; запись «'s» у притяжательных отбрасывается только для таблицы.
+for (const q of ['Apple iPhone 15', 'orange', 'iron', 'Nike Air Max', 'смартфон', 'телевизор', 'men', "women's"]) assert.equal(c.findByName(q).translated, undefined, q + ': переводить нечего');
+assert.ok(heads(c.findByName('Apple iPhone 15').slice(0, SHOWN)).has('8517'), 'бренд «Apple» не стал яблоками: телефон находится');
+assert.deepEqual(Array.from(c.findByName("women's leather handbag").translated, (p) => [...p]), [['leather', 'кожаный'], ['handbag', 'сумка']]);
+assert.deepEqual(Array.from(c.findByName("laptop's").translated, (p) => [...p]), [["laptop's", 'ноутбук']]);   // «'s» у слова отбрасывается при поиске в таблице
+// Карточка: что переведено на что; обычная карточка без пометки.
+assert.match(c.renderHtml('laptop').html, /Переведено с английского: «laptop» → «ноутбук»/);
+assert.match(c.renderHtml('Stainless steel pipe').html, /Переведено с английского: «Stainless steel» → «нержавеющая сталь», «pipe» → «труба»/);
+assert.doesNotMatch(c.renderHtml('ноутбук').html, /Переведено/);
+console.log('PASS: английские слова — ' + Object.keys(c.NAME_EN).length + ' слов таблицы дают строки русского моста, ' + EN_CASES.length + ' запросов счетов находят свою позицию, бренды не переводятся, карточка называет перевод');

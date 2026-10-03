@@ -6187,6 +6187,16 @@ const SEARCH_SYNONYMS={
   // === Вода: обиходное слово ставит перед выдачей воды минеральные и газированные (04.10.2026).
   'вода':['воды минеральные газированные'],
   'воды':['воды минеральные газированные'],
+  // === Русские слова, найденные при составлении английской таблицы (04.10.2026): юбка, грузовик, электродвигатель.
+  'юбка':['юбки'],
+  'грузовик':['моторные транспортные средства перевозки грузов'],
+  'грузовики':['моторные транспортные средства перевозки грузов'],
+  'грузовая машина':['моторные транспортные средства перевозки грузов'],
+  'грузовой автомобиль':['моторные транспортные средства перевозки грузов'],
+  'грузовые автомобили':['моторные транспортные средства перевозки грузов'],
+  'электродвигатель':['двигатели генераторы электрические'],
+  'электродвигатели':['двигатели генераторы электрические'],
+  'электромотор':['двигатели генераторы электрические'],
 };
 // Относительные прилагательные (04.10.2026): «стальной», «кожаный», «гречневый», «томатный» — слова наименований ЕТТ, которые за ними стоят («стали»,
 // «кожи», «гречиха», «томаты»). Ключ — одна форма, действует на все по основе (synByStem): в ЕТТ пишут «стальные», «из стали», а ищут «стальная».
@@ -6415,6 +6425,55 @@ function nearNameWord(w){
 }
 // страна и товарный знак — не опечатка: «катар» не «катера», «сербия» не «серпы»
 function nameIsProper(w){return findPrefByCountry(w).length>0||!!cisCountry(w)||findTROISByName(w).length>0}
+// Английские слова счетов-фактур (04.10.2026): «laptop», «men's cotton t-shirt» — слово переводится на русское, которое поиск уже знает, и перевод назван на карточке (res.translated).
+// Только однозначные товарные слова и материалы-прилагательные; «apple», «orange», «air», «max», «mini», «pro», «iron» — бренды, цвета или два товара сразу — здесь не стоят, как и «men's»,
+// «women's», «kids»: пол и возраст в ЕТТ различают лишь часть позиций (6203/6204), а требовать их значило бы потерять трикотаж; такие слова остаются в «Не учтено».
+// Двух- и трёхсловные ключи («power bank», «stainless steel») ищутся по паре соседних слов; множественное число сводится к единственному (nameEnRu).
+const NAME_EN={
+  'smartphone':'смартфон','mobile phone':'мобильный телефон','cell phone':'мобильный телефон','cellphone':'мобильный телефон','telephone':'телефон','laptop':'ноутбук',
+  'notebook computer':'ноутбук','computer':'компьютер','tablet':'планшет','monitor':'монитор','keyboard':'клавиатура','computer mouse':'мышь компьютерная',
+  'printer':'принтер','scanner':'сканер','camera':'камера','video camera':'видеокамера','webcam':'веб камера','headphones':'наушники','earphones':'наушники',
+  'earbuds':'наушники','speaker':'колонка','microphone':'микрофон','charger':'зарядное устройство','power bank':'пауэрбанк','powerbank':'пауэрбанк','cable':'кабель',
+  'router':'роутер','television':'телевизор','projector':'проектор','drone':'дрон','led lamp':'светодиодная лампа','light bulb':'лампочка','flash drive':'флешка',
+  'usb flash drive':'флешка','hard drive':'жесткий диск','memory card':'карта памяти','wristwatch':'часы наручные','socket':'розетка','fan':'вентилятор',
+  'air conditioner':'кондиционер','refrigerator':'холодильник','fridge':'холодильник','freezer':'морозильная камера','washing machine':'стиральная машина',
+  'vacuum cleaner':'пылесос','microwave':'микроволновка','oven':'духовой шкаф','kettle':'электрочайник','hair dryer':'фен','blender':'блендер','toaster':'тостер',
+  'coffee machine':'кофемашина','electric razor':'электробритва','sewing machine':'швейная машина','dishwasher':'посудомоечная машина','solar panel':'солнечная панель',
+  'inverter':'инвертор','transformer':'трансформатор','generator':'генератор','electric motor':'электродвигатель','battery':'батарейки','accumulator':'аккумулятор',
+  'lithium battery':'аккумулятор','t-shirt':'футболка','tshirt':'футболка','shirt':'рубашка','jeans':'джинсы','trousers':'брюки','pants':'брюки','dress':'платье',
+  'skirt':'юбка','jacket':'куртка','coat':'пальто','sweater':'свитер','hoodie':'худи','socks':'носки','underwear':'нижнее белье','gloves':'перчатки','hat':'шапка',
+  'scarf':'шарф','necktie':'галстук','belt':'ремень','handbag':'сумка','bag':'сумка','backpack':'рюкзак','wallet':'кошелек','suitcase':'чемодан','sneakers':'кроссовки',
+  'boots':'ботинки','slippers':'тапочки','shoes':'обувь','fabric':'ткань','yarn':'пряжа','towel':'полотенце','bed sheet':'простыня','blanket':'одеяло',
+  'pillow':'подушка','carpet':'ковер','curtain':'шторы','sugar':'сахар','rice':'рис','wheat':'пшеница','flour':'мука','bread':'хлеб','pasta':'макароны',
+  'noodles':'макаронные изделия','milk':'молоко','cheese':'сыр','butter':'масло сливочное','yogurt':'йогурт','eggs':'яйца','meat':'мясо','beef':'говядина',
+  'pork':'свинина','chicken':'курица','fish':'рыба','shrimp':'креветки','sausage':'колбаса','honey':'мед','chocolate':'шоколад','candy':'конфеты','biscuits':'печенье',
+  'cookies':'печенье','tea':'чай','coffee':'кофе','juice':'сок','beer':'пиво','wine':'вино','vodka':'водка','whisky':'виски','whiskey':'виски','salt':'соль',
+  'sunflower oil':'подсолнечное масло','olive oil':'масло оливковое','banana':'бананы','lemon':'лимоны','grapes':'виноград','potato':'картофель','tomato':'помидоры',
+  'onion':'лук','garlic':'чеснок','almonds':'миндаль','walnuts':'грецкий орех','raisins':'изюм','dried fruit':'сухофрукты','spices':'специи','pepper':'перец',
+  'cement':'цемент','steel pipe':'стальная труба','aluminium profile':'алюминиевый профиль','aluminum profile':'алюминиевый профиль','copper wire':'медная проволока',
+  'bolts':'болты','screws':'саморезы','nails':'гвозди','wire':'проволока','tiles':'плитка','plywood':'фанера','paint':'краска','glue':'клей','tires':'шины',
+  'tyres':'шины','brake pads':'тормозные колодки','spare parts':'запчасти автомобиля','engine':'двигатель','pump':'насос','bearing':'подшипник','tractor':'трактор',
+  'excavator':'экскаватор','truck':'грузовик','car':'автомобиль','motorcycle':'мотоцикл','bicycle':'велосипед','bike':'велосипед','toys':'игрушки','doll':'кукла',
+  'furniture':'мебель','chair':'стул','table':'стол','sofa':'диван','bed':'кровать','mattress':'матрас','lamp':'светильник','mirror':'зеркало',
+  'plastic bag':'пакеты полиэтиленовые','bottle':'бутылка','books':'книги','soap':'мыло','shampoo':'шампунь','perfume':'духи','toothpaste':'зубная паста',
+  'toothbrush':'зубная щетка','diapers':'подгузники','medicine':'лекарство','vitamins':'витамины','fertilizer':'удобрения','seeds':'семена',
+  'animal feed':'корма животных','instant noodles':'лапша быстрого приготовления','car battery':'аккумулятор автомобильный','rechargeable battery':'аккумулятор',
+  'li-ion battery':'аккумулятор','glasses':'очки','sunglasses':'очки','t shirt':'футболка','stainless steel':'нержавеющая сталь','pipe':'труба','tube':'труба',
+  'jar':'банка','glass':'стеклянный','paper':'бумажный','steel':'стальной','wood':'деревянный','wooden':'деревянный','plastic':'пластиковый','rubber':'резиновый',
+  'cotton':'хлопковый','wool':'шерстяной','woolen':'шерстяной','silk':'шелковый','linen':'льняной','leather':'кожаный','copper':'медный','aluminium':'алюминиевый',
+  'aluminum':'алюминиевый','brass':'латунный','ceramic':'керамический','electric':'электрический','frozen':'замороженный','dried':'сушеный','canned':'консервированный',
+  'smoked':'копченый','portable':'портативный','automatic':'автоматический','digital camera':'фотоаппарат','photo camera':'фотоаппарат'
+};
+function nameEnRu(k){
+  const own=x=>Object.prototype.hasOwnProperty.call(NAME_EN,x);
+  if(own(k))return NAME_EN[k];
+  const alts=[];
+  if(/ies$/.test(k))alts.push(k.slice(0,-3)+'y');
+  if(/es$/.test(k))alts.push(k.slice(0,-2));
+  if(/s$/.test(k))alts.push(k.slice(0,-1));
+  for(const a of alts)if(a.length>=3&&own(a))return NAME_EN[a];
+  return null;
+}
 function findByName(q){
   const qq=(q||'').trim().toLowerCase().replace(/ё/g,'е'); // «ё» везде как «е»: ЕТТ пишет «мед», «сушеные», «белье»
   if(qq.length<3)return[];
@@ -6431,6 +6490,19 @@ function findByName(q){
     });
     // нечего оставить поиску (одни числа, одни общие слова) — запрос как был: число там и есть признак
     if(keep.some(w=>/[a-zа-я]/.test(w))&&!keep.every(w=>NAME_GENERIC.has(w)))words=keep;else nums.length=0;
+  }
+  // Английские слова переводятся на русские из таблицы NAME_EN (по одному или парой соседних, «'s» у притяжательных отбрасывается); переводы названы в res.translated.
+  const tr=[];
+  if(words.some(w=>/^[a-z]/.test(w))){
+    const out=[],bare=w=>w.replace(/['’]s$/,'');
+    for(let i=0;i<words.length;i++){
+      const w=bare(words[i]),w2=i+1<words.length?bare(words[i+1]):'';
+      const two=w2?nameEnRu(w+' '+w2):null;
+      if(two!==null){tr.push([words[i]+' '+words[i+1],two]);out.push(...two.split(' '));i++;continue}
+      const one=nameEnRu(w);
+      if(one!==null){tr.push([words[i],one]);out.push(...one.split(' '))}else out.push(words[i]);
+    }
+    words=out;
   }
   // для каждого слова запроса — само слово ИЛИ (все слова одной из синоним-фраз)
   // Свои ключи таблицы, а не унаследованные: запрос «constructor» не должен находить функцию Object (до 03.10.2026 он ронял поиск).
@@ -6467,6 +6539,7 @@ function findByName(q){
   if(!res.length&&vars.length>=2&&vars.length<=4)res=findByNameRelaxed(vars);
   if(res.length&&latGone.length)res.ignored=(res.ignored||[]).concat(latGone);
   if(res.length&&fixes.length)res.corrected=fixes;
+  if(res.length&&tr.length)res.translated=tr;
   if(nums.length&&res.length){
     res.ignoredNums=nums;
     // строки, где число (и единица) стоит в наименовании настоящим словом, — выше; порядок остальных прежний (сортировка устойчива)
@@ -7944,6 +8017,8 @@ function nameMatchesHtml(qq,list){
   // слова, которых поиск не использовал, — так, как их ввёл человек (список ignored ставит findByNameWords; пусто — карточка прежняя)
   const typed=w=>esc(String(qq).split(/\s+/).find(t=>t.toLowerCase().replace(/ё/g,'е')===w)||w);
   const ign=list.ignored&&list.ignored.length?`. Не учтено: ${list.ignored.map(w=>'«'+typed(w)+'»').join(', ')} — в наименованиях ЕТТ нет ${list.ignored.length>1?'слов':'слова'} в таком виде, поиск шёл без ${list.ignored.length>1?'них':'него'}`:'';
+  // английские слова, переведённые на русские (translated ставит findByName): «laptop» → «ноутбук»
+  const trn=list.translated&&list.translated.length?`. Переведено с английского: ${list.translated.map(([a,b])=>'«'+a.split(' ').map(typed).join(' ')+'» → «'+esc(b)+'»').join(', ')}`:'';
   // опечатки, которые поиск исправил (corrected ставит findByName): что было набрано и на что заменено — всегда названо, чтобы человек видел, что искалось
   const corr=list.corrected&&list.corrected.length?`. Исправлено: ${list.corrected.map(([a,b])=>'«'+typed(a)+'» → «'+esc(b)+'»').join(', ')}`:'';
   // числа и единицы измерения, которые поиск не требовал (ignoredNums ставит findByName): модель и размер человек сверяет по наименованию сам
@@ -7956,7 +8031,7 @@ function nameMatchesHtml(qq,list){
       +`<div class="uu">Ставка: ${esc(String(fmtRate(rate)))}${unit?' · Ед.изм.: '+esc(unit):''}</div></div>`;
   }
   const more=list.length>shown.length?`<div class="ett-more">Показаны первые ${shown.length} из ${list.length} — уточните запрос</div>`:'';
-  return `<div class="card c-ett"><div class="rh"><div class="ico">📝</div><div><div class="rc">${esc(qq)}</div></div></div><div class="rn">${rel?`По всем словам сразу ничего не найдено. Найдено товаров по наименованию без ${gone.length>1?'слов':'слова'} ${dropped}: ${list.length}`:`Найдено товаров по наименованию: ${list.length}`} — нажмите строку, чтобы открыть карточку кода${corr}${ign}${ignN}</div><div class="tags"><span class="tag t-ett">📝 Поиск по наименованию</span>${rel?`<span class="tag">без ${gone.length>1?'слов':'слова'} ${dropped}</span>`:''}</div><div class="usir-list">${rows}</div>${more}</div>`;
+  return `<div class="card c-ett"><div class="rh"><div class="ico">📝</div><div><div class="rc">${esc(qq)}</div></div></div><div class="rn">${rel?`По всем словам сразу ничего не найдено. Найдено товаров по наименованию без ${gone.length>1?'слов':'слова'} ${dropped}: ${list.length}`:`Найдено товаров по наименованию: ${list.length}`} — нажмите строку, чтобы открыть карточку кода${trn}${corr}${ign}${ignN}</div><div class="tags"><span class="tag t-ett">📝 Поиск по наименованию</span>${rel?`<span class="tag">без ${gone.length>1?'слов':'слова'} ${dropped}</span>`:''}</div><div class="usir-list">${rows}</div>${more}</div>`;
 }
 
 // ═══════════════════════════════════════════

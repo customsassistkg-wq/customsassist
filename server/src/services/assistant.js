@@ -297,7 +297,11 @@ function searchBase({ query, country: countryName, date, direction, full } = {},
     const fixed = found.corrected && found.corrected.length
       ? ` — слова исправлены как опечатки: ${found.corrected.map(([a, b]) => `«${a}» → «${b}»`).join(', ')}; поиск шёл по исправленным, проверьте, что имелось в виду, и скажите об этом человеку`
       : '';
-    return clip([cardsToText(rest), `Кандидаты по наименованию «${q}»${fixed}${relaxed}${ignored}${numbers} (запросите нужный код отдельно):\n${lines.join('\n')}`]
+    // Английские слова счетов-фактур переведены на русские из таблицы NAME_EN (04.10.2026): модель должна знать, что искалось по переводу.
+    const translated = found.translated && found.translated.length
+      ? ` — английские слова переведены: ${found.translated.map(([a, b]) => `«${a}» → «${b}»`).join(', ')}; проверьте, что имелось в виду, и скажите об этом человеку`
+      : '';
+    return clip([cardsToText(rest), `Кандидаты по наименованию «${q}»${translated}${fixed}${relaxed}${ignored}${numbers} (запросите нужный код отдельно):\n${lines.join('\n')}`]
       .filter(Boolean).join('\n\n'));
   }
 
