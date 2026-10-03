@@ -193,6 +193,13 @@ const a = require('../src/services/assistant');
           assert.equal(tgSent.length, 2, 'после окна страница сообщает о балансе сама');
           assert.match(tgSent[0], /закончился баланс/);
           assert.doesNotMatch(tgSent[0], /request_id|81102639|u@x\.kg|\bx\b/);
+          // человек видит «временно недоступен» и что работает без помощника, но не причину (баланс у провайдера — только администраторам в Telegram);
+          // до 04.10.2026 экран говорил «закончился баланс API»
+          const shown = require('node:fs').readFileSync(require('node:path').join(__dirname, '../private/checker.js'), 'utf8').match(/ai_balance:'([^']*)'/);
+          assert.ok(shown, 'в интерфейсе нет сообщения для ai_balance');
+          assert.match(shown[1], /временно недоступен/);
+          assert.match(shown[1], /Поиск по коду, калькулятор и классификатор работают/);
+          assert.doesNotMatch(shown[1], /баланс|API|DeepSeek|провайдер/i);
         } finally { tg.notify = realNotify; }
       }
     } finally { server.close(); }
