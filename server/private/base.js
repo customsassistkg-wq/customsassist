@@ -4802,7 +4802,7 @@ function troisRowHtml(rec,codeRaw){
     codeLine='Код в реестре: '+esc(shown.length===2?('группа '+shown):fmtCode(shown))+mapped;
   }else{
     const list=codes.slice(0,10).map(c=>{const g=c.indexOf('>'),cc=g<0?c:c.slice(0,g);
-      return cc.length===2?('группа '+esc(cc)):`<span style="cursor:pointer;text-decoration:underline" onclick="goToCode('${g<0?cc:c.slice(g+1)}')">${esc(fmtCode(cc))}</span>`}).join(', ');
+      return cc.length===2?('группа '+esc(cc)):`<span role="button" tabindex="0" style="cursor:pointer;text-decoration:underline" onclick="goToCode('${g<0?cc:c.slice(g+1)}')">${esc(fmtCode(cc))}</span>`}).join(', ');
     codeLine='Коды ТН ВЭД: '+(list||'в реестре не указаны')+(codes.length>10?' и ещё '+(codes.length-10):'');
   }
   return `<div class="usir-row"><div class="un">№${esc(no)}/ТЗ${rd?' от '+esc(rd):''} — ${esc(mk||'обозначение в реестре приведено изображением')} — ${badge}</div><div class="uu">${codeLine} · ${esc(term)}${ord?' · '+esc(ord):''}</div><div class="uu">Правообладатель: ${esc(hold)}</div><div class="uu">${doc?esc(doc):'охранный документ в реестре не указан'}${pg?' · '+troisPageLink(pg):''}</div></div>`;
@@ -6321,13 +6321,13 @@ function renderHtml(q,dateIso){dateIso=/^\d{4}-\d\d-\d\d$/.test(dateIso||'')?dat
   if(ettList.length>0){
     if(ettList.length===1){
       const [ec,en,eu,er]=ettList[0];
-      html+=`<div class="card c-ett" data-dir="im" data-kind="tariff"><div class="rh"><div class="ico">💰</div><div><div class="rc">${esc(fmtCode(ec))}</div></div></div><div class="rn">${ettNameRowHtml(ec,en)}</div><div class="tags"><span class="tag t-ett">💰 Ставка ввозной пошлины</span></div><div class="rn" style="margin-top:2px">${ettNameHtml(ec,en)}</div><div class="ett-rate">${esc(fmtRate(ettRateOn(ec,dateIso).rate))}</div><div class="det">${quickActionsHtml(ec)}${(()=>{const n=ettRateOn(ec,dateIso);return n.temp?`<div><strong>Ставка в силе:</strong> ${esc(ettTempNote(n.temp,er))}. Источник — примечания к ЕТТ на сайте ЕЭК.</div>`:""})()}<div><strong>Доп. ед. изм.:</strong> ${esc(eu||'не указана')}</div><div><strong>Источник:</strong> ЕТТ ЕАЭС, база пользователя 2026</div>${TNVED_MAP[ec]?legacyNote(ec,null,''):''}${auditNote('ett')}<div style="margin-top:8px"><span class="notes-ico" style="margin-left:0;opacity:.85" onclick="openNotesForCode('${ec}')">📖 Пояснения к группе ${esc(ec.slice(0,2))} ТН ВЭД</span></div></div></div>`;
+      html+=`<div class="card c-ett" data-dir="im" data-kind="tariff"><div class="rh"><div class="ico">💰</div><div><div class="rc">${esc(fmtCode(ec))}</div></div></div><div class="rn">${ettNameRowHtml(ec,en)}</div><div class="tags"><span class="tag t-ett">💰 Ставка ввозной пошлины</span></div><div class="rn" style="margin-top:2px">${ettNameHtml(ec,en)}</div><div class="ett-rate">${esc(fmtRate(ettRateOn(ec,dateIso).rate))}</div><div class="det">${quickActionsHtml(ec)}${(()=>{const n=ettRateOn(ec,dateIso);return n.temp?`<div><strong>Ставка в силе:</strong> ${esc(ettTempNote(n.temp,er))}. Источник — примечания к ЕТТ на сайте ЕЭК.</div>`:""})()}<div><strong>Доп. ед. изм.:</strong> ${esc(eu||'не указана')}</div><div><strong>Источник:</strong> ЕТТ ЕАЭС, база пользователя 2026</div>${TNVED_MAP[ec]?legacyNote(ec,null,''):''}${auditNote('ett')}<div style="margin-top:8px"><span class="notes-ico" role="button" tabindex="0" style="margin-left:0;opacity:.85" onclick="openNotesForCode('${ec}')">📖 Пояснения к группе ${esc(ec.slice(0,2))} ТН ВЭД</span></div></div></div>`;
     } else {
       const shown=ettList.slice(0,30);
       let rowsHtml='';
       for(const [ec,en,eu,er] of shown){
         const gone=TNVED_MAP[ec]&&(TNVED_MAP[ec].b==='gone'||TNVED_MAP[ec].b==='typo');
-        rowsHtml+=`<div class="ett-row" style="cursor:pointer${gone?';opacity:.75':''}" onclick="goToCode('${ec}')"><div class="ec">${esc(fmtCode(ec))}${gone?' <span title="Кода нет в действующем ЕТТ ЕАЭС — откройте позицию, чтобы увидеть действующие коды" style="color:var(--red)">⚠</span>':''}</div><div class="en">${ettNameRowHtml(ec,en)}</div><div class="er">${(()=>{const n=ettRateOn(ec,dateIso);return esc(fmtRate(n.rate))+(n.temp?` <span title="${esc(ettTempNote(n.temp,er))}">(врем.)</span>`:"")})()}</div>${notesIconHtml(ec)}</div>`;
+        rowsHtml+=`<div class="ett-row" role="button" tabindex="0" style="cursor:pointer${gone?';opacity:.75':''}" onclick="goToCode('${ec}')"><div class="ec">${esc(fmtCode(ec))}${gone?' <span title="Кода нет в действующем ЕТТ ЕАЭС — откройте позицию, чтобы увидеть действующие коды" style="color:var(--red)">⚠</span>':''}</div><div class="en">${ettNameRowHtml(ec,en)}</div><div class="er">${(()=>{const n=ettRateOn(ec,dateIso);return esc(fmtRate(n.rate))+(n.temp?` <span title="${esc(ettTempNote(n.temp,er))}">(врем.)</span>`:"")})()}</div>${notesIconHtml(ec)}</div>`;
       }
       const moreNote=ettList.length>shown.length?`<div class="ett-more">Показаны первые ${shown.length} из ${ettList.length} позиций — введите больше цифр кода, чтобы уточнить</div>`:'';
       // При больше чем 2 позициях таблица кодов/ставок на всю ширину карточки
@@ -7512,7 +7512,7 @@ function nameMatchesHtml(qq,list){
   let rows='';
   for(const r of shown){
     const [code,name,unit,rate]=r;
-    rows+=`<div class="usir-row" style="cursor:pointer" onclick="goToCode('${code}')">`
+    rows+=`<div class="usir-row" role="button" tabindex="0" style="cursor:pointer" onclick="goToCode('${code}')">`
       +`<div class="un"><span style="font-family:var(--mono);color:var(--indigo);font-weight:600">${esc(fmtCode(code))}</span> — ${esc(name)}${notesIconHtml(code)}</div>`
       +`<div class="uu">Ставка: ${esc(String(fmtRate(rate)))}${unit?' · Ед.изм.: '+esc(unit):''}</div></div>`;
   }

@@ -4,6 +4,8 @@
 // ориентиры страницы (main, navigation, banner, contentinfo) и заголовок первого уровня — для программ чтения с экрана.
 // До 01.10.2026 у приложения не было ни main, ни h1 (axe: landmark-one-main, page-has-heading-one, region на 130+ узлов).
 // Это машинная проверка: она не заменяет проход с настоящей программой чтения и клавиатурой.
+// С 04.10.2026 в обходе и списки, которые открываются кликом по строке, и группа классификатора с подсвеченной строкой (в тёмной теме её код и ставка
+// имели контраст 3,2 и 3,5); работу с клавиатуры проверяет keyboard.test.js.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -56,6 +58,9 @@ async function scan(page, label, found) {
     return r.violations.map((v) => ({ id: v.id, impact: v.impact, n: v.nodes.length, sample: (v.nodes[0].target || []).join(' ').slice(0, 100) }));
   });
   for (const v of violations) if (!IGNORED[v.id]) found.push(`${label}: ${v.id} (${v.impact}) ×${v.n}, например ${v.sample}`);
+  // Перекомпоновка (WCAG 1.4.10): на 320 CSS-пикселях — это и 400 % масштаб на 1280 — страница не должна прокручиваться вбок (04.10.2026).
+  const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  if (over > 1) found.push(`${label}: горизонтальная прокрутка на ${over} px (WCAG 1.4.10)`);
   return violations.length;
 }
 
@@ -67,7 +72,7 @@ async function scan(page, label, found) {
   const found = [];
   let views = 0;
   try {
-    for (const [w, theme] of [[1280, 'light'], [390, 'light'], [390, 'dark'], [1280, 'dark']]) {
+    for (const [w, theme] of [[1280, 'light'], [390, 'light'], [390, 'dark'], [1280, 'dark'], [320, 'light']]) {
       const ctx = await browser.newContext({ viewport: { width: w, height: 900 } });
       await ctx.addInitScript((t) => { try { localStorage.setItem('ca-theme', t); } catch (e) { /* хранилище закрыто */ } }, theme);
       const page = await ctx.newPage();
@@ -97,6 +102,18 @@ async function scan(page, label, found) {
       await page.locator('#fbText').waitFor({ state: 'visible' });
       await scan(page, tag + ' окно «Сообщить о неточности»', found); views++;
       await page.evaluate(() => closeModal());
+      // списки, которые открываются кликом по строке (04.10.2026: строки стали role="button" tabindex="0", секция «справочно» — кнопка в h2):
+      // смягчённый список по наименованию, позиция ЕТТ со строками и группа классификатора; axe проверяет вложенность и подписи кнопок
+      await page.fill('#inp', 'аккумулятор автомобильный');
+      await page.waitForSelector('#result .usir-row[role="button"]', { timeout: 30000 });
+      await scan(page, tag + ' список по наименованию (смягчённый)', found); views++;
+      await page.fill('#inp', '8504');
+      await page.waitForSelector('#result .ett-row[role="button"]', { timeout: 30000 });
+      await page.waitForTimeout(500);
+      await scan(page, tag + ' позиция ЕТТ со строками и секцией «справочно»', found); views++;
+      await page.evaluate(() => showInTree('8517130000'));
+      await page.waitForSelector('#pageTree .ett-row[role="button"]', { timeout: 30000 });
+      await scan(page, tag + ' группа в классификаторе', found); views++;
       await page.evaluate(() => { setPage('search'); setSearchMode('calc'); });
       await page.waitForTimeout(300);
       await scan(page, tag + ' калькулятор', found); views++;
@@ -109,7 +126,7 @@ async function scan(page, label, found) {
       await ctx.close();
     }
     assert.deepEqual(found, [], 'нарушения доступности:\n  ' + found.join('\n  '));
-    console.log(`PASS: доступность (axe-core ${JSON.parse(fs.readFileSync(path.join(path.dirname(AXE), 'package.json'), 'utf8')).version}) — ${views} видов (экран входа, регистрация, восстановление, поиск, результат, окно «Сообщить о неточности», калькулятор, классификатор, помощник × 1280/390 px × две темы): нарушений нет`);
+    console.log(`PASS: доступность (axe-core ${JSON.parse(fs.readFileSync(path.join(path.dirname(AXE), 'package.json'), 'utf8')).version}) — ${views} видов (экран входа, регистрация, восстановление, поиск, результат по коду, список по наименованию, позиция ЕТТ, окно «Сообщить о неточности», калькулятор, классификатор и его группа, помощник × 1280/390 px × две темы): нарушений нет`);
   } finally {
     await browser.close();
     server.close();

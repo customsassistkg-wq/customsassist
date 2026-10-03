@@ -536,9 +536,10 @@ function compactifyCards(container){
     if(rh){
       const chev=document.createElement('span');
       chev.className='card-chevron';
-      chev.textContent='▾';
+      chev.textContent='▾';chev.setAttribute('aria-hidden','true');
       rh.appendChild(chev);
-      rh.addEventListener('click',()=>card.classList.toggle('open'));
+      rh.setAttribute('role','button');rh.tabIndex=0;rh.setAttribute('aria-expanded','false');
+      rh.addEventListener('click',()=>setCardOpen(card,!card.classList.contains('open')));
     }
   });
   if(container.id==='result'){
@@ -549,11 +550,19 @@ function compactifyCards(container){
     btn.dataset.state='closed';
   }
 }
+// Плавная прокрутка — только если человек не просил в системе уменьшить движение (prefers-reduced-motion); иначе — мгновенная.
+function smoothOrAuto(){return window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'}
+// Открыть или закрыть сворачиваемую карточку: класс и aria-expanded заголовка меняются вместе (заголовок — кнопка и с клавиатуры).
+function setCardOpen(card,open){
+  card.classList.toggle('open',open);
+  const rh=card.querySelector(':scope > .rh');
+  if(rh&&card.classList.contains('collapsible'))rh.setAttribute('aria-expanded',open?'true':'false');
+}
 function toggleAllCards(){
   const btn=document.getElementById('expandAllBtn');
   const cards=document.querySelectorAll('#result .card.collapsible');
   const opening=btn.dataset.state!=='open';
-  cards.forEach(c=>c.classList.toggle('open',opening));
+  cards.forEach(c=>setCardOpen(c,opening));
   btn.textContent=opening?'▴ Свернуть все карточки':'▾ Развернуть все карточки';
   btn.dataset.state=opening?'open':'closed';
 }
@@ -589,8 +598,8 @@ function resetResultChrome(){
 function focusResultCard(id){
   const card=document.getElementById(id);
   if(!card)return;
-  if(card.classList.contains('collapsible'))card.classList.add('open');
-  card.scrollIntoView({behavior:'smooth',block:'center'});
+  if(card.classList.contains('collapsible'))setCardOpen(card,true);
+  card.scrollIntoView({behavior:smoothOrAuto(),block:'center'});
   card.classList.add('card-flash');
   setTimeout(()=>card.classList.remove('card-flash'),1200);
 }
@@ -729,7 +738,7 @@ function sectionResultCards(container){
     if(!sec){
       sec=document.createElement('section');
       sec.className='res-sec res-sec-'+k+(k==='info'?' res-sec-collapsed':'');sec.id='res-sec-'+k;
-      sec.innerHTML='<h2 class="res-sec-h"'+(k==='info'?' onclick="this.parentElement.classList.toggle(\'open\')"':'')+'>'+esc(label)+' <span class="res-sec-n"></span>'+(k==='info'?'<span class="res-sec-tgl">показать</span>':'')+'</h2>';
+      sec.innerHTML='<h2 class="res-sec-h">'+(k==='info'?'<button type="button" class="res-sec-btn" aria-expanded="false" onclick="toggleResSec(this)">':'')+esc(label)+' <span class="res-sec-n"></span>'+(k==='info'?'<span class="res-sec-tgl">показать</span></button>':'')+'</h2>';
       container.insertBefore(sec,prev?prev.nextSibling:container.firstChild);
     }
     sec.querySelector('.res-sec-n').textContent=list.length;
@@ -737,11 +746,19 @@ function sectionResultCards(container){
     prev=sec;
   });
 }
+// Свёрнутая секция «справочно»: заголовок — настоящая кнопка внутри h2 (клавиатура, чтение с экрана), aria-expanded вместе с классом.
+function toggleResSec(btn){
+  const sec=btn.closest('.res-sec');
+  if(!sec)return;
+  sec.classList.toggle('open');
+  btn.setAttribute('aria-expanded',sec.classList.contains('open')?'true':'false');
+}
 function focusResultSec(k){
   const sec=document.getElementById('res-sec-'+k);
   if(!sec)return;
   sec.classList.add('open');
-  sec.scrollIntoView({behavior:'smooth',block:'start'});
+  const tg=sec.querySelector('.res-sec-btn');if(tg)tg.setAttribute('aria-expanded','true');
+  sec.scrollIntoView({behavior:smoothOrAuto(),block:'start'});
 }
 // Аббревиатуры в вердикте расшифровываются: «СЭН» декларанту понятно, а его клиенту — нет.
 // Подпись заменяется целиком, и каждая аббревиатура раскрывается один раз на вердикт:
@@ -1574,7 +1591,7 @@ async function renderCalcSearch(q){
   if(list.exact){selectCalcCode(list.exact);return;}
   let html='<div class="calc-card"><div class="rn" style="margin-bottom:12px">Найдено '+list.total+' кодов — выберите точный:</div>';
   for(const r of list.rows){
-    html+='<div class="calc-pick" onclick="selectCalcCode(\''+r[0]+'\')"><span class="cc">'+esc(fmtCode(r[0]))+'</span>'+esc(trunc(r[1],90))+' — <b>'+esc(fmtRate(r[2]))+'</b></div>';
+    html+='<div class="calc-pick" role="button" tabindex="0" onclick="selectCalcCode(\''+r[0]+'\')"><span class="cc">'+esc(fmtCode(r[0]))+'</span>'+esc(trunc(r[1],90))+' — <b>'+esc(fmtRate(r[2]))+'</b></div>';
   }
   if(list.total>60)html+='<div class="ett-more">…и ещё '+(list.total-60)+'. Уточните код для сужения списка</div>';
   html+='</div>';
@@ -1842,7 +1859,7 @@ function runCalc(){
   out+='<details class="calc-foot"><summary>Как считается и что не включено</summary><div>Сбор — по '+docLink('Закон КР №52 от 24.04.2019, ст.41,44',DOC_SOURCES.law52)+' и '+docLink('Инструкции к Пост. КМ КР №79 от 13.02.2020 (ред. от 29.06.2026)',DOC_SOURCES.instr79)+'. Для товаров электронной торговли, приобретённых одним физическим лицом для личного пользования, сбор считается иначе — 6 сомов за 1 кг брутто (п.38² той же Инструкции), и показанные здесь 0,4 % к ним не относятся; пошлина и налоги по таким отправлениям тоже считаются не по ЕТТ, а по единым ставкам таблицы 1 приложения № 2 к Решению Совета ЕЭК от 20.12.2017 № 107. Акциз считается по базовым ставкам ст.336 НК КР и только если выбран пункт и введён объём; по ч.2 ст.336 фактическая ставка может быть ниже базовой. Не включает сбор за таможенное сопровождение (актуален только при физическом конвое/транзите) и антидемпинговые меры (см. примечания по коду ниже).</div></details>';
   out+='</div>';
   const outEl=document.getElementById('calcOut');outEl.innerHTML=out;
-  if(outEl.getBoundingClientRect().top>window.innerHeight*0.6)outEl.scrollIntoView({behavior:'smooth',block:'nearest'});
+  if(outEl.getBoundingClientRect().top>window.innerHeight*0.6)outEl.scrollIntoView({behavior:smoothOrAuto(),block:'nearest'});
 }
 
 // ═══════════════════════════════════════════
@@ -1889,7 +1906,7 @@ function calcAddToBatch(){
   if(out)out.innerHTML='<div class="calc-warn w-blue">✔ Позиция '+esc(fmtCode(it.code))+' добавлена в партию (всего '+calcBatch.length+').</div>';
   renderCalcBatch();
   const panel=document.getElementById('calcBatchPanel');
-  if(panel)panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+  if(panel)panel.scrollIntoView({behavior:smoothOrAuto(),block:'nearest'});
 }
 function calcRemoveItem(i){calcBatch.splice(i,1);renderCalcBatch()}
 function calcClearBatch(){
@@ -2333,7 +2350,7 @@ function specImport(){
   closeModal();
   renderCalcBatch();
   const panel=document.getElementById('calcBatchPanel');
-  if(panel)panel.scrollIntoView({behavior:'smooth',block:'start'});
+  if(panel)panel.scrollIntoView({behavior:smoothOrAuto(),block:'start'});
 }
 
 function batchRequirements(){
@@ -2459,7 +2476,7 @@ window.addEventListener('popstate',function(e){
     if(s.page==='search'&&(s.mode||'code')==='code'){const inp=document.getElementById('inp');inp.value=s.q||'';render(inp.value)}
   }finally{navApplying=false}
 });
-function tabGo(id){document.body.classList.remove('nav-open');const b=document.getElementById(id);if(b)b.click();window.scrollTo({top:0,behavior:'smooth'})}
+function tabGo(id){document.body.classList.remove('nav-open');const b=document.getElementById(id);if(b)b.click();window.scrollTo({top:0,behavior:smoothOrAuto()})}
 function tabMore(){document.body.classList.toggle('nav-open')}
 // ─── AI-помощник ───
 // Переписка живёт в памяти страницы и в sessionStorage вкладки (переживает
@@ -2963,7 +2980,7 @@ function aiAppend(m){
     d.innerHTML=html;
   }
   log.appendChild(d);
-  d.scrollIntoView({block:'nearest',behavior:'smooth'});
+  d.scrollIntoView({block:'nearest',behavior:smoothOrAuto()});
   return d;
 }
 const AI_STEP={search_base:s=>'🔎 Ищу в базе: '+(s.query||''),calc_payments:s=>'🧮 Считаю платежи '+(s.items&&s.items.length?'по позициям: '+s.items.length:'по '+(s.code||'')),
@@ -3178,7 +3195,7 @@ function renderTreeSection(r,highlightNn){
   const s=TNVED_SECTIONS.find(x=>x.r===r);
   if(!s)return;
   const box=document.getElementById('pageTree');
-  let html=`<div class="tree-crumbs"><span onclick="renderTreeRoot()">Классификатор ТН ВЭД</span> › Раздел ${s.r}</div><div class="card"><div class="rn">Раздел ${s.r}. ${esc(s.title)}</div></div><div class="group-grid">`;
+  let html=`<div class="tree-crumbs"><span role="button" tabindex="0" onclick="renderTreeRoot()">Классификатор ТН ВЭД</span> › Раздел ${s.r}</div><div class="card"><div class="rn">Раздел ${s.r}. ${esc(s.title)}</div></div><div class="group-grid">`;
   for(let n=s.from;n<=s.to;n++){
     if(n===77)continue;
     const nn=String(n).padStart(2,'0'),title=TNVED_CHAPTERS[nn]||'';
@@ -3208,10 +3225,10 @@ async function renderTreeChapter(nn,keepPage,highlightCode){
   let rows='';
   for(const [code,name,rate] of t.rows){
     const hl=code===highlightCode?' notes-hl':'';
-    rows+=`<div class="ett-row${hl}" id="treeRow${code}" style="cursor:pointer" onclick="goToCode('${code}')"><div class="ec">${esc(fmtCode(code))}</div><div class="en">${esc(trunc(name,140))}</div><div class="er">${esc(fmtRate(rate))}</div></div>`;
+    rows+=`<div class="ett-row${hl}" id="treeRow${code}" role="button" tabindex="0" style="cursor:pointer" onclick="goToCode('${code}')"><div class="ec">${esc(fmtCode(code))}</div><div class="en">${esc(trunc(name,140))}</div><div class="er">${esc(fmtRate(rate))}</div></div>`;
   }
   const moreBtn=t.total>t.rows.length?`<button class="btn" type="button" style="margin-top:10px" onclick="treeChapterShown+=50;renderTreeChapter('${nn}',true)">Показать ещё (осталось ${t.total-t.rows.length})</button>`:'';
-  box.innerHTML=`<div class="tree-crumbs"><span onclick="renderTreeRoot()">Классификатор ТН ВЭД</span>${s?` › <span onclick="renderTreeSection('${s.r}')">Раздел ${s.r}</span>`:''} › Группа ${nn}</div>`
+  box.innerHTML=`<div class="tree-crumbs"><span role="button" tabindex="0" onclick="renderTreeRoot()">Классификатор ТН ВЭД</span>${s?` › <span role="button" tabindex="0" onclick="renderTreeSection('${s.r}')">Раздел ${s.r}</span>`:''} › Группа ${nn}</div>`
     +`<div class="card"><div class="rn">Группа ${nn}. ${esc(title)}</div><div class="det">Кодов в базе ЕТТ: ${t.total} — нажмите код, чтобы открыть карточку.</div><div class="qa-row" style="margin-top:10px"><a class="btn" href="${psnUrl(nn)}" target="_blank" rel="noopener">Пояснения к группе ${nn} (PDF ЕЭК)</a>${s?`<button type="button" class="btn" onclick="renderTreeSection('${s.r}','${nn}')">Все группы раздела ${s.r}</button>`:''}</div></div>`
     +`<div class="ett-list">${rows||'<div class="det">В базе ЕТТ нет кодов с этим префиксом.</div>'}</div>${moreBtn}`;
   if(highlightCode){
@@ -3250,7 +3267,7 @@ function renderNotesSection(r,highlightNn){setPage('tree');renderTreeSection(r,h
 // это карточка группы в классификаторе с кнопкой PDF и подсвеченной строкой кода.
 function openNotesForCode(code){showInTree(code)}
 function notesIconHtml(code){
-  return `<span class="notes-ico" title="Пояснения к группе ${esc(code.slice(0,2))}" onclick="event.stopPropagation();openNotesForCode('${code}')">📖</span>`;
+  return `<span class="notes-ico" title="Пояснения к группе ${esc(code.slice(0,2))}" aria-hidden="true" onclick="event.stopPropagation();openNotesForCode('${code}')">📖</span>`;
 }
 
 // ─── Справка по товару: направление → страна → товар ───
@@ -4354,6 +4371,19 @@ chipGroups.forEach(([id,list])=>{
 // Таб-панель «Ещё» открывает меню разделов листом; выбор раздела закрывает его.
 {const np=document.querySelector('.nav-panel');if(np)np.addEventListener('click',e=>{if(e.target.closest('.nav-item'))document.body.classList.remove('nav-open')});const aw=document.getElementById('appWrap');if(aw)aw.addEventListener('click',e=>{if(document.body.classList.contains('nav-open')&&!e.target.closest('.nav-panel,#tabBar'))document.body.classList.remove('nav-open')});document.addEventListener('keydown',e=>{if(e.key==='Escape')document.body.classList.remove('nav-open')})}
 
+// Клавиатура: всё, что открывается кликом и не является кнопкой или ссылкой (строки списков кодов, заголовки карточек, хлебные крошки),
+// помечено role="button" tabindex="0" и открывается Enter и пробелом, как кнопка.
+if(!document.documentElement.dataset.kbButtons){
+  document.documentElement.dataset.kbButtons='1';
+  document.addEventListener('keydown',e=>{
+    if(e.key!=='Enter'&&e.key!==' ')return;
+    const t=e.target;
+    if(!t||!t.matches||!t.matches('[role="button"][tabindex]:not(button):not(a):not(input):not(select):not(textarea)'))return;
+    e.preventDefault();
+    t.click();
+  });
+}
+
 // История и подсказки: при фокусе на пустом поле — последние запросы, при вводе
 // 4–9 цифр — подпозиции с сервера. Список закрывается кликом вне поля и Escape.
 {
@@ -4361,7 +4391,10 @@ chipGroups.forEach(([id,list])=>{
   let st;
   inp.addEventListener('focus',()=>{if(searchMode==='code')srchSuggest(inp.value)});
   inp.addEventListener('input',()=>{clearTimeout(st);if(searchMode!=='code'){srchDropHide();return}st=setTimeout(()=>srchSuggest(inp.value),200)});
-  inp.addEventListener('keydown',e=>{if(srchDropKey(e))return;if(e.key==='Enter'){srchDropHide();clearTimeout(t);if(searchMode==='code')render(inp.value)}});
+  inp.addEventListener('keydown',e=>{if(srchDropKey(e))return;if(e.key==='Enter'){srchDropHide();clearTimeout(t);
+    // Enter запускает поиск сразу в каждом режиме: раньше он только гасил отложенный поиск, и в калькуляторе и «видах» вставленный код с Enter
+    // до истечения 250 мс не давал ничего (04.10.2026, найдено клавиатурным тестом).
+    if(searchMode==='code')render(inp.value);else if(searchMode==='calc')renderCalcSearch(inp.value);else if(searchMode==='species')renderSpecies(inp.value)}});
   inp.addEventListener('blur',()=>setTimeout(srchDropHide,150));
 }
 } // end initApp

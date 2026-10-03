@@ -194,6 +194,8 @@
   @media (max-width:900px){.res-sec{grid-template-columns:1fr}}
   .res-sec-h{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;font-family:var(--head);font-size:var(--fs-base);font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
   .res-sec-h .res-sec-n{font-size:var(--fs-md);font-weight:600;color:var(--hint)}
+  .res-sec-btn{display:flex;align-items:inherit;gap:inherit;width:100%;margin:0;padding:0;border:0;background:none;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;text-align:left;cursor:pointer}
+  .res-sec-btn:focus-visible{outline:2px solid var(--indigo);outline-offset:3px}
   .res-sec-danger .res-sec-h{color:var(--red);border-color:rgba(224,52,43,.35)}
   .card[data-sec="danger"]{box-shadow:inset 3px 0 0 var(--red),var(--shadow-sm)}
   .card[data-sec="docs"],.card[data-sec="control"],.card[data-sec="cert"]{box-shadow:inset 3px 0 0 var(--orange),var(--shadow-sm)}
@@ -532,6 +534,8 @@
   .notes-ico{cursor:pointer;margin-left:8px;opacity:.55;transition:opacity .15s;display:inline-block;flex-shrink:0}
   .notes-ico:hover{opacity:1}
   .notes-hl{background:rgba(255,204,0,.28)!important;border-radius:var(--radius-md);padding:8px 10px!important;margin:0 -10px}
+  /* строка с подсветкой в тёмной теме: приглушённый код (--muted) и розовая ставка на жёлто-оливковой подложке давали контраст 3,2 и 3,5 (axe, 04.10.2026) */
+  .notes-hl .ec,.notes-hl .er{color:var(--text)}
   @media (max-width:1180px){
     .content-row{flex-direction:column}
     .sidebar{width:100%;position:static}
@@ -861,6 +865,11 @@
   }
   @media (prefers-reduced-motion:reduce){
     .auth-btn,.auth-field input{transition:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    /* Уменьшение движения (04.10.2026): раньше учитывались только приветствие помощника, переключатель темы и экран входа; раскрытие карточек, подсказки,
+       индикаторы загрузки и окна двигались всегда. Анимации и переходы сводятся к мгновенным (длительность не 0: события animationend и transitionend остаются). */
+    *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
   }
   .user-bar{display:flex;align-items:center;justify-content:flex-end;gap:var(--space-3);font-size:var(--fs-sm);color:var(--muted);margin-bottom:var(--space-3)}
   .user-bar b{color:var(--text)}
@@ -1437,7 +1446,7 @@
 
 <div id="calcPrintArea"></div>
 
-<button id="toTopBtn" type="button" title="Наверх" aria-label="Наверх" onclick="window.scrollTo({top:0,behavior:'smooth'})">⬆</button>
+<button id="toTopBtn" type="button" title="Наверх" aria-label="Наверх" onclick="window.scrollTo({top:0,behavior:smoothOrAuto()})">⬆</button>
 
 <script>
 // ═══════════════════════════════════════════
