@@ -293,7 +293,11 @@ function searchBase({ query, country: countryName, date, direction, full } = {},
     const numbers = nNum
       ? ` — числа и единицы измерения «${found.ignoredNums.join(' ')}» поиск не требовал (модель, размер, объём): выдача по словам, строки с ними выше; сверьте размер и модель по наименованию и скажите об этом человеку`
       : '';
-    return clip([cardsToText(rest), `Кандидаты по наименованию «${q}»${relaxed}${ignored}${numbers} (запросите нужный код отдельно):\n${lines.join('\n')}`]
+    // Опечатки, которые поиск исправил (04.10.2026): «акумулятор» → «аккумулятор». Человеку это видно на карточке, модели — здесь: пусть проверит, что имелось в виду.
+    const fixed = found.corrected && found.corrected.length
+      ? ` — слова исправлены как опечатки: ${found.corrected.map(([a, b]) => `«${a}» → «${b}»`).join(', ')}; поиск шёл по исправленным, проверьте, что имелось в виду, и скажите об этом человеку`
+      : '';
+    return clip([cardsToText(rest), `Кандидаты по наименованию «${q}»${fixed}${relaxed}${ignored}${numbers} (запросите нужный код отдельно):\n${lines.join('\n')}`]
       .filter(Boolean).join('\n\n'));
   }
 

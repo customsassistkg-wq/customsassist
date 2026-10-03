@@ -6345,6 +6345,76 @@ const wordTier=(name,{self,phrases},ri,stem)=>phrases.some(ph=>ph.every(pw=>hasW
 const NAME_NUM_RE=/^(?:\d{1,3}(?:[.,]\d+)?|\d{4})$/;
 const NAME_UNITS=new Set(['мм','см','дм','м','км','мг','г','гр','кг','т','тонн','тонна','тонны','л','мл','литр','литра','литров','шт','штук','штуки','штука','вт','квт','мвт','ква','кв','ма','ач','мач','гб','мб','тб','кб','гц','кгц','мгц','ггц','дюйм','дюйма','дюймов','процент','процента','процентов','%','мп','мпа','кпа','па','бар','ккал','дтекс','текс','см³','см²','м²','м³','мм²','грамм','грамма','граммов','килограмм','килограмма','килограммов','миллиметров','сантиметров','метров','метра']);
 const NAME_GENERIC=new Set(['прочие','прочее','прочая','прочий','прочих','более','менее','ниже','выше','свыше','кроме','включая','позиция','позиции','позицию','позиций','субпозиция','субпозиции','субпозицию','код','коды','кода']);
+// Опечатки (04.10.2026): слово запроса, которого нет ни целиком, ни по основе ни в одном наименовании и ни среди синонимов, а рядом есть слово базы на одну правку
+// (пропущенная, лишняя или заменённая буква, две переставленные): «акумулятор», «кросовки», «холодильнк», «смартфно». Раньше такой запрос не находил ничего
+// (слово просто не учитывалось), хотя человек искал обычный товар. Исправление всегда названо на карточке и у помощника: «Исправлено: «акумулятор» → «аккумулятор»».
+// Сравниваются основы слов (stemRu): набрано «рубшка» — в базе «рубашки», основы «рубшк» и «рубашк» отличаются одной буквой.
+let NAME_VOCAB=null;
+function nameVocab(){
+  if(NAME_VOCAB)return NAME_VOCAB;
+  const words=new Map();
+  const addName=(n,wgt)=>{const seen=new Set();for(const t of (String(n).toLowerCase().replace(/ё/g,'е').match(/[а-я]{4,}/g)||[])){if(seen.has(t))continue;seen.add(t);words.set(t,(words.get(t)||0)+wgt)}};
+  for(const n of ettNamesLc())addName(n,1);
+  for(const d of findByNameSources())addName(d[0],1);
+  for(const k of Object.keys(SEARCH_SYNONYMS))addName(k,8); // слова таблицы синонимов — обиходные слова, они весомее
+  for(const k of Object.keys(ADJ_SYNONYMS))addName(k,8);
+  const stems=new Map(); // основа → {f — вес всех форм, w — самая короткая форма (её и показываем человеку)}
+  for(const [v,wt] of words){
+    const s=stemRu(v);
+    if(s.length<4)continue;
+    const o=stems.get(s)||{f:0,w:v};
+    o.f+=wt;if(v.length<o.w.length||(v.length===o.w.length&&wt>(words.get(o.w)||0)))o.w=v;
+    stems.set(s,o);
+  }
+  NAME_VOCAB={words,stems,sorted:[...words.keys()].sort()};
+  return NAME_VOCAB;
+}
+// слово есть в базе, если с него начинается какое-то слово наименований или с него по основе («рубашка» — «рубашки»)
+function nameWordKnown(w){
+  const V=nameVocab().sorted;
+  const has=p=>{let lo=0,hi=V.length;while(lo<hi){const m=(lo+hi)>>1;if(V[m]<p)lo=m+1;else hi=m}return lo<V.length&&V[lo].startsWith(p)};
+  if(has(w))return true;
+  const st=stemRu(w);
+  return st.length>=4&&has(st);
+}
+// цена правки, превращающей набранную основу a в основу слова базы b (не больше одной правки; 9 — больше): пропущенная буква — 1, лишняя — 1,1 (удвоенная — 0,8, «тракктор»),
+// две переставленные соседние — 1, замена гласной на гласную (о/а, е/и, ы/и) — 1, звонкой согласной на глухую и наоборот (д/т, б/п, г/к, з/с, ж/ш, в/ф) — 1,2, любой другой
+// согласной и гласной на согласную — 2 (не исправляется: «камри» не «камни»). Выбор — по цене, и только среди равных — по весу: «холодильнк» — это «холодильник» (пропущена и),
+// а не «холодильн» (лишняя к), хотя слов «холодильн…» в базе больше
+const NAME_VOWELS='аеиоуыэюя';
+const NAME_PAIRS='дттдббппггккззссжшшжввфф'; // пары звонкая/глухая в обе стороны, по две буквы подряд
+function editCost(a,b){
+  const la=a.length,lb=b.length;
+  if(Math.abs(la-lb)>1)return 9;
+  if(la===lb){
+    let i=0;while(i<la&&a[i]===b[i])i++;
+    if(i===la)return 0;
+    if(a.slice(i+1)===b.slice(i+1)){const va=NAME_VOWELS.includes(a[i]),vb=NAME_VOWELS.includes(b[i]);return va&&vb?1:(!va&&!vb&&NAME_PAIRS.includes(a[i]+b[i])?1.2:2)}
+    return (i+1<la&&a[i]===b[i+1]&&a[i+1]===b[i]&&a.slice(i+2)===b.slice(i+2))?1:9;
+  }
+  const s=la<lb?a:b,l=la<lb?b:a;
+  let i=0;while(i<s.length&&s[i]===l[i])i++;
+  if(s.slice(i)!==l.slice(i+1))return 9;
+  if(la<lb)return 1;
+  return ((i>0&&l[i-1]===l[i])||(i+1<l.length&&l[i+1]===l[i]))?0.8:1.1;
+}
+// ближайшее слово базы: основа на одну правку, первая буква набрана верно (ошибки в ней редки, а «ямайка» не «майка»); из похожих — самая дешёвая, среди равных — с наибольшим
+// числом наименований; слабые совпадения не берутся (слово в шесть букв — меньше восьми наименований, в семь — меньше трёх, длиннее — нет в базе вовсе), слова короче шести букв
+// и основы короче четырёх не исправляются совсем («камри» не «камеры», «краги» не «круги»). Ответ — основа (по ней
+// ищется, начало слова подходит под все формы) и самая короткая форма слова (её видит человек).
+function nearNameWord(w){
+  const sw=stemRu(w);
+  if(sw.length<4)return null;
+  let best=null;
+  for(const [s,o] of nameVocab().stems){
+    if(s[0]!==sw[0]||s.length<sw.length-1||s.length>sw.length+1||s===sw)continue;
+    const c=editCost(sw,s);
+    if(c<=1.2&&(!best||c<best.c||(c===best.c&&o.f>best.f)))best={c,f:o.f,tok:s,show:o.w};
+  }
+  return best&&best.f>=(w.length<=6?8:w.length===7?3:1)?best:null; // слова короче шести букв сюда не попадают
+}
+// страна и товарный знак — не опечатка: «катар» не «катера», «сербия» не «серпы»
+function nameIsProper(w){return findPrefByCountry(w).length>0||!!cisCountry(w)||findTROISByName(w).length>0}
 function findByName(q){
   const qq=(q||'').trim().toLowerCase().replace(/ё/g,'е'); // «ё» везде как «е»: ЕТТ пишет «мед», «сушеные», «белье»
   if(qq.length<3)return[];
@@ -6367,6 +6437,14 @@ function findByName(q){
   const synOf=k=>Object.prototype.hasOwnProperty.call(SEARCH_SYNONYMS,k)?SEARCH_SYNONYMS[k]:null;
   // Прилагательное без своего ключа берёт фразы из таблицы относительных прилагательных по основе: «стальная», «стальные», «стального» — одно «стальной».
   const synOfForm=k=>synOf(k)||synByStem(k);
+  // опечатки: слово, которого в базе нет, заменяется ближайшим словом базы; замены названы в res.corrected
+  const fixes=[];
+  words=words.map(w=>{
+    if(!/^[а-я]{6,}$/.test(w)||synOfForm(w)||nameWordKnown(w))return w;
+    const fx=nearNameWord(w);
+    if(!fx||nameAdjLike(w)!==nameAdjLike(fx.show)||nameIsProper(w))return w; // прилагательное остаётся прилагательным, существительное — существительным: «натяжные» не «натяжения»
+    fixes.push([w,fx.show]);return fx.show;
+  });
   // Два соседних слова с общим синонимом («стиральный порошок» — в любом порядке; предлог отброшен: «порошок для стирки» — «порошок стирки»)
   // идут как одно слово: по отдельности они дают другие товары (стиральные машины, порошки слюды и металлов).
   const wordVariants=[];
@@ -6388,6 +6466,7 @@ function findByName(q){
   }
   if(!res.length&&vars.length>=2&&vars.length<=4)res=findByNameRelaxed(vars);
   if(res.length&&latGone.length)res.ignored=(res.ignored||[]).concat(latGone);
+  if(res.length&&fixes.length)res.corrected=fixes;
   if(nums.length&&res.length){
     res.ignoredNums=nums;
     // строки, где число (и единица) стоит в наименовании настоящим словом, — выше; порядок остальных прежний (сортировка устойчива)
@@ -7865,6 +7944,8 @@ function nameMatchesHtml(qq,list){
   // слова, которых поиск не использовал, — так, как их ввёл человек (список ignored ставит findByNameWords; пусто — карточка прежняя)
   const typed=w=>esc(String(qq).split(/\s+/).find(t=>t.toLowerCase().replace(/ё/g,'е')===w)||w);
   const ign=list.ignored&&list.ignored.length?`. Не учтено: ${list.ignored.map(w=>'«'+typed(w)+'»').join(', ')} — в наименованиях ЕТТ нет ${list.ignored.length>1?'слов':'слова'} в таком виде, поиск шёл без ${list.ignored.length>1?'них':'него'}`:'';
+  // опечатки, которые поиск исправил (corrected ставит findByName): что было набрано и на что заменено — всегда названо, чтобы человек видел, что искалось
+  const corr=list.corrected&&list.corrected.length?`. Исправлено: ${list.corrected.map(([a,b])=>'«'+typed(a)+'» → «'+esc(b)+'»').join(', ')}`:'';
   // числа и единицы измерения, которые поиск не требовал (ignoredNums ставит findByName): модель и размер человек сверяет по наименованию сам
   const ignN=list.ignoredNums&&list.ignoredNums.length?`. Числа и единицы измерения («${list.ignoredNums.map(w=>typed(w)).join(' ')}») поиск не требует: строки, где они есть, стоят выше — размер и модель проверьте по наименованию`:'';
   let rows='';
@@ -7875,7 +7956,7 @@ function nameMatchesHtml(qq,list){
       +`<div class="uu">Ставка: ${esc(String(fmtRate(rate)))}${unit?' · Ед.изм.: '+esc(unit):''}</div></div>`;
   }
   const more=list.length>shown.length?`<div class="ett-more">Показаны первые ${shown.length} из ${list.length} — уточните запрос</div>`:'';
-  return `<div class="card c-ett"><div class="rh"><div class="ico">📝</div><div><div class="rc">${esc(qq)}</div></div></div><div class="rn">${rel?`По всем словам сразу ничего не найдено. Найдено товаров по наименованию без ${gone.length>1?'слов':'слова'} ${dropped}: ${list.length}`:`Найдено товаров по наименованию: ${list.length}`} — нажмите строку, чтобы открыть карточку кода${ign}${ignN}</div><div class="tags"><span class="tag t-ett">📝 Поиск по наименованию</span>${rel?`<span class="tag">без ${gone.length>1?'слов':'слова'} ${dropped}</span>`:''}</div><div class="usir-list">${rows}</div>${more}</div>`;
+  return `<div class="card c-ett"><div class="rh"><div class="ico">📝</div><div><div class="rc">${esc(qq)}</div></div></div><div class="rn">${rel?`По всем словам сразу ничего не найдено. Найдено товаров по наименованию без ${gone.length>1?'слов':'слова'} ${dropped}: ${list.length}`:`Найдено товаров по наименованию: ${list.length}`} — нажмите строку, чтобы открыть карточку кода${corr}${ign}${ignN}</div><div class="tags"><span class="tag t-ett">📝 Поиск по наименованию</span>${rel?`<span class="tag">без ${gone.length>1?'слов':'слова'} ${dropped}</span>`:''}</div><div class="usir-list">${rows}</div>${more}</div>`;
 }
 
 // ═══════════════════════════════════════════
